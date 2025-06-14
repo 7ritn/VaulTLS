@@ -47,6 +47,7 @@ pub struct CallbackQuery {
 #[derive(Deserialize)]
 pub struct CreateCertificateRequest {
     pub cert_name: String,
+    pub subject_alt_name: Option<String>,
     pub user_id: i64,
     pub validity_in_years: Option<u64>,
     pub notify_user: Option<bool>

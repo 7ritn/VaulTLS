@@ -11,7 +11,7 @@ use openssl::pkcs12::Pkcs12;
 use openssl::pkey::PKey;
 use openssl::stack::Stack;
 use openssl::x509::{X509NameBuilder, X509};
-use openssl::x509::extension::{AuthorityKeyIdentifier, BasicConstraints, KeyUsage, SubjectKeyIdentifier};
+use openssl::x509::extension::{AuthorityKeyIdentifier, BasicConstraints, KeyUsage, SubjectKeyIdentifier, SubjectAlternativeName};
 use openssl::x509::X509Builder;
 use crate::ApiError;
 use crate::constants::CA_FILE_PATH;
@@ -34,6 +34,7 @@ pub(crate) struct Certificate {
     pub(crate) key: Vec<u8>,
     #[serde(skip)]
     pub(crate) ca_id: i64,
+    pub(crate) subject_alt_name: Option<String>,
 }
 
 /// Creates a new CA certificate.
@@ -104,6 +105,7 @@ pub(crate) fn create_ca(
 pub(crate) fn create_user_cert(
     ca: &Certificate,
     name: &str,
+    subject_alt_name: Option<String>,
     validity_in_years: u64,
     user_id: i64
 ) -> Result<Certificate, ErrorStack> {
@@ -148,6 +150,15 @@ pub(crate) fn create_user_cert(
     user_cert_builder.set_not_after(valid_until_openssl.as_ref())?;
     user_cert_builder.append_extension(key_usage)?;
     user_cert_builder.append_extension(basic_constraints)?;
+
+    // Add SAN if provided
+    if let Some(ref san) = subject_alt_name {
+        let san_ext = SubjectAlternativeName::new()
+            .dns(san)
+            .build(&user_cert_builder.x509v3_context(Some(&ca_cert), None))?;
+        user_cert_builder.append_extension(san_ext)?;
+    }
+
     user_cert_builder.sign(&ca_key, MessageDigest::sha256())?;
 
     let user_cert = user_cert_builder.build();
@@ -170,6 +181,7 @@ pub(crate) fn create_user_cert(
         pkcs12: pkcs12.to_der()?,
         ca_id: ca.id,
         user_id,
+        subject_alt_name,
         ..Default::default()
     })
 }
