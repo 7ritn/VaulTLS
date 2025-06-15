@@ -2,6 +2,7 @@ import { defineStore } from 'pinia';
 import type { Certificate } from '@/types/Certificate';
 import {
     fetchCertificates,
+    fetchCertificatePassword,
     downloadCertificate,
     createCertificate,
     deleteCertificate,
@@ -22,6 +23,26 @@ export const useCertificateStore = defineStore('certificate', {
             this.error = null;
             try {
                 this.certificates = await fetchCertificates();
+                for (const cert of this.certificates) {
+                    cert.password_shown = false
+                }
+            } catch (err) {
+                this.error = 'Failed to fetch certificates.';
+                console.error(err);
+            } finally {
+                this.loading = false;
+            }
+        },
+
+        async fetchCertificatePassword(id: number): Promise<void> {
+            try {
+                const certificate = await fetchCertificatePassword(id);
+                for (const cert of this.certificates) {
+                    if (cert.id == id) {
+                        cert.pkcs12_password = certificate.pkcs12_password
+                        return
+                    }
+                }
             } catch (err) {
                 this.error = 'Failed to fetch certificates.';
                 console.error(err);

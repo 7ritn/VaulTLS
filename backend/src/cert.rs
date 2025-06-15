@@ -13,6 +13,7 @@ use openssl::stack::Stack;
 use openssl::x509::{X509NameBuilder, X509};
 use openssl::x509::extension::{AuthorityKeyIdentifier, BasicConstraints, KeyUsage, SubjectKeyIdentifier};
 use openssl::x509::X509Builder;
+use passwords::PasswordGenerator;
 use crate::ApiError;
 use crate::constants::CA_FILE_PATH;
 
@@ -28,6 +29,8 @@ pub(crate) struct Certificate {
     pub(crate) user_id: i64,
     #[serde(skip)]
     pub(crate) pkcs12: Vec<u8>,
+    #[serde(skip)]
+    pub(crate) pkcs12_password: String,
     #[serde(skip)]
     pub(crate) cert: Vec<u8>,
     #[serde(skip)]
@@ -155,19 +158,33 @@ pub(crate) fn create_user_cert(
     let mut ca_stack = Stack::new()?;
     ca_stack.push(ca_cert.clone())?;
 
+    // Create password for the PKCS#12
+    let pg = PasswordGenerator {
+        length: 20,
+        numbers: true,
+        lowercase_letters: true,
+        uppercase_letters: true,
+        symbols: true,
+        spaces: false,
+        exclude_similar_characters: false,
+        strict: true,
+    };
+    let password = pg.generate_one().unwrap();
+
     // Create the PKCS#12 structure
     let pkcs12 = Pkcs12::builder()
         .name(&name)
         .ca(ca_stack)
         .cert(&user_cert)
         .pkey(&user_key)
-        .build2("")?;
+        .build2(&password)?;
 
     Ok(Certificate{
         name: name.to_string(),
         created_on: created_on_unix,
         valid_until: valid_until_unix,
         pkcs12: pkcs12.to_der()?,
+        pkcs12_password: password.to_string(),
         ca_id: ca.id,
         user_id,
         ..Default::default()

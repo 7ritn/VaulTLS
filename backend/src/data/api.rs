@@ -52,6 +52,13 @@ pub struct CreateCertificateRequest {
     pub notify_user: Option<bool>
 }
 
+#[derive(Default, Serialize)]
+pub struct CertificatePasswordResponse {
+    pub id: i64,
+    pub user_id: i64,
+    pub pkcs12_password: String
+}
+
 pub struct DownloadResponse {
     pub content: Vec<u8>,
     pub filename: String,
