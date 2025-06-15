@@ -60,6 +60,8 @@ For VaulTLS the required variables can be configured via environmental variables
 | `VAULTLS_OIDC_ID`           | `[client_id]`                                        |
 | `VAULTLS_OIDC_SECRET`       | `[client_secret]`                                    |
 
+If VaulTLS claims that OIDC is not configured, the most likely cause is that it couldn't discover the OIDC provider based on the `VAULTLS_OIDC_AUTH_URL` given. In general the the base url to the auth provider should be enough. For Authentik the required URL path is `/application/o/<application slug>/`. If that doesn't work, directly specify the .well_known url. 
+
 ## Usage
 During the first setup a Certificate Authority is automatically created. If OIDC is configured no password needs to be set.
 Users can either log in via password or OIDC. If a user first logs in via OIDC their e-mail is matched with all VaulTLS users and linked.
@@ -70,6 +72,45 @@ User certificates can be downloaded through the web interface.
 
 The CA certificate to be integrated with your reverse proxy is available as a file at /app/data/ca.cert 
 and as download via the API endpoint /api/certificates/ca/download.
+
+### Caddy
+To use caddy as reverse proxy for the VaulTLS app, a configuration like the following is required.
+```caddyfile
+reverse_proxy 127.0.0.1:5173
+```
+To integrate the CA cert for client validation, you can either use a file or http based approach. Extend your TLS instruction for that with the client_auth section. Documentation here: [https://caddyserver.com/docs/caddyfile/directives/tls#client_auth](https://caddyserver.com/docs/caddyfile/directives/tls#client_auth).
+
+File based:
+```caddyfile
+tls {
+  client_auth {
+    mode <usually verify_if_given OR require_and_verify>
+    trust_pool file {
+      pem_file <Path to VaulTLS Directory>/ca.cert
+    }
+  }
+}
+```
+
+HTTP based:
+```caddyfile
+tls {
+  client_auth {
+    mode <usually verify_if_given OR require_and_verify>
+    trust_pool http {
+      endpoints <Address of VaulTLS Instance such as 127.0.0.1:5173>/api/certificates/ca/download
+    }
+  }
+}
+```
+
+If you choose `verify_if_given`, you can still block clients for apps that you want to require client authentication:
+```caddyfile
+@blocked {
+  vars {tls_client_subject} ""
+}
+abort @blocked
+```
 
 ## Roadmap
 - Add database encryption
