@@ -138,6 +138,7 @@ fn generate_certificate_email(message: &MailMessage, instance_url: &str) -> Mark
                     p { "Certificate details:" }
                     p { "username: " (message.username) }
                     p { "certificate_name: " (message.certificate.name) }
+                    p { "subject_alternative_name: " (message.certificate.subject_alt_name.as_deref().unwrap_or("")) }
                     p { "created_on: " (created_on) }
                     p { "valid_until: " (valid_until) }
                 }

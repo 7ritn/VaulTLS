@@ -88,7 +88,7 @@ async fn create_user_certificate(
     let db = state.db.lock().await;
 
     let ca = db.get_current_ca()?;
-    let mut user_cert = cert::create_user_cert(&ca, &payload.cert_name, payload.validity_in_years.unwrap_or(1), payload.user_id)?;
+    let mut user_cert = cert::create_user_cert(&ca, &payload.cert_name, payload.subject_alt_name.clone(), payload.validity_in_years.unwrap_or(1), payload.user_id)?;
 
     db.insert_user_cert(&mut user_cert)?;
 

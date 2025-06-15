@@ -8,6 +8,7 @@
           <tr>
             <th v-if="isAdmin">User</th>
             <th>Name</th>
+            <th>SAN</th>
             <th>Created on</th>
             <th>Valid until</th>
             <th>Actions</th>
@@ -17,6 +18,7 @@
           <tr v-for="cert in certificates" :key="cert.id">
             <td v-if="isAdmin">{{ userStore.idToName(cert.user_id) }}</td>
             <td>{{ cert.name }}</td>
+            <td>{{ cert.subject_alt_name }}</td>
             <td>{{ new Date(cert.created_on).toLocaleDateString() }}</td>
             <td>{{ new Date(cert.valid_until).toLocaleDateString() }}</td>
             <td>
@@ -65,6 +67,16 @@
                   type="text"
                   class="form-control"
                   placeholder="Enter certificate name"
+              />
+            </div>
+            <div class="mb-3">
+              <label for="san" class="form-label">Subject Alternative Name (DNS Name only)</label>
+              <input
+                  id="san"
+                  v-model="certReq.subject_alt_name"
+                  type="text"
+                  class="form-control"
+                  placeholder="e.g. example.lan"
               />
             </div>
             <div class="mb-3">
@@ -192,6 +204,7 @@ export default defineComponent({
     // Reactive form state for Generate
     const certReq = reactive<CertificateRequirements>({
       cert_name: '',
+      subject_alt_name: '',
       user_id: 0,
       validity_in_years: 1,
       notify_user: false,
@@ -220,6 +233,7 @@ export default defineComponent({
     const closeGenerateModal = () => {
       isGenerateModalVisible.value = false;
       certReq.cert_name = '';
+      certReq.subject_alt_name = '';
       certReq.user_id = 0;
       certReq.validity_in_years = 1;
     };
