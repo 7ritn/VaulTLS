@@ -3,4 +3,5 @@ export interface CertificateRequirements {
     user_id: number;
     validity_in_years: number;
     notify_user: boolean;
+    subject_alt_name?: string;
 }
