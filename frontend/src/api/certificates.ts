@@ -6,6 +6,11 @@ export const fetchCertificates = async (): Promise<Certificate[]> => {
     return await ApiClient.get<Certificate[]>('/certificates');
 };
 
+export const fetchCertificatePassword = async (id: number): Promise<string | null> => {
+    const resp = await ApiClient.get<Certificate>(`/certificates/${id}/password`);
+    return resp.pkcs12_password;
+};
+
 export const downloadCertificate = async (id: number): Promise<{ filename: string; blob: Blob }> => {
     return await ApiClient.get_download(`/certificates/${id}/download`);
 };

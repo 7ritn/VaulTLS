@@ -14,6 +14,7 @@ use rocket::response::Redirect;
 use rocket::tokio::sync::Mutex;
 use rocket_cors::{AllowedOrigins, CorsOptions};
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use cert::create_ca;
 use db::VaulTLSDB;
 use settings::Settings;
@@ -134,6 +135,18 @@ async fn download_certificate(
     Ok(DownloadResponse::new(pkcs12, "user_certificate.p12"))
 }
 
+#[get("/api/certificates/<id>/password")]
+async fn fetch_certificate_password(
+    state: &State<AppState>,
+    id: i64,
+    authentication: Authenticated
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let db = state.db.lock().await;
+    let (user_id, pkcs12_password) = db.get_user_cert_pkcs12_password(id)?;
+    if user_id != authentication.claims.id && authentication.claims.role != UserRole::Admin { return Err(ApiError::Forbidden(None)) }
+    Ok(Json(json!({ "pkcs12_password": pkcs12_password })))
+}
+
 #[delete("/api/certificates/<id>")]
 async fn delete_user_cert(
     state: &State<AppState>,
@@ -250,10 +263,11 @@ async fn login(
     if let Some(password_hash) = user.password_hash {
         verify_password(&password_hash, &*login_req_opt.password)?;
         let jwt_key = settings.get_jwt_key()?;
+        let secure_cookies = settings.secure_cookies();
         let token = generate_token(&jwt_key, user.id, user.role)?;
 
         let cookie = Cookie::build(("auth_token", token.clone()))
-            .secure(true)
+            .secure(secure_cookies)
             .http_only(true)
             .same_site(SameSite::Lax);
         jar.add_private(cookie);
@@ -425,12 +439,11 @@ async fn rocket() -> _ {
         settings.set_db_encrypted().await.unwrap()
     }
     if !db_initialized {
-        println!("No database found. Initializing.");
+        println!("New database. Set intial database file permissions to 0600");
         // Adjust permissions
         let mut perms = fs::metadata(db_path).unwrap().permissions();
         perms.set_mode(0o600);
         fs::set_permissions(db_path, perms).unwrap();
-        db.initialize_db().expect("Failed initializing database");
     }
 
     let oidc_settings = settings.get_oidc();
@@ -485,6 +498,7 @@ async fn rocket() -> _ {
                 download_ca,
                 download_certificate,
                 delete_user_cert,
+                fetch_certificate_password,
                 fetch_settings,
                 update_settings,
                 is_setup,

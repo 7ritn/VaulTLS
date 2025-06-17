@@ -10,6 +10,7 @@
             <th>Name</th>
             <th>Created on</th>
             <th>Valid until</th>
+            <th>Password</th>
             <th>Actions</th>
           </tr>
         </thead>
@@ -19,6 +20,15 @@
             <td>{{ cert.name }}</td>
             <td>{{ new Date(cert.created_on).toLocaleDateString() }}</td>
             <td>{{ new Date(cert.valid_until).toLocaleDateString() }}</td>
+            <td class="password-cell">
+              {{ shownCerts.has(cert.id) ? cert.pkcs12_password : '*******'}}
+              <img
+                  :src="shownCerts.has(cert.id) ?  '/images/eye-open.png' : '/images/eye-hidden.png'"
+                  alt="Logo"
+                  class="eye-icon d-block mx-auto mb-4"
+                  @click="togglePasswordShown(cert)"
+              />
+            </td>
             <td>
               <button class="btn btn-primary btn-sm" @click="downloadCertificate(cert.id)">
                 Download
@@ -179,6 +189,7 @@ export default defineComponent({
     const authStore = useAuthStore();
     const userStore = useUserStore();
     const settingStore = useSettingsStore();
+    const shownCerts = ref(new Set());
 
     const certificates = computed(() => certificateStore.certificates);
     const loading = computed(() => certificateStore.loading);
@@ -250,12 +261,26 @@ export default defineComponent({
       }
     };
 
+    const togglePasswordShown = async (cert: Certificate) => {
+      if (!cert.pkcs12_password) {
+        await certificateStore.fetchCertificatePassword(cert.id);
+      }
+
+      if (shownCerts.value.has(cert.id)) {
+        shownCerts.value.delete(cert.id)
+      } else {
+        shownCerts.value.add(cert.id)
+      }
+    };
+
     return {
       certificates,
       userStore,
       loading,
       error,
       downloadCertificate: certificateStore.downloadCertificate,
+      togglePasswordShown,
+      shownCerts,
       confirmDeletion,
       closeDeleteModal,
       deleteCertificate,
@@ -285,5 +310,23 @@ export default defineComponent({
 /* When multiple modals are present, we want to stack them properly */
 .modal + .modal {
   z-index: 1051;
+}
+
+.password-cell {
+  position: relative; 
+  padding-right: 25px;
+}
+
+.input-container input {
+  padding-right: 25px; 
+}
+
+.password-cell .eye-icon {
+  position: absolute;
+  cursor:pointer;
+  right: 5px; 
+  top: 50%; 
+  transform: translateY(-50%);
+  width: 25px; 
 }
 </style>

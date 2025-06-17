@@ -1,0 +1,1 @@
+ALTER TABLE user_certificates ADD COLUMN pkcs12_password TEXT;
