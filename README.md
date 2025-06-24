@@ -37,6 +37,8 @@ podman run -d \
 ### Encrypting the Database
 By specifying the `VAULTLS_DB_SECRET` environmental variable, the database is encrypted. Data is retained. It is not possible to go back.
 
+To leverage Docker Secrets, you may set `VAULTLS_DB_SECRET` to a secret file, such as `/run/secrets/VAULTLS_DB_SECRET`.
+
 ### Setting up OIDC
 To set up OIDC you need to create a new client in your authentication provider. For Authelia a configuration could look like this
 ```yaml
