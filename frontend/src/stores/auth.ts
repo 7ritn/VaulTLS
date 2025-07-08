@@ -1,30 +1,20 @@
 import { defineStore } from 'pinia';
 import {change_password, current_user, is_setup, login, logout} from "@/api/auth.ts";
 import type {ChangePasswordReq} from "@/types/Login.ts";
-import type {User} from "@/types/User.ts";
+import {type User, UserRole} from "@/types/User.ts";
 
 export const useAuthStore = defineStore('auth', {
     state: () => ({
-        isInitialized: false as boolean,
-        isSetup: false as boolean,
         isAuthenticated: false as boolean,
-        password_auth: false as boolean,
         current_user: null as User | null,
-        oidc_url: null as string | null,
         error: null as string | null,
     }),
+    getters: {
+        isAdmin(state): boolean {
+            return state.current_user?.role === UserRole.Admin;
+        }
+    },
     actions: {
-        // Initializes auth store and fetches current user if authenticated
-        async init() {
-            this.error = null;
-            await this.is_setup();
-            this.isAuthenticated = localStorage.getItem('is_authenticated') === 'true';
-            if (this.isAuthenticated) {
-                await this.fetchCurrentUser();
-            }
-            this.isInitialized = true;
-        },
-
         // Trigger the login of a user by email and password
         async login(email: string | undefined, password: string | undefined) {
             try {
@@ -41,28 +31,11 @@ export const useAuthStore = defineStore('auth', {
             }
         },
 
-        // Check if the app is set up and if a password is enabled
-        async is_setup() {
-            try {
-                this.error = null;
-                const isSetupResponse = (await is_setup());
-                console.log(isSetupResponse);
-                this.password_auth = isSetupResponse.password;
-                this.oidc_url = isSetupResponse.oidc;
-                this.isSetup = isSetupResponse.setup;
-            } catch (err) {
-                this.error = 'Failed to get setup state.';
-                console.error(err);
-                return false;
-            }
-        },
-
         // Change the password of the current user
-        async change_password(changePasswordReq: ChangePasswordReq) {
+        async changePassword(changePasswordReq: ChangePasswordReq) {
             try {
                 this.error = null;
                 await change_password(changePasswordReq);
-                this.password_auth = true;
                 return true;
             } catch (err) {
                 this.error = 'Failed to change password.';

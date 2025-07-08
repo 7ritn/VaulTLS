@@ -4,7 +4,7 @@
       <h1 class="text-center mb-4">Hello</h1>
 
       <!-- Show notice if OIDC is enabled -->
-      <div v-if="authStore.oidc_url" class="alert alert-info text-center">
+      <div v-if="setupStore.oidcUrl" class="alert alert-info text-center">
         OAuth (OIDC) is configured. You can still set a password for local login if desired.
       </div>
 
@@ -62,10 +62,10 @@
               v-model="password"
               class="form-control"
               autocomplete="new-password"
-              :required="!authStore.oidc_url"
+              :required="!setupStore.oidcUrl"
           />
           <small class="text-muted">
-            {{ authStore.oidc_url ? "You can leave this empty if using OAuth (OIDC)." : "Required for local login." }}
+            {{ setupStore.oidcUrl ? "You can leave this empty if using OAuth (OIDC)." : "Required for local login." }}
           </small>
         </div>
 
@@ -82,12 +82,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref } from 'vue';
 import router from '../router/router';
 import { setup } from "@/api/auth.ts";
-import { useAuthStore } from '@/stores/auth';
+import {useSetupStore} from "@/stores/setup.ts";
 
-const authStore = useAuthStore();
+const setupStore = useSetupStore();
 
 const username = ref('');
 const email = ref('');
@@ -95,12 +95,6 @@ const ca_name = ref('');
 const ca_validity_in_years = ref(10);
 const password = ref('');
 const errorMessage = ref('');
-
-onMounted(async () => {
-  if (!authStore.isInitialized) {
-    await authStore.init();
-  }
-});
 
 const setupPassword = async () => {
   try {
@@ -111,7 +105,7 @@ const setupPassword = async () => {
       ca_validity_in_years: ca_validity_in_years.value,
       password: password.value || null,
     });
-    await authStore.init();
+    await setupStore.reload();
     await router.replace({ name: 'Login' });
   } catch (err) {
     errorMessage.value = 'Failed to set up.';

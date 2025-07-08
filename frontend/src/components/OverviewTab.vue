@@ -6,7 +6,7 @@
       <table class="table table-striped">
         <thead>
           <tr>
-            <th v-if="isAdmin">User</th>
+            <th v-if="authStore.isAdmin">User</th>
             <th>Name</th>
             <th class="d-none d-sm-table-cell">Type</th>
             <th class="d-none d-sm-table-cell">Created on</th>
@@ -17,7 +17,7 @@
         </thead>
         <tbody>
           <tr v-for="cert in certificates.values()" :key="cert.id">
-            <td v-if="isAdmin">{{ userStore.idToName(cert.user_id) }}</td>
+            <td v-if="authStore.isAdmin">{{ userStore.idToName(cert.user_id) }}</td>
             <td>{{ cert.name }}</td>
             <td class="d-none d-sm-table-cell">{{ CertificateType[cert.certificate_type] }}</td>
             <td class="d-none d-sm-table-cell">{{ new Date(cert.created_on).toLocaleDateString() }}</td>
@@ -54,7 +54,7 @@
                   Download
                 </button>
                 <button
-                    v-if="isAdmin"
+                    v-if="authStore.isAdmin"
                     class="btn btn-danger btn-sm flex-grow-1"
                     @click="confirmDeletion(cert)"
                 >
@@ -75,7 +75,7 @@
     </button>
 
     <button
-        v-if="isAdmin"
+        v-if="authStore.isAdmin"
         class="btn btn-primary mx-1"
         @click="showGenerateModal"
     >
@@ -309,10 +309,6 @@ const certReq = reactive<CertificateRequirements>({
   dns_names: ['']
 });
 
-const isAdmin = computed(() => {
-  return authStore.current_user !== null && authStore.current_user.role === UserRole.Admin;
-});
-
 const isMailValid = computed(() => {
   return (settings.value?.mail.smtp_host.length ?? 0) > 0 && (settings.value?.mail.smtp_port ?? 0) > 0;
 });
@@ -324,7 +320,7 @@ watch(passwordRule, (newVal) => {
 onMounted(async () => {
   await certificateStore.fetchCertificates();
   await settingStore.fetchSettings();
-  if (isAdmin.value) {
+  if (authStore.isAdmin) {
     await userStore.fetchUsers();
   }
 });

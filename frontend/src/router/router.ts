@@ -1,5 +1,6 @@
 import {createRouter, createWebHistory} from 'vue-router';
 import { useAuthStore } from '@/stores/auth';
+import { useSetupStore } from '@/stores/setup';
 
 import LoginView from '@/views/LoginView.vue';
 import FirstSetupView from '@/views/FirstSetupView.vue';
@@ -50,13 +51,10 @@ const router = createRouter({
             // A guard to check if the app is set up and user is authenticated
             beforeEnter: async (to, from, next) => {
                 const authStore = useAuthStore();
+                const setupStore = useSetupStore();
 
                 try {
-                    if (!authStore.isInitialized) {
-                        console.log('Initializing');
-                        await authStore.init();
-                    }
-                    if (!authStore.isSetup) {
+                    if (!setupStore.isSetup) {
                         return next({ name: 'FirstSetup' });
                     }
                     let urlParams = new URLSearchParams(window.location.search);

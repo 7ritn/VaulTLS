@@ -3,7 +3,7 @@
     <h1>Settings</h1>
     <hr />
     <!-- Application Section -->
-    <div v-if="isAdmin && settings" class="mb-3">
+    <div v-if="authStore.isAdmin && settings" class="mb-3">
       <!-- Common Section -->
       <h3>Common</h3>
       <div class="card mt-3 mb-3">
@@ -158,7 +158,7 @@
     <div class="card mt-3 mb-3">
       <div class="card-body">
         <h4 class="card-header">Change Password</h4>
-        <form v-if="authStore.password_auth" @submit.prevent="changePassword">
+        <form @submit.prevent="changePassword">
           <div v-if="authStore.current_user?.has_password" class="mb-3">
             <label for="old-password" class="form-label">Old Password</label>
             <input
@@ -244,12 +244,14 @@ import { useSettingsStore } from '@/stores/settings';
 import { useAuthStore } from '@/stores/auth';
 import { type User, UserRole } from "@/types/User.ts";
 import { useUserStore } from "@/stores/users.ts";
+import { useSetupStore } from "@/stores/setup.ts";
 import { Encryption, PasswordRule } from "@/types/Settings.ts";
 
 // Stores
 const settingsStore = useSettingsStore();
 const authStore = useAuthStore();
 const userStore = useUserStore();
+const setupStore = useSetupStore();
 
 // Computed state
 const settings = computed(() => settingsStore.settings);
@@ -257,8 +259,6 @@ const current_user = computed(() => authStore.current_user);
 const settings_error = computed(() => settingsStore.error);
 const user_error = computed(() => userStore.error);
 const password_error = computed(() => authStore.error);
-
-const isAdmin = computed(() => authStore.current_user?.role === UserRole.Admin);
 
 const canChangePassword = computed(() =>
     changePasswordReq.value.newPassword === confirmPassword.value &&
@@ -278,7 +278,7 @@ const changePassword = async () => {
     old_password: changePasswordReq.value.oldPassword,
     new_password: changePasswordReq.value.newPassword,
   };
-  await authStore.change_password(req);
+  await authStore.changePassword(req);
   showPasswordDialog.value = false;
   changePasswordReq.value = { oldPassword: '', newPassword: '' };
   confirmPassword.value = '';
@@ -290,6 +290,7 @@ const saveSettings = async () => {
 
   if (current_user.value?.role === UserRole.Admin) {
     success &&= await settingsStore.saveSettings();
+    await setupStore.reload();
   }
 
   if (editableUser.value) {
@@ -301,7 +302,7 @@ const saveSettings = async () => {
 };
 
 onMounted(async () => {
-  if (isAdmin.value) {
+  if (authStore.isAdmin) {
     await settingsStore.fetchSettings();
   }
   if (current_user.value) {
