@@ -5,7 +5,7 @@ use rocket::request::{FromRequest, Outcome, Request};
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use rocket_okapi::gen::OpenApiGenerator;
-use rocket_okapi::okapi::openapi3::{Object, Parameter, ParameterValue, SecurityRequirement, SecurityScheme, SecuritySchemeData};
+use rocket_okapi::okapi::openapi3::{Object, SecurityRequirement, SecurityScheme, SecuritySchemeData};
 use rocket_okapi::request::{OpenApiFromRequest, RequestHeaderInput};
 use crate::data::enums::UserRole;
 
@@ -59,7 +59,7 @@ impl<'r> FromRequest<'r> for Authenticated {
 /// Generate OpenAPI documentation for Authenticated guard
 impl<'r> OpenApiFromRequest<'r> for Authenticated {
     fn from_request_input(
-        gen: &mut OpenApiGenerator,
+        _gen: &mut OpenApiGenerator,
         _name: String,
         _required: bool,
     ) -> rocket_okapi::Result<RequestHeaderInput> {

@@ -573,6 +573,15 @@ async fn rocket() -> _ {
                     spec_urls: vec![UrlObject::new("General", "/api/openapi.json")],
                     ..Default::default()
                 },
+                layout: LayoutConfig {
+                    layout: Layout::Row,
+                    render_style: RenderStyle::View,
+                    response_area_height: "300px".to_string(),
+                },
+                schema: SchemaConfig {
+                    schema_style: SchemaStyle::Table,
+                    ..Default::default()
+                },
                 hide_show: HideShowConfig {
                     allow_spec_url_load: false,
                     allow_spec_file_load: false,
