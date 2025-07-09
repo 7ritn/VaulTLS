@@ -1,7 +1,19 @@
 use std::fmt::Display;
 use rocket::http::Status;
 use rocket::Request;
+use rocket::response::Responder;
 use rocket::response::status::Custom;
+use rocket_okapi::{okapi, JsonSchema, OpenApiError};
+use rocket_okapi::gen::OpenApiGenerator;
+use rocket_okapi::okapi::openapi3::Responses;
+use rocket_okapi::response::OpenApiResponderInner;
+use serde::Serialize;
+
+#[derive(Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ErrorResponse {
+    pub error: String,
+}
 
 #[derive(Debug)]
 pub enum ApiError {
@@ -13,16 +25,55 @@ pub enum ApiError {
     Other(String),
 }
 
-impl<'r> rocket::response::Responder<'r, 'static> for ApiError {
+impl<'r> Responder<'r, 'static> for ApiError {
     fn respond_to(self, req: &'r Request<'_>) -> rocket::response::Result<'static> {
-        match self {
-            ApiError::Database(e) => Custom(Status::InternalServerError, e.to_string()).respond_to(req),
-            ApiError::OpenSsl(e) => Custom(Status::InternalServerError, e.to_string()).respond_to(req),
-            ApiError::Unauthorized(e) => Custom(Status::Unauthorized, e.unwrap_or(Default::default()).to_string()).respond_to(req),
-            ApiError::BadRequest(e) => Custom(Status::BadRequest, e).respond_to(req),
-            ApiError::Forbidden(e) => Custom(Status::Forbidden, e).respond_to(req),
-            ApiError::Other(e) => Custom(Status::InternalServerError, e).respond_to(req),
+        let (status, message) = match self {
+            ApiError::Database(e) => (Status::InternalServerError, e.to_string()),
+            ApiError::OpenSsl(e) => (Status::InternalServerError, e.to_string()),
+            ApiError::Unauthorized(e) => (Status::Unauthorized, e.unwrap_or_default()),
+            ApiError::BadRequest(e) => (Status::BadRequest, e),
+            ApiError::Forbidden(e) => (Status::Forbidden, e.unwrap_or_default()),
+            ApiError::Other(e) => (Status::InternalServerError, e),
+        };
+
+        let body = rocket::serde::json::Json(ErrorResponse {
+            error: message,
+        });
+
+        Custom(status, body).respond_to(req)
+    }
+}
+
+impl OpenApiResponderInner for ApiError {
+    fn responses(gen: &mut OpenApiGenerator) -> Result<Responses, OpenApiError> {
+        use rocket_okapi::okapi::openapi3::{Responses, Response as OpenApiResponse, RefOr};
+
+        let schema = gen.json_schema::<ErrorResponse>();
+        let json_response = OpenApiResponse {
+            description: "API error".to_owned(),
+            content: {
+                let mut map = okapi::Map::new();
+                map.insert(
+                    "application/json".to_owned(),
+                    okapi::openapi3::MediaType {
+                        schema: Some(schema),
+                        ..Default::default()
+                    },
+                );
+                map
+            },
+            ..Default::default()
+        };
+
+        let mut responses = Responses::default();
+        for code in &[400, 401, 403, 500] {
+            responses.responses.insert(
+                code.to_string(),
+                RefOr::Object(json_response.clone()),
+            );
         }
+
+        Ok(responses)
     }
 }
 

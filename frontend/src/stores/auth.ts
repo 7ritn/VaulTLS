@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import {change_password, current_user, is_setup, login, logout} from "@/api/auth.ts";
+import {change_password, current_user, login, logout} from "@/api/auth.ts";
 import type {ChangePasswordReq} from "@/types/Login.ts";
 import {type User, UserRole} from "@/types/User.ts";
 

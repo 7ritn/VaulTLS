@@ -14,12 +14,14 @@ use openssl::x509::{X509Name, X509NameBuilder, X509};
 use openssl::x509::extension::{AuthorityKeyIdentifier, BasicConstraints, ExtendedKeyUsage, KeyUsage, SubjectAlternativeName, SubjectKeyIdentifier};
 use openssl::x509::X509Builder;
 use passwords::PasswordGenerator;
+use rocket_okapi::JsonSchema;
+use serde::Serialize;
 use crate::ApiError;
 use crate::constants::CA_FILE_PATH;
 use crate::data::enums::CertificateType;
 use crate::data::enums::CertificateType::{Client, Server, CA};
 
-#[derive(Default, Clone, rocket::serde::Serialize)]
+#[derive(Default, Clone, Serialize, JsonSchema)]
 /// Certificate can be either CA or user certificate.
 /// Iff CA, cert and key must be set.
 /// Iff user cert, pkcs12 must be set.

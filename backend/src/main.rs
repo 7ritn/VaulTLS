@@ -13,6 +13,8 @@ use argon2::password_hash::PasswordHashString;
 use rocket::response::Redirect;
 use rocket::tokio::sync::Mutex;
 use rocket_cors::{AllowedOrigins, CorsOptions};
+use rocket_okapi::{openapi, openapi_get_routes, rapidoc::*, JsonSchema};
+use rocket_okapi::settings::UrlObject;
 use serde::{Deserialize, Serialize};
 use cert::create_ca;
 use db::VaulTLSDB;
@@ -47,29 +49,27 @@ struct AppState {
     mailer: Arc<Mutex<Option<Mailer>>>
 }
 
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Serialize, JsonSchema, Debug)]
 struct User {
     id: i64,
     name: String,
     email: String,
     #[serde(rename = "has_password", serialize_with = "helper::serialize_password_hash", skip_deserializing)]
+    #[schemars(skip)]
     password_hash: Option<PasswordHashString>,
     #[serde(skip)]
     oidc_id: Option<String>,
     role: UserRole
 }
 
-#[get("/api")]
-fn index() -> &'static str {
-    "<h1>mTLS Certificates API</h1>"
-}
-
-#[get("/api/server/version")]
+#[openapi(tag = "Setup")]
+#[get("/server/version")]
 fn version() -> &'static str {
     VAULTLS_VERSION
 }
 
-#[get("/api/certificates")]
+#[openapi(tag = "Certificates")]
+#[get("/certificates")]
 async fn get_certificates(
     state: &State<AppState>,
     authentication: Authenticated
@@ -84,7 +84,8 @@ async fn get_certificates(
     Ok(Json(certificates))
 }
 
-#[post("/api/certificates", format = "json", data = "<payload>")]
+#[openapi(tag = "Certificates")]
+#[post("/certificates", format = "json", data = "<payload>")]
 async fn create_user_certificate(
     state: &State<AppState>,
     payload: Json<CreateUserCertificateRequest>,
@@ -146,7 +147,8 @@ async fn create_user_certificate(
     Ok(Json(cert))
 }
 
-#[get("/api/certificates/ca/download")]
+#[openapi(tag = "Certificates")]
+#[get("/certificates/ca/download")]
 async fn download_ca(
     state: &State<AppState>
 ) -> Result<DownloadResponse, ApiError> {
@@ -155,7 +157,9 @@ async fn download_ca(
     let pem = get_pem(&ca)?;
     Ok(DownloadResponse::new(pem, "ca_certificate.pem"))
 }
-#[get("/api/certificates/<id>/download")]
+
+#[openapi(tag = "Certificates")]
+#[get("/certificates/<id>/download")]
 async fn download_certificate(
     state: &State<AppState>,
     id: i64,
@@ -167,7 +171,8 @@ async fn download_certificate(
     Ok(DownloadResponse::new(pkcs12, &format!("{}.p12", name)))
 }
 
-#[get("/api/certificates/<id>/password")]
+#[openapi(tag = "Certificates")]
+#[get("/certificates/<id>/password")]
 async fn fetch_certificate_password(
     state: &State<AppState>,
     id: i64,
@@ -179,7 +184,8 @@ async fn fetch_certificate_password(
     Ok(Json(pkcs12_password))
 }
 
-#[delete("/api/certificates/<id>")]
+#[openapi(tag = "Certificates")]
+#[delete("/certificates/<id>")]
 async fn delete_user_cert(
     state: &State<AppState>,
     id: i64,
@@ -191,7 +197,8 @@ async fn delete_user_cert(
     Ok(())
 }
 
-#[get("/api/settings")]
+#[openapi(tag = "Settings")]
+#[get("/settings")]
 async fn fetch_settings(
     state: &State<AppState>,
     authentication: Authenticated
@@ -202,7 +209,8 @@ async fn fetch_settings(
     Ok(Json(frontend_settings))
 }
 
-#[put("/api/settings", format = "json", data = "<payload>")]
+#[openapi(tag = "Settings")]
+#[put("/settings", format = "json", data = "<payload>")]
 async fn update_settings(
     state: &State<AppState>,
     payload: Json<Settings>,
@@ -229,7 +237,8 @@ async fn update_settings(
     Ok(())
 }
 
-#[get("/api/is_setup")]
+#[openapi(tag = "Setup")]
+#[get("/is_setup")]
 async fn is_setup(
     state: &State<AppState>
 ) -> Result<Json<IsSetupResponse>, ApiError> {
@@ -245,7 +254,8 @@ async fn is_setup(
     }))
 }
 
-#[post("/api/setup", format = "json", data = "<setup_req>")]
+#[openapi(tag = "Setup")]
+#[post("/setup", format = "json", data = "<setup_req>")]
 async fn setup(
     state: &State<AppState>,
     setup_req: Json<SetupRequest>
@@ -283,7 +293,8 @@ async fn setup(
     Ok(())
 }
 
-#[post("/api/auth/login", format = "json", data = "<login_req_opt>")]
+#[openapi(tag = "Authentication")]
+#[post("/auth/login", format = "json", data = "<login_req_opt>")]
 async fn login(
     state: &State<AppState>,
     jar: &CookieJar<'_>,
@@ -308,7 +319,8 @@ async fn login(
     Err(ApiError::Unauthorized(Some("Invalid credentials".to_string())))
 }
 
-#[post("/api/auth/change_password", data = "<change_pass_req>")]
+#[openapi(tag = "Authentication")]
+#[post("/auth/change_password", data = "<change_pass_req>")]
 async fn change_password(
     state: &State<AppState>,
     change_pass_req: Json<ChangePasswordRequest>,
@@ -330,7 +342,8 @@ async fn change_password(
     db.set_user_password(user_id, &password_hash)
 }
 
-#[post("/api/auth/logout")]
+#[openapi(tag = "Authentication")]
+#[post("/auth/logout")]
 async fn logout(
     jar: &CookieJar<'_>,
 ) -> Result<(), ApiError> {
@@ -338,7 +351,8 @@ async fn logout(
     Ok(())
 }
 
-#[get("/api/auth/oidc/login")]
+#[openapi(tag = "Authentication")]
+#[get("/auth/oidc/login")]
 async fn oidc_login(
     state: &State<AppState>,
 ) -> Result<Redirect, ApiError> {
@@ -354,7 +368,8 @@ async fn oidc_login(
     }
 }
 
-#[get("/api/auth/oidc/callback?<response..>")]
+#[openapi(tag = "Authentication")]
+#[get("/auth/oidc/callback?<response..>")]
 async fn oidc_callback(
     state: &State<AppState>,
     jar: &CookieJar<'_>,
@@ -385,7 +400,8 @@ async fn oidc_callback(
     }
 }
 
-#[get("/api/auth/me")]
+#[openapi(tag = "Authentication")]
+#[get("/auth/me")]
 async fn get_current_user(
     state: &State<AppState>,
     authentication: Authenticated
@@ -395,7 +411,8 @@ async fn get_current_user(
     Ok(Json(user))
 }
 
-#[get("/api/users")]
+#[openapi(tag = "Users")]
+#[get("/users")]
 async fn get_users(
     state: &State<AppState>,
     authentication: Authenticated
@@ -406,7 +423,8 @@ async fn get_users(
     Ok(Json(users))
 }
 
-#[post("/api/users", format = "json", data = "<payload>")]
+#[openapi(tag = "Users")]
+#[post("/users", format = "json", data = "<payload>")]
 async fn create_user(
     state: &State<AppState>,
     payload: Json<CreateUserRequest>,
@@ -430,7 +448,8 @@ async fn create_user(
     Ok(Json(user.id))
 }
 
-#[put("/api/users", format = "json", data = "<payload>")]
+#[openapi(tag = "Users")]
+#[put("/users", format = "json", data = "<payload>")]
 async fn update_user(
     state: &State<AppState>,
     payload: Json<User>,
@@ -441,7 +460,8 @@ async fn update_user(
     Ok(db.update_user(&payload)?)
 }
 
-#[delete("/api/users/<id>")]
+#[openapi(tag = "Users")]
+#[delete("/users/<id>")]
 async fn delete_user(
     state: &State<AppState>,
     id: i64,
@@ -521,9 +541,8 @@ async fn rocket() -> _ {
         .configure(rocket::Config::figment().merge(("port", API_PORT)))
         .manage(app_state)
         .mount(
-            "/",
-            routes![
-                index,
+            "/api",
+            openapi_get_routes![
                 version,
                 get_certificates,
                 create_user_certificate,
@@ -546,6 +565,21 @@ async fn rocket() -> _ {
                 delete_user,
                 update_user
             ],
+        )
+        .mount(
+            "/api",
+            make_rapidoc(&RapiDocConfig {
+                general: GeneralConfig {
+                    spec_urls: vec![UrlObject::new("General", "/api/openapi.json")],
+                    ..Default::default()
+                },
+                hide_show: HideShowConfig {
+                    allow_spec_url_load: false,
+                    allow_spec_file_load: false,
+                    ..Default::default()
+                },
+                ..Default::default()
+            }),
         )
         .attach(cors.to_cors().unwrap())
         .attach(AdHoc::config::<Settings>())

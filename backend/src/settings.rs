@@ -5,6 +5,9 @@ use rocket::serde;
 use rocket::serde::json::serde_json;
 use rocket::serde::{Deserialize, Serialize};
 use rocket::serde::ser::SerializeStruct;
+use rocket_okapi::JsonSchema;
+use schemars::schema::{ObjectValidation, Schema, SchemaObject, SingleOrVec};
+use schemars::SchemaGenerator;
 use crate::ApiError;
 use crate::data::enums::{MailEncryption, PasswordRule};
 use crate::constants::SETTINGS_FILE_PATH;
@@ -13,7 +16,7 @@ use tokio::io::AsyncWriteExt;
 use crate::helper::get_secret;
 
 /// Settings for the backend.
-#[derive(Serialize, Deserialize, Clone, Default, Debug)]
+#[derive(Serialize, Deserialize, JsonSchema, Clone, Default, Debug)]
 pub(crate) struct Settings {
     #[serde(default)]
     mail: Mail,
@@ -44,8 +47,47 @@ impl Serialize for FrontendSettings {
     }
 }
 
+
+/// Schematize the settings for the API
+impl JsonSchema for FrontendSettings {
+    fn schema_name() -> String {
+        "FrontendSettings".to_string()
+    }
+
+    fn json_schema(gen: &mut SchemaGenerator) -> Schema {
+        let mut props = schemars::Map::new();
+
+        props.insert(
+            "common".to_string(),
+            gen.subschema_for::<Common>(),
+        );
+        props.insert(
+            "mail".to_string(),
+            gen.subschema_for::<Mail>(),
+        );
+        props.insert(
+            "oidc".to_string(),
+            gen.subschema_for::<OIDC>(),
+        );
+
+        Schema::Object(SchemaObject {
+            instance_type: Some(SingleOrVec::Single(Box::new(schemars::schema::InstanceType::Object))),
+            object: Some(Box::new(ObjectValidation {
+                properties: props,
+                required: schemars::Set::from_iter(vec![
+                    "common".to_string(),
+                    "mail".to_string(),
+                    "oidc".to_string(),
+                ].into_iter()),
+                ..Default::default()
+            })),
+            ..Default::default()
+        })
+    }
+}
+
 /// Common settings for the backend.
-#[derive(Serialize, Deserialize, Clone, Default, Debug)]
+#[derive(Serialize, Deserialize, JsonSchema, Clone, Default, Debug)]
 pub(crate) struct Common {
     password_enabled: bool,
     vaultls_url: String,
@@ -66,7 +108,7 @@ impl Common {
 }
 
 /// Mail settings for the backend.
-#[derive(Serialize, Deserialize, Clone, Default, Debug)]
+#[derive(Serialize, Deserialize, JsonSchema, Clone, Default, Debug)]
 pub(crate) struct Mail {
     pub(crate) smtp_host: String,
     pub(crate) smtp_port: u16,
@@ -84,7 +126,7 @@ impl Mail {
 }
 
 /// Authentication settings for the backend.
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, JsonSchema, Clone, Debug)]
 pub(crate) struct Auth {
     jwt_key: String,
 }
@@ -96,7 +138,7 @@ impl Default for Auth {
 }
 
 /// OpenID Connect settings for the backend.
-#[derive(Serialize, Deserialize, Clone, Default, Debug)]
+#[derive(Serialize, Deserialize, JsonSchema, Clone, Default, Debug)]
 pub(crate) struct OIDC {
     pub(crate) id: String,
     pub(crate) secret: String,
@@ -121,7 +163,7 @@ impl OIDC {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Default, Debug)]
+#[derive(Serialize, Deserialize, JsonSchema, Clone, Default, Debug)]
 pub(crate) struct Logic {
     pub(crate) db_encrypted: bool,
 }

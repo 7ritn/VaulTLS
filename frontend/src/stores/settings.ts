@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia';
 import {type Settings} from '@/types/Settings';
 import {
-    fetchSettings, fetchVersion,
+    fetchSettings,
     putSettings
 } from '@/api/settings';
 

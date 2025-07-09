@@ -1,8 +1,9 @@
 use num_enum::TryFromPrimitive;
+use rocket_okapi::JsonSchema;
 use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ValueRef};
 use serde_repr::{Deserialize_repr, Serialize_repr};
 
-#[derive(Serialize_repr, Deserialize_repr, Clone, Debug, TryFromPrimitive, Copy, PartialEq, Eq)]
+#[derive(Serialize_repr, Deserialize_repr, JsonSchema, Clone, Debug, TryFromPrimitive, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub(crate) enum UserRole {
     User = 0,
@@ -22,7 +23,7 @@ impl FromSql for UserRole {
     }
 }
 
-#[derive(Serialize_repr, Deserialize_repr, Clone, Debug, Copy, PartialEq, Eq, Default)]
+#[derive(Serialize_repr, Deserialize_repr, JsonSchema, Clone, Debug, Copy, PartialEq, Eq, Default)]
 #[repr(u8)]
 pub(crate) enum MailEncryption {
     #[default]
@@ -31,7 +32,7 @@ pub(crate) enum MailEncryption {
     STARTTLS = 2
 }
 
-#[derive(Serialize_repr, Deserialize_repr, Clone, Debug, Copy, PartialEq, Eq, Default)]
+#[derive(Serialize_repr, Deserialize_repr, JsonSchema, Clone, Debug, Copy, PartialEq, Eq, Default)]
 #[repr(u8)]
 pub(crate) enum PasswordRule {
     #[default]
@@ -40,7 +41,7 @@ pub(crate) enum PasswordRule {
     System = 2
 }
 
-#[derive(Serialize_repr, Deserialize_repr, TryFromPrimitive, Clone, Debug, Copy, PartialEq, Eq, Default)]
+#[derive(Serialize_repr, Deserialize_repr, JsonSchema, TryFromPrimitive, Clone, Debug, Copy, PartialEq, Eq, Default)]
 #[repr(u8)]
 pub(crate) enum CertificateType {
     #[default]

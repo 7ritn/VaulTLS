@@ -4,6 +4,9 @@ use rocket::http::Status;
 use rocket::request::{FromRequest, Outcome, Request};
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use rocket_okapi::gen::OpenApiGenerator;
+use rocket_okapi::okapi::openapi3::{Object, Parameter, ParameterValue, SecurityRequirement, SecurityScheme, SecuritySchemeData};
+use rocket_okapi::request::{OpenApiFromRequest, RequestHeaderInput};
 use crate::data::enums::UserRole;
 
 /// Struct for Rocket guard
@@ -50,6 +53,33 @@ impl<'r> FromRequest<'r> for Authenticated {
         };
 
         Outcome::Success(Authenticated { claims })
+    }
+}
+
+/// Generate OpenAPI documentation for Authenticated guard
+impl<'r> OpenApiFromRequest<'r> for Authenticated {
+    fn from_request_input(
+        gen: &mut OpenApiGenerator,
+        _name: String,
+        _required: bool,
+    ) -> rocket_okapi::Result<RequestHeaderInput> {
+        let security_scheme = SecurityScheme {
+            description: Some(
+                "Use secure auth_token set by server to authenticate".to_owned(),
+            ),
+            data: SecuritySchemeData::ApiKey {
+                name: "auth_token".to_string(),
+                location: "cookie".to_string(),
+            },
+            extensions: Object::default(),
+        };
+        let mut security_req = SecurityRequirement::new();
+        security_req.insert("JWT Token".to_owned(), Vec::new());
+        Ok(RequestHeaderInput::Security(
+            "JWT Token".to_owned(),
+            security_scheme,
+            security_req,
+        ))
     }
 }
 

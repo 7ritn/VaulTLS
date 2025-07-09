@@ -3,16 +3,21 @@ use rocket::{Request, Response};
 use rocket::http::{ContentType, Header, Status};
 use rocket::response::Responder;
 use rocket::serde::{Deserialize, Serialize};
+use rocket_okapi::gen::OpenApiGenerator;
+use rocket_okapi::okapi::schemars;
+use rocket_okapi::{okapi, JsonSchema, OpenApiError};
+use rocket_okapi::okapi::openapi3::{Responses, Response as OAResponse, MediaType, RefOr};
+use rocket_okapi::response::OpenApiResponderInner;
 use crate::data::enums::{CertificateType, UserRole};
 
-#[derive(Serialize)]
+#[derive(Serialize, JsonSchema)]
 pub struct IsSetupResponse {
     pub setup: bool,
     pub password: bool,
     pub oidc: String
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, JsonSchema)]
 pub struct SetupRequest {
     pub name: String,
     pub email: String,
@@ -21,30 +26,30 @@ pub struct SetupRequest {
     pub password: Option<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, JsonSchema)]
 pub struct LoginRequest {
     pub email: String,
     pub password: String
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, JsonSchema)]
 pub struct LoginResponse {
     pub token: String
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, JsonSchema)]
 pub struct ChangePasswordRequest {
     pub old_password: Option<String>,
     pub new_password: String,
 }
 
-#[derive(FromForm)]
+#[derive(FromForm, JsonSchema)]
 pub struct CallbackQuery {
     pub code: String,
     pub state: String
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, JsonSchema)]
 pub struct CreateUserCertificateRequest {
     pub cert_name: String,
     pub validity_in_years: Option<u64>,
@@ -56,6 +61,7 @@ pub struct CreateUserCertificateRequest {
     pub dns_names: Option<Vec<String>>,
 }
 
+#[derive(Deserialize, Serialize, Debug)]
 pub struct DownloadResponse {
     pub content: Vec<u8>,
     pub filename: String,
@@ -70,7 +76,6 @@ impl DownloadResponse {
     }
 }
 
-//todo: respect filename
 impl<'r> Responder<'r, 'static> for DownloadResponse {
     fn respond_to(self, _req: &'r Request<'_>) -> rocket::response::Result<'static> {
         Response::build()
@@ -85,8 +90,34 @@ impl<'r> Responder<'r, 'static> for DownloadResponse {
     }
 }
 
+impl OpenApiResponderInner for DownloadResponse {
+    fn responses(_gen: &mut OpenApiGenerator) -> Result<Responses, OpenApiError> {
+        let mut responses = Responses::default();
 
-#[derive(Deserialize)]
+        responses.responses.insert(
+            "200".to_string(),
+            RefOr::Object(OAResponse {
+                description: "Downloadable binary file".to_string(),
+                content: {
+                    let mut content = okapi::Map::new();
+                    content.insert(
+                        "application/octet-stream".to_string(),
+                        MediaType {
+                            schema: None, // No schema needed for binary
+                            ..Default::default()
+                        },
+                    );
+                    content
+                },
+                ..Default::default()
+            }),
+        );
+
+        Ok(responses)
+    }
+}
+
+#[derive(Deserialize, JsonSchema)]
 pub struct CreateUserRequest {
     pub user_name: String,
     pub user_email: String,
