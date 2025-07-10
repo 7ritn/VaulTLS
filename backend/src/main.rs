@@ -28,7 +28,7 @@ use crate::helper::{get_secret, hash_password, hash_password_string};
 use crate::notification::{MailMessage, Mailer};
 use auth::oidc_auth::OidcAuth;
 use crate::auth::password_auth::verify_password;
-use crate::auth::session_auth::{generate_token, Authenticated};
+use crate::auth::session_auth::{generate_token, Authenticated, AuthenticatedPrivileged};
 use crate::constants::{API_PORT, DB_FILE_PATH, VAULTLS_VERSION};
 use crate::settings::FrontendSettings;
 
@@ -70,6 +70,7 @@ fn version() -> &'static str {
 
 #[openapi(tag = "Certificates")]
 #[get("/certificates")]
+/// Get all certificates. If admin all certificates are returned, otherwise only certificates owned by the user. Requires authentication.
 async fn get_certificates(
     state: &State<AppState>,
     authentication: Authenticated
@@ -86,13 +87,13 @@ async fn get_certificates(
 
 #[openapi(tag = "Certificates")]
 #[post("/certificates", format = "json", data = "<payload>")]
+/// Create a new certificate. Requires admin role.
 async fn create_user_certificate(
     state: &State<AppState>,
     payload: Json<CreateUserCertificateRequest>,
-    authentication: Authenticated
+    _authentication: AuthenticatedPrivileged
 ) -> Result<Json<Certificate>, ApiError> {
     let settings = state.settings.lock().await;
-    if authentication.claims.role != UserRole::Admin { return Err(ApiError::Forbidden(None)) }
 
     let db = state.db.lock().await;
 
@@ -149,6 +150,7 @@ async fn create_user_certificate(
 
 #[openapi(tag = "Certificates")]
 #[get("/certificates/ca/download")]
+/// Download the current CA certificate.
 async fn download_ca(
     state: &State<AppState>
 ) -> Result<DownloadResponse, ApiError> {
@@ -160,6 +162,7 @@ async fn download_ca(
 
 #[openapi(tag = "Certificates")]
 #[get("/certificates/<id>/download")]
+/// Download a user-owned certificate. Requires authentication.
 async fn download_certificate(
     state: &State<AppState>,
     id: i64,
@@ -173,6 +176,7 @@ async fn download_certificate(
 
 #[openapi(tag = "Certificates")]
 #[get("/certificates/<id>/password")]
+/// Fetch the password for a user-owned certificate. Requires authentication.
 async fn fetch_certificate_password(
     state: &State<AppState>,
     id: i64,
@@ -186,12 +190,12 @@ async fn fetch_certificate_password(
 
 #[openapi(tag = "Certificates")]
 #[delete("/certificates/<id>")]
+/// Delete a user-owned certificate. Requires admin role.
 async fn delete_user_cert(
     state: &State<AppState>,
     id: i64,
-    authentication: Authenticated
+    _authentication: AuthenticatedPrivileged
 ) -> Result<(), ApiError> {
-    if authentication.claims.role != UserRole::Admin { return Err(ApiError::Forbidden(None)) }
     let db = state.db.lock().await;
     db.delete_user_cert(id)?;
     Ok(())
@@ -199,11 +203,11 @@ async fn delete_user_cert(
 
 #[openapi(tag = "Settings")]
 #[get("/settings")]
+/// Fetch application settings. Requires admin role.
 async fn fetch_settings(
     state: &State<AppState>,
-    authentication: Authenticated
+    _authentication: AuthenticatedPrivileged
 ) -> Result<Json<FrontendSettings>, ApiError> {
-    if authentication.claims.role != UserRole::Admin { return Err(ApiError::Forbidden(None)) }
     let settings = state.settings.lock().await;
     let frontend_settings = FrontendSettings(settings.clone());
     Ok(Json(frontend_settings))
@@ -211,12 +215,12 @@ async fn fetch_settings(
 
 #[openapi(tag = "Settings")]
 #[put("/settings", format = "json", data = "<payload>")]
+/// Update application settings. Requires admin role.
 async fn update_settings(
     state: &State<AppState>,
     payload: Json<Settings>,
-    authentication: Authenticated
+    _authentication: AuthenticatedPrivileged
 ) -> Result<(), ApiError> {
-    if authentication.claims.role != UserRole::Admin { return Err(ApiError::Forbidden(None)) }
     let mut settings = state.settings.lock().await;
     let mut oidc = state.oidc.lock().await;
 
@@ -239,6 +243,7 @@ async fn update_settings(
 
 #[openapi(tag = "Setup")]
 #[get("/is_setup")]
+/// Get server setup parameters.
 async fn is_setup(
     state: &State<AppState>
 ) -> Result<Json<IsSetupResponse>, ApiError> {
@@ -256,6 +261,7 @@ async fn is_setup(
 
 #[openapi(tag = "Setup")]
 #[post("/setup", format = "json", data = "<setup_req>")]
+/// Set up the application. Only possible if DB is not setup.
 async fn setup(
     state: &State<AppState>,
     setup_req: Json<SetupRequest>
@@ -295,6 +301,7 @@ async fn setup(
 
 #[openapi(tag = "Authentication")]
 #[post("/auth/login", format = "json", data = "<login_req_opt>")]
+/// Endpoint to login. Required for most endpoints.
 async fn login(
     state: &State<AppState>,
     jar: &CookieJar<'_>,
@@ -321,6 +328,7 @@ async fn login(
 
 #[openapi(tag = "Authentication")]
 #[post("/auth/change_password", data = "<change_pass_req>")]
+/// Endpoint to change password.
 async fn change_password(
     state: &State<AppState>,
     change_pass_req: Json<ChangePasswordRequest>,
@@ -344,6 +352,7 @@ async fn change_password(
 
 #[openapi(tag = "Authentication")]
 #[post("/auth/logout")]
+/// Endpoint to logout.
 async fn logout(
     jar: &CookieJar<'_>,
 ) -> Result<(), ApiError> {
@@ -353,6 +362,7 @@ async fn logout(
 
 #[openapi(tag = "Authentication")]
 #[get("/auth/oidc/login")]
+/// Endpoint to initiate OIDC login.
 async fn oidc_login(
     state: &State<AppState>,
 ) -> Result<Redirect, ApiError> {
@@ -370,6 +380,7 @@ async fn oidc_login(
 
 #[openapi(tag = "Authentication")]
 #[get("/auth/oidc/callback?<response..>")]
+/// Endpoint to handle OIDC callback.
 async fn oidc_callback(
     state: &State<AppState>,
     jar: &CookieJar<'_>,
@@ -402,6 +413,7 @@ async fn oidc_callback(
 
 #[openapi(tag = "Authentication")]
 #[get("/auth/me")]
+/// Endpoint to get the current user. Used to know role of user.
 async fn get_current_user(
     state: &State<AppState>,
     authentication: Authenticated
@@ -413,11 +425,11 @@ async fn get_current_user(
 
 #[openapi(tag = "Users")]
 #[get("/users")]
+/// Returns a list of all users. Requires admin role.
 async fn get_users(
     state: &State<AppState>,
-    authentication: Authenticated
+    _authentication: AuthenticatedPrivileged
 ) -> Result<Json<Vec<User>>, ApiError> {
-    if authentication.claims.role != UserRole::Admin { return Err(ApiError::Forbidden(None)) }
     let db = state.db.lock().await;
     let users = db.get_all_user()?;
     Ok(Json(users))
@@ -425,13 +437,12 @@ async fn get_users(
 
 #[openapi(tag = "Users")]
 #[post("/users", format = "json", data = "<payload>")]
+/// Create a new user. Requires admin role.
 async fn create_user(
     state: &State<AppState>,
     payload: Json<CreateUserRequest>,
-    authentication: Authenticated
+    _authentication: AuthenticatedPrivileged
 ) -> Result<Json<i64>, ApiError> {
-    if authentication.claims.role != UserRole::Admin { return Err(ApiError::Forbidden(None)) }
-
     let db = state.db.lock().await;
 
     let mut user = User{
@@ -450,24 +461,24 @@ async fn create_user(
 
 #[openapi(tag = "Users")]
 #[put("/users", format = "json", data = "<payload>")]
+/// Update a user. Requires admin role.
 async fn update_user(
     state: &State<AppState>,
     payload: Json<User>,
-    authentication: Authenticated
+    _authentication: AuthenticatedPrivileged
 ) -> Result<(), ApiError> {
-    if payload.id != authentication.claims.id && authentication.claims.role != UserRole::Admin { return Err(ApiError::Forbidden(None)) }
     let db = state.db.lock().await;
     Ok(db.update_user(&payload)?)
 }
 
 #[openapi(tag = "Users")]
 #[delete("/users/<id>")]
+/// Delete a user. Requires admin role.
 async fn delete_user(
     state: &State<AppState>,
     id: i64,
-    authentication: Authenticated
+    _authentication: AuthenticatedPrivileged
 ) -> Result<(), ApiError> {
-    if authentication.claims.role != UserRole::Admin { return Err(ApiError::Forbidden(None)) }
     let db = state.db.lock().await;
     db.delete_user(id)?;
     Ok(())
