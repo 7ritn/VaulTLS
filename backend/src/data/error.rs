@@ -49,33 +49,43 @@ impl OpenApiResponderInner for ApiError {
         use rocket_okapi::okapi::openapi3::{Responses, Response as OpenApiResponse, RefOr};
 
         let schema = gen.json_schema::<ErrorResponse>();
-        let json_response = OpenApiResponse {
-            description: "API error".to_owned(),
-            content: {
-                let mut map = okapi::Map::new();
-                map.insert(
-                    "application/json".to_owned(),
-                    okapi::openapi3::MediaType {
-                        schema: Some(schema),
-                        ..Default::default()
-                    },
-                );
-                map
-            },
-            ..Default::default()
-        };
 
         let mut responses = Responses::default();
-        for code in &[400, 401, 403, 500] {
+
+        let error_definitions = [
+            (400, "Bad Request - Invalid input parameters or request"),
+            (401, "Unauthorized - Authentication failed or invalid credentials"),
+            (403, "Forbidden - User doesn't have required permissions"),
+            (500, "Internal Server Error - Database error, OpenSSL error, or other internal errors")
+        ];
+
+        for (code, description) in &error_definitions {
+            let response = OpenApiResponse {
+                description: description.to_string(),
+                content: {
+                    let mut map = okapi::Map::new();
+                    map.insert(
+                        "application/json".to_owned(),
+                        okapi::openapi3::MediaType {
+                            schema: Some(schema.clone()),
+                            ..Default::default()
+                        },
+                    );
+                    map
+                },
+                ..Default::default()
+            };
+
             responses.responses.insert(
                 code.to_string(),
-                RefOr::Object(json_response.clone()),
+                RefOr::Object(response),
             );
         }
 
         Ok(responses)
     }
 }
+
 
 impl Display for ApiError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

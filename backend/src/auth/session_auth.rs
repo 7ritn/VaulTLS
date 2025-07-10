@@ -21,7 +21,7 @@ macro_rules! impl_openapi_auth {
             ) -> rocket_okapi::Result<RequestHeaderInput> {
                 let security_scheme = SecurityScheme {
                     description: Some(
-                        concatcp!("Use secure auth_token set by server to authenticate. Requires user role {}", $role).to_owned(),
+                        concatcp!("Use secure auth_token set by server to authenticate. Requires user role ", $role).to_owned(),
                     ),
                     data: SecuritySchemeData::ApiKey {
                         name: "auth_token".to_string(),
@@ -85,7 +85,7 @@ impl<'r> FromRequest<'r> for AuthenticatedPrivileged {
         if claims.role == UserRole::Admin {
             Outcome::Success(AuthenticatedPrivileged { _claims: claims })
         } else {
-            Outcome::Error((Status::Unauthorized, ()))
+            Outcome::Error((Status::Forbidden, ()))
         }
     }
 }
