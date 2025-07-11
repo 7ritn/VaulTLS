@@ -1,7 +1,15 @@
 [package]
 name = "backend"
-version = "0.1.0"
+version = "0.7.0"
 edition = "2021"
+
+[[bin]]
+name = "backend"
+path = "src/main.rs"
+
+[lib]
+name = "vaultls"
+path = "src/lib.rs"
 
 [dependencies]
 rocket = { version = "0.5", features = ["json", "secrets"] }
@@ -11,7 +19,7 @@ schemars = { version = "0.8", features = ["derive"] }
 serde = "1.0"
 serde_json = "1.0"
 serde_repr = "0.1"
-rusqlite = { version = "0.36", features = ["bundled-sqlcipher"] }
+rusqlite = { version = "0.37", features = ["bundled-sqlcipher"] }
 openssl = "0.10"
 argon2 = "0.5"
 jsonwebtoken = "9"
@@ -26,3 +34,8 @@ passwords = "3.1"
 include_dir = "0.7"
 rusqlite_migration = {  version = "2.2", features = ["from-directory"] }
 const_format = "0.2"
+
+[dev-dependencies]
+x509-parser = "0.17"
+rustls = { version = "0.23.29", features = ["aws-lc-rs"] }
+tokio-rustls = "0.26.1"

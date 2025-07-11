@@ -3,4 +3,4 @@ pub(crate) const DB_FILE_PATH: &str = "database.db3";
 pub(crate) const TEMP_DB_FILE_PATH: &str = "encrypted.db3";
 pub(crate) const CA_FILE_PATH: &str = "ca.cert";
 pub(crate) const API_PORT: u16 = 3737;
-pub(crate) const VAULTLS_VERSION: &str = "v0.7.0";
+pub const VAULTLS_VERSION: &str = "v0.7.0";

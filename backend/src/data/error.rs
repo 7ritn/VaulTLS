@@ -22,6 +22,7 @@ pub enum ApiError {
     Unauthorized(Option<String>),
     BadRequest(String),
     Forbidden(Option<String>),
+    NotFound(Option<String>),
     Other(String),
 }
 
@@ -33,6 +34,7 @@ impl<'r> Responder<'r, 'static> for ApiError {
             ApiError::Unauthorized(e) => (Status::Unauthorized, e.unwrap_or_default()),
             ApiError::BadRequest(e) => (Status::BadRequest, e),
             ApiError::Forbidden(e) => (Status::Forbidden, e.unwrap_or_default()),
+            ApiError::NotFound(e) => (Status::NotFound, e.unwrap_or_default()),
             ApiError::Other(e) => (Status::InternalServerError, e),
         };
 
@@ -56,6 +58,7 @@ impl OpenApiResponderInner for ApiError {
             (400, "Bad Request - Invalid input parameters or request"),
             (401, "Unauthorized - Authentication failed or invalid credentials"),
             (403, "Forbidden - User doesn't have required permissions"),
+            (404, "Not Found - Resource not found"),
             (500, "Internal Server Error - Database error, OpenSSL error, or other internal errors")
         ];
 
@@ -95,7 +98,7 @@ impl Display for ApiError {
 
 impl From<rusqlite::Error> for ApiError {
     fn from(error: rusqlite::Error) -> Self {
-        ApiError::Database(error)
+        ApiError::NotFound(Some(error.to_string()))
     }
 }
 

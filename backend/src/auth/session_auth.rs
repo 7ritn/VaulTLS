@@ -1,4 +1,4 @@
-use crate::{ApiError, AppState};
+use crate::ApiError;
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use rocket::http::Status;
 use rocket::request::{FromRequest, Outcome, Request};
@@ -9,6 +9,7 @@ use rocket_okapi::gen::OpenApiGenerator;
 use rocket_okapi::okapi::openapi3::{Object, SecurityRequirement, SecurityScheme, SecuritySchemeData};
 use rocket_okapi::request::{OpenApiFromRequest, RequestHeaderInput};
 use crate::data::enums::UserRole;
+use crate::data::objects::AppState;
 
 macro_rules! impl_openapi_auth {
     ($guard:ty, $role:literal) => {

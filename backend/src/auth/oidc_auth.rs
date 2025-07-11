@@ -4,8 +4,8 @@ use crate::settings::OIDC;
 use openidconnect::core::{CoreAuthenticationFlow, CoreClient, CoreProviderMetadata, CoreUserInfoClaims};
 use openidconnect::reqwest::{ClientBuilder, Url};
 use openidconnect::{reqwest, AccessTokenHash, AuthorizationCode, ClientId, ClientSecret, CsrfToken, IssuerUrl, Nonce, OAuth2TokenResponse, PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, Scope, TokenResponse};
-use crate::User;
 use crate::data::enums::UserRole;
+use crate::data::objects::User;
 
 /// OIDC authentication
 #[derive(Debug)]

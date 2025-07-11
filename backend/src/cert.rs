@@ -15,33 +15,33 @@ use openssl::x509::extension::{AuthorityKeyIdentifier, BasicConstraints, Extende
 use openssl::x509::X509Builder;
 use passwords::PasswordGenerator;
 use rocket_okapi::JsonSchema;
-use serde::Serialize;
-use crate::ApiError;
+use serde::{Deserialize, Serialize};
 use crate::constants::CA_FILE_PATH;
 use crate::data::enums::CertificateType;
 use crate::data::enums::CertificateType::{Client, Server, CA};
+use crate::ApiError;
 
-#[derive(Default, Clone, Serialize, JsonSchema)]
+#[derive(Default, Clone, Serialize, Deserialize, JsonSchema)]
 /// Certificate can be either CA or user certificate.
 /// Iff CA, cert and key must be set.
 /// Iff user cert, pkcs12 must be set.
-pub(crate) struct Certificate {
-    pub(crate) id: i64,
-    pub(crate) name: String,
-    pub(crate) created_on: i64,
-    pub(crate) valid_until: i64,
-    pub(crate) certificate_type: CertificateType,
-    pub(crate) user_id: i64,
+pub struct Certificate {
+    pub id: i64,
+    pub name: String,
+    pub created_on: i64,
+    pub valid_until: i64,
+    pub certificate_type: CertificateType,
+    pub user_id: i64,
     #[serde(skip)]
-    pub(crate) pkcs12: Vec<u8>,
+    pub pkcs12: Vec<u8>,
     #[serde(skip)]
-    pub(crate) pkcs12_password: String,
+    pub pkcs12_password: String,
     #[serde(skip)]
-    pub(crate) cert: Vec<u8>,
+    pub cert: Vec<u8>,
     #[serde(skip)]
-    pub(crate) key: Vec<u8>,
+    pub key: Vec<u8>,
     #[serde(skip)]
-    pub(crate) ca_id: i64,
+    pub ca_id: i64,
 }
 
 /// Creates a new CA certificate.

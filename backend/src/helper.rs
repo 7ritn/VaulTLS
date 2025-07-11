@@ -4,7 +4,7 @@ use argon2::{Argon2, PasswordHasher};
 use argon2::password_hash::rand_core::OsRng;
 use argon2::password_hash::{PasswordHashString, SaltString};
 use serde::Serializer;
-use crate::data::error::ApiError;
+use crate::ApiError;
 
 /// Hashes a password using Argon2
 pub fn hash_password(password: &String) -> Result<String, ApiError> {

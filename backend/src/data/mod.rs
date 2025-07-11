@@ -1,3 +1,4 @@
-pub(crate) mod enums;
-pub(crate) mod api;
+pub mod enums;
+pub mod api;
 pub(crate) mod error;
+pub mod objects;

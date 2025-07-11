@@ -8,11 +8,11 @@ use rocket::serde::ser::SerializeStruct;
 use rocket_okapi::JsonSchema;
 use schemars::schema::{ObjectValidation, Schema, SchemaObject, SingleOrVec};
 use schemars::SchemaGenerator;
-use crate::ApiError;
 use crate::data::enums::{MailEncryption, PasswordRule};
 use crate::constants::SETTINGS_FILE_PATH;
 use tokio::fs::OpenOptions;
 use tokio::io::AsyncWriteExt;
+use crate::ApiError;
 use crate::helper::get_secret;
 
 /// Settings for the backend.

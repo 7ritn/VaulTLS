@@ -7,9 +7,11 @@ use argon2::password_hash::PasswordHashString;
 use rusqlite::{params, Connection, Result};
 use include_dir::{include_dir, Dir};
 use rusqlite_migration::Migrations;
-use crate::{ApiError, Certificate, User};
+use crate::cert::Certificate;
 use crate::constants::{DB_FILE_PATH, TEMP_DB_FILE_PATH};
 use crate::data::enums::UserRole;
+use crate::ApiError;
+use crate::data::objects::User;
 use crate::helper::get_secret;
 
 static MIGRATIONS_DIR: Dir = include_dir!("$CARGO_MANIFEST_DIR/migrations");
@@ -19,12 +21,21 @@ pub(crate) struct VaulTLSDB {
 }
 
 impl VaulTLSDB {
-    pub(crate) fn new(db_encrypted: bool) -> anyhow::Result<Self> {
+    pub(crate) fn new(db_encrypted: bool, mem: bool) -> anyhow::Result<Self> {
         // The next two lines are for backward compatability and should be removed in a future release
-        let db_path = Path::new(DB_FILE_PATH);
-        let db_initialized = db_path.exists();
+        let db_initialized = if !mem {
+            let db_path = Path::new(DB_FILE_PATH);
+            db_path.exists()
+        } else {
+            false
+        };
 
-        let mut connection = Connection::open(DB_FILE_PATH)?;
+        let mut connection = if !mem {
+            Connection::open(DB_FILE_PATH)?
+        } else {
+            Connection::open_in_memory()?
+        };
+        
         let db_secret = get_secret("VAULTLS_DB_SECRET");
         if db_encrypted {
             if let Ok(ref db_secret) = db_secret {

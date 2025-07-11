@@ -5,7 +5,7 @@ use serde_repr::{Deserialize_repr, Serialize_repr};
 
 #[derive(Serialize_repr, Deserialize_repr, JsonSchema, Clone, Debug, TryFromPrimitive, Copy, PartialEq, Eq)]
 #[repr(u8)]
-pub(crate) enum UserRole {
+pub enum UserRole {
     User = 0,
     Admin = 1
 }
@@ -43,7 +43,7 @@ pub(crate) enum PasswordRule {
 
 #[derive(Serialize_repr, Deserialize_repr, JsonSchema, TryFromPrimitive, Clone, Debug, Copy, PartialEq, Eq, Default)]
 #[repr(u8)]
-pub(crate) enum CertificateType {
+pub enum CertificateType {
     #[default]
     Client = 0,
     Server = 1,

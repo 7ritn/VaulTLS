@@ -1,5 +1,5 @@
 use std::io::Cursor;
-use rocket::{Request, Response};
+use rocket::{FromForm, Request, Response};
 use rocket::http::{ContentType, Header, Status};
 use rocket::response::Responder;
 use rocket::serde::{Deserialize, Serialize};
@@ -10,14 +10,14 @@ use rocket_okapi::okapi::openapi3::{Responses, Response as OAResponse, MediaType
 use rocket_okapi::response::OpenApiResponderInner;
 use crate::data::enums::{CertificateType, UserRole};
 
-#[derive(Serialize, JsonSchema)]
+#[derive(Serialize, Deserialize, JsonSchema)]
 pub struct IsSetupResponse {
     pub setup: bool,
     pub password: bool,
     pub oidc: String
 }
 
-#[derive(Deserialize, JsonSchema)]
+#[derive(Serialize, Deserialize, JsonSchema)]
 pub struct SetupRequest {
     pub name: String,
     pub email: String,
@@ -26,18 +26,13 @@ pub struct SetupRequest {
     pub password: Option<String>,
 }
 
-#[derive(Deserialize, JsonSchema)]
+#[derive(Serialize, Deserialize, JsonSchema)]
 pub struct LoginRequest {
     pub email: String,
     pub password: String
 }
 
-#[derive(Serialize, JsonSchema)]
-pub struct LoginResponse {
-    pub token: String
-}
-
-#[derive(Deserialize, JsonSchema)]
+#[derive(Serialize, Deserialize, JsonSchema)]
 pub struct ChangePasswordRequest {
     pub old_password: Option<String>,
     pub new_password: String,
@@ -49,7 +44,7 @@ pub struct CallbackQuery {
     pub state: String
 }
 
-#[derive(Deserialize, JsonSchema)]
+#[derive(Serialize, Deserialize, JsonSchema)]
 pub struct CreateUserCertificateRequest {
     pub cert_name: String,
     pub validity_in_years: Option<u64>,
@@ -117,7 +112,7 @@ impl OpenApiResponderInner for DownloadResponse {
     }
 }
 
-#[derive(Deserialize, JsonSchema)]
+#[derive(Serialize, Deserialize, JsonSchema)]
 pub struct CreateUserRequest {
     pub user_name: String,
     pub user_email: String,

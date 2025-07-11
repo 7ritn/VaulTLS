@@ -1,6 +1,6 @@
 use argon2::{Argon2, PasswordVerifier};
 use argon2::password_hash::PasswordHashString;
-use crate::data::error::ApiError;
+use crate::ApiError;
 
 /// Verifies a password against a password hash.
 pub(crate) fn verify_password(password_hash_string: &PasswordHashString, password: &str) -> Result<(), ApiError> {
