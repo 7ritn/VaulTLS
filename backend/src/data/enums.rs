@@ -25,6 +25,7 @@ impl FromSql for UserRole {
 
 #[derive(Serialize_repr, Deserialize_repr, JsonSchema, Clone, Debug, Copy, PartialEq, Eq, Default)]
 #[repr(u8)]
+#[allow(clippy::upper_case_acronyms)]
 pub(crate) enum MailEncryption {
     #[default]
     None = 0,

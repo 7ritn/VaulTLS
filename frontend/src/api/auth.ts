@@ -3,12 +3,12 @@ import ApiClient from "@/api/ApiClient.ts";
 import type {User} from "@/types/User.ts";
 
 export const is_setup = async (): Promise<IsSetupResponse> => {
-    return await ApiClient.get<IsSetupResponse>('/is_setup');
+    return await ApiClient.get<IsSetupResponse>('/server/setup');
 };
 
 
 export const setup = async (setupReq: SetupReq): Promise<void> => {
-    return await ApiClient.post<void>('/setup', setupReq);
+    return await ApiClient.post<void>('/server/setup', setupReq);
 };
 
 export const login = async (loginReq: { email: string | undefined, password: string | undefined }): Promise<void> => {

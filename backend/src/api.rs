@@ -23,181 +23,8 @@ pub(crate) fn version() -> &'static str {
     VAULTLS_VERSION
 }
 
-#[openapi(tag = "Certificates")]
-#[get("/certificates")]
-/// Get all certificates. If admin all certificates are returned, otherwise only certificates owned by the user. Requires authentication.
-pub(crate) async fn get_certificates(
-    state: &State<AppState>,
-    authentication: Authenticated
-) -> Result<Json<Vec<Certificate>>, ApiError> {
-    let db = state.db.lock().await;
-    let user_id= if authentication.claims.role == UserRole::Admin {
-            None
-        } else {
-            Some(authentication.claims.id)
-        };
-    let certificates = db.get_all_user_cert(user_id)?;
-    Ok(Json(certificates))
-}
-
-#[openapi(tag = "Certificates")]
-#[post("/certificates", format = "json", data = "<payload>")]
-/// Create a new certificate. Requires admin role.
-pub(crate) async fn create_user_certificate(
-    state: &State<AppState>,
-    payload: Json<CreateUserCertificateRequest>,
-    _authentication: AuthenticatedPrivileged
-) -> Result<Json<Certificate>, ApiError> {
-    let settings = state.settings.lock().await;
-
-    let db = state.db.lock().await;
-
-    let mut user_password: bool = payload.system_generated_password;
-    match settings.password_rule() {
-        PasswordRule::System => {
-            user_password = true;
-        }
-        PasswordRule::Required => {
-            if !payload.system_generated_password
-                && payload.pkcs12_password.as_deref().unwrap_or("").trim().is_empty() {
-                return Err(ApiError::BadRequest("Password is not provided, but is required.".to_string()))
-            }
-        }
-        PasswordRule::Optional => {}
-    }
-
-    let ca = db.get_current_ca()?;
-    let mut cert = match payload.cert_type.unwrap_or_default() {
-        CertificateType::Client => {
-            let user = db.get_user(payload.user_id)?;
-            cert::create_user_cert(&ca, &payload.cert_name, payload.validity_in_years.unwrap_or(1), payload.user_id, &user.email, user_password, &payload.pkcs12_password)?
-        }
-        CertificateType::Server => {
-            cert::create_server_cert(&ca, &payload.cert_name, &payload.dns_names.clone().unwrap_or_default(), payload.validity_in_years.unwrap_or(1), user_password, &payload.pkcs12_password, payload.user_id)?
-        }
-        CertificateType::CA => {
-            return Err(ApiError::BadRequest("Cannot create CA certificate".to_string()))
-        }
-    };
-
-
-    db.insert_user_cert(&mut cert)?;
-
-    if Some(true) == payload.notify_user {
-        let user = db.get_user(payload.user_id)?;
-        let mail = MailMessage{
-            to: format!("{} <{}>", user.name, user.email),
-            subject: "VaulTLS: A new certificate is available".to_string(),
-            username: user.name,
-            certificate: cert.clone()
-        };
-
-        let mailer = state.mailer.clone();
-        tokio::spawn(async move {
-            if let Some(mailer) = &mut *mailer.lock().await {
-                let _ = mailer.send_email(mail).await;
-            }
-        });
-    }
-
-    Ok(Json(cert))
-}
-
-#[openapi(tag = "Certificates")]
-#[get("/certificates/ca/download")]
-/// Download the current CA certificate.
-pub(crate) async fn download_ca(
-    state: &State<AppState>
-) -> Result<DownloadResponse, ApiError> {
-    let db = state.db.lock().await;
-    let ca = db.get_current_ca()?;
-    let pem = get_pem(&ca)?;
-    Ok(DownloadResponse::new(pem, "ca_certificate.pem"))
-}
-
-#[openapi(tag = "Certificates")]
-#[get("/certificates/<id>/download")]
-/// Download a user-owned certificate. Requires authentication.
-pub(crate) async fn download_certificate(
-    state: &State<AppState>,
-    id: i64,
-    authentication: Authenticated
-) -> Result<DownloadResponse, ApiError> {
-    let db = state.db.lock().await;
-    let (user_id, name, pkcs12) = db.get_user_cert_pkcs12(id)?;
-    if user_id != authentication.claims.id && authentication.claims.role != UserRole::Admin { return Err(ApiError::Forbidden(None)) }
-    Ok(DownloadResponse::new(pkcs12, &format!("{}.p12", name)))
-}
-
-#[openapi(tag = "Certificates")]
-#[get("/certificates/<id>/password")]
-/// Fetch the password for a user-owned certificate. Requires authentication.
-pub(crate) async fn fetch_certificate_password(
-    state: &State<AppState>,
-    id: i64,
-    authentication: Authenticated
-) -> Result<Json<String>, ApiError> {
-    let db = state.db.lock().await;
-    let (user_id, pkcs12_password) = db.get_user_cert_pkcs12_password(id)?;
-    if user_id != authentication.claims.id && authentication.claims.role != UserRole::Admin { return Err(ApiError::Forbidden(None)) }
-    Ok(Json(pkcs12_password))
-}
-
-#[openapi(tag = "Certificates")]
-#[delete("/certificates/<id>")]
-/// Delete a user-owned certificate. Requires admin role.
-pub(crate) async fn delete_user_cert(
-    state: &State<AppState>,
-    id: i64,
-    _authentication: AuthenticatedPrivileged
-) -> Result<(), ApiError> {
-    let db = state.db.lock().await;
-    db.delete_user_cert(id)?;
-    Ok(())
-}
-
-#[openapi(tag = "Settings")]
-#[get("/settings")]
-/// Fetch application settings. Requires admin role.
-pub(crate) async fn fetch_settings(
-    state: &State<AppState>,
-    _authentication: AuthenticatedPrivileged
-) -> Result<Json<FrontendSettings>, ApiError> {
-    let settings = state.settings.lock().await;
-    let frontend_settings = FrontendSettings(settings.clone());
-    Ok(Json(frontend_settings))
-}
-
-#[openapi(tag = "Settings")]
-#[put("/settings", format = "json", data = "<payload>")]
-/// Update application settings. Requires admin role.
-pub(crate) async fn update_settings(
-    state: &State<AppState>,
-    payload: Json<Settings>,
-    _authentication: AuthenticatedPrivileged
-) -> Result<(), ApiError> {
-    let mut settings = state.settings.lock().await;
-    let mut oidc = state.oidc.lock().await;
-
-    settings.set_settings(&payload).await?;
-
-    if let Some(oidc) = &mut *oidc {
-        oidc.update_config(&settings.get_oidc()).await?;
-    }
-
-    let mut mailer = state.mailer.lock().await;
-    let mail_settings = settings.get_mail();
-    if mail_settings.is_valid() {
-        *mailer = Mailer::new(mail_settings, settings.get_vaultls_url()).await.ok()
-    } else {
-        *mailer = None;
-    }
-
-    Ok(())
-}
-
 #[openapi(tag = "Setup")]
-#[get("/is_setup")]
+#[get("/server/setup")]
 /// Get server setup parameters.
 pub(crate) async fn is_setup(
     state: &State<AppState>
@@ -215,7 +42,7 @@ pub(crate) async fn is_setup(
 }
 
 #[openapi(tag = "Setup")]
-#[post("/setup", format = "json", data = "<setup_req>")]
+#[post("/server/setup", format = "json", data = "<setup_req>")]
 /// Set up the application. Only possible if DB is not setup.
 pub(crate) async fn setup(
     state: &State<AppState>,
@@ -264,9 +91,9 @@ pub(crate) async fn login(
 ) -> Result<(), ApiError> {
     let settings = state.settings.lock().await;
     let db = state.db.lock().await;
-    let user: User = db.get_user_by_email(&*login_req_opt.email).map_err(|_| ApiError::Unauthorized(Some("Invalid credentials".to_string())))?;
+    let user: User = db.get_user_by_email(&login_req_opt.email).map_err(|_| ApiError::Unauthorized(Some("Invalid credentials".to_string())))?;
     if let Some(password_hash) = user.password_hash {
-        verify_password(&password_hash, &*login_req_opt.password)?;
+        verify_password(&password_hash, &login_req_opt.password)?;
         let jwt_key = settings.get_jwt_key()?;
         let token = generate_token(&jwt_key, user.id, user.role)?;
 
@@ -378,6 +205,172 @@ pub(crate) async fn get_current_user(
     Ok(Json(user))
 }
 
+#[openapi(tag = "Certificates")]
+#[get("/certificates")]
+/// Get all certificates. If admin all certificates are returned, otherwise only certificates owned by the user. Requires authentication.
+pub(crate) async fn get_certificates(
+    state: &State<AppState>,
+    authentication: Authenticated
+) -> Result<Json<Vec<Certificate>>, ApiError> {
+    let db = state.db.lock().await;
+    let user_id = match authentication.claims.role {
+        UserRole::User => Some(authentication.claims.id),
+        UserRole::Admin => None
+    };
+    let certificates = db.get_all_user_cert(user_id)?;
+    Ok(Json(certificates))
+}
+
+#[openapi(tag = "Certificates")]
+#[post("/certificates", format = "json", data = "<payload>")]
+/// Create a new certificate. Requires admin role.
+pub(crate) async fn create_user_certificate(
+    state: &State<AppState>,
+    payload: Json<CreateUserCertificateRequest>,
+    _authentication: AuthenticatedPrivileged
+) -> Result<Json<Certificate>, ApiError> {
+    let settings = state.settings.lock().await;
+
+    let db = state.db.lock().await;
+
+    let use_random_password = if settings.password_rule() == PasswordRule::System
+        || (settings.password_rule() == PasswordRule::Required
+            && payload.pkcs12_password.as_deref().unwrap_or("").trim().is_empty()) {
+        true
+    } else {
+        payload.system_generated_password
+    };
+
+    let ca = db.get_current_ca()?;
+    let mut cert = match payload.cert_type.unwrap_or_default() {
+        CertificateType::Client => {
+            let user = db.get_user(payload.user_id)?;
+            cert::create_user_cert(&ca, &payload.cert_name, payload.validity_in_years.unwrap_or(1), payload.user_id, &user.email, use_random_password, &payload.pkcs12_password)?
+        }
+        CertificateType::Server => {
+            cert::create_server_cert(&ca, &payload.cert_name, &payload.dns_names.clone().unwrap_or_default(), payload.validity_in_years.unwrap_or(1), use_random_password, &payload.pkcs12_password, payload.user_id)?
+        }
+        CertificateType::CA => {
+            return Err(ApiError::BadRequest("Cannot create CA certificate".to_string()))
+        }
+    };
+
+
+    db.insert_user_cert(&mut cert)?;
+
+    if Some(true) == payload.notify_user {
+        let user = db.get_user(payload.user_id)?;
+        let mail = MailMessage{
+            to: format!("{} <{}>", user.name, user.email),
+            subject: "VaulTLS: A new certificate is available".to_string(),
+            username: user.name,
+            certificate: cert.clone()
+        };
+
+        let mailer = state.mailer.clone();
+        tokio::spawn(async move {
+            if let Some(mailer) = &mut *mailer.lock().await {
+                let _ = mailer.send_email(mail).await;
+            }
+        });
+    }
+
+    Ok(Json(cert))
+}
+
+#[openapi(tag = "Certificates")]
+#[get("/certificates/ca/download")]
+/// Download the current CA certificate.
+pub(crate) async fn download_ca(
+    state: &State<AppState>
+) -> Result<DownloadResponse, ApiError> {
+    let db = state.db.lock().await;
+    let ca = db.get_current_ca()?;
+    let pem = get_pem(&ca)?;
+    Ok(DownloadResponse::new(pem, "ca_certificate.pem"))
+}
+
+#[openapi(tag = "Certificates")]
+#[get("/certificates/<id>/download")]
+/// Download a user-owned certificate. Requires authentication.
+pub(crate) async fn download_certificate(
+    state: &State<AppState>,
+    id: i64,
+    authentication: Authenticated
+) -> Result<DownloadResponse, ApiError> {
+    let db = state.db.lock().await;
+    let (user_id, name, pkcs12) = db.get_user_cert_pkcs12(id)?;
+    if user_id != authentication.claims.id && authentication.claims.role != UserRole::Admin { return Err(ApiError::Forbidden(None)) }
+    Ok(DownloadResponse::new(pkcs12, &format!("{name}.p12")))
+}
+
+#[openapi(tag = "Certificates")]
+#[get("/certificates/<id>/password")]
+/// Fetch the password for a user-owned certificate. Requires authentication.
+pub(crate) async fn fetch_certificate_password(
+    state: &State<AppState>,
+    id: i64,
+    authentication: Authenticated
+) -> Result<Json<String>, ApiError> {
+    let db = state.db.lock().await;
+    let (user_id, pkcs12_password) = db.get_user_cert_pkcs12_password(id)?;
+    if user_id != authentication.claims.id && authentication.claims.role != UserRole::Admin { return Err(ApiError::Forbidden(None)) }
+    Ok(Json(pkcs12_password))
+}
+
+#[openapi(tag = "Certificates")]
+#[delete("/certificates/<id>")]
+/// Delete a user-owned certificate. Requires admin role.
+pub(crate) async fn delete_user_cert(
+    state: &State<AppState>,
+    id: i64,
+    _authentication: AuthenticatedPrivileged
+) -> Result<(), ApiError> {
+    let db = state.db.lock().await;
+    db.delete_user_cert(id)?;
+    Ok(())
+}
+
+#[openapi(tag = "Settings")]
+#[get("/settings")]
+/// Fetch application settings. Requires admin role.
+pub(crate) async fn fetch_settings(
+    state: &State<AppState>,
+    _authentication: AuthenticatedPrivileged
+) -> Result<Json<FrontendSettings>, ApiError> {
+    let settings = state.settings.lock().await;
+    let frontend_settings = FrontendSettings(settings.clone());
+    Ok(Json(frontend_settings))
+}
+
+#[openapi(tag = "Settings")]
+#[put("/settings", format = "json", data = "<payload>")]
+/// Update application settings. Requires admin role.
+pub(crate) async fn update_settings(
+    state: &State<AppState>,
+    payload: Json<Settings>,
+    _authentication: AuthenticatedPrivileged
+) -> Result<(), ApiError> {
+    let mut settings = state.settings.lock().await;
+    let mut oidc = state.oidc.lock().await;
+
+    settings.set_settings(&payload).await?;
+
+    if let Some(oidc) = &mut *oidc {
+        oidc.update_config(settings.get_oidc()).await?;
+    }
+
+    let mut mailer = state.mailer.lock().await;
+    let mail_settings = settings.get_mail();
+    if mail_settings.is_valid() {
+        *mailer = Mailer::new(mail_settings, settings.get_vaultls_url()).await.ok()
+    } else {
+        *mailer = None;
+    }
+
+    Ok(())
+}
+
 #[openapi(tag = "Users")]
 #[get("/users")]
 /// Returns a list of all users. Requires admin role.
@@ -415,15 +408,28 @@ pub(crate) async fn create_user(
 }
 
 #[openapi(tag = "Users")]
-#[put("/users", format = "json", data = "<payload>")]
+#[put("/users/<id>", format = "json", data = "<payload>")]
 /// Update a user. Requires admin role.
 pub(crate) async fn update_user(
     state: &State<AppState>,
+    id: i64,
     payload: Json<User>,
-    _authentication: AuthenticatedPrivileged
+    authentication: Authenticated
 ) -> Result<(), ApiError> {
+    if authentication.claims.id != id && authentication.claims.role != UserRole::Admin {
+        return Err(ApiError::Forbidden(None))
+    }
+    if authentication.claims.role == UserRole::User
+        && payload.role == UserRole::Admin {
+        return Err(ApiError::Forbidden(None))
+    }
+
+    let user = User {
+        id,
+        ..payload.into_inner()
+    };
     let db = state.db.lock().await;
-    Ok(db.update_user(&payload)?)
+    Ok(db.update_user(&user)?)
 }
 
 #[openapi(tag = "Users")]

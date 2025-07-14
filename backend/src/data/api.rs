@@ -3,7 +3,7 @@ use rocket::{FromForm, Request, Response};
 use rocket::http::{ContentType, Header, Status};
 use rocket::response::Responder;
 use rocket::serde::{Deserialize, Serialize};
-use rocket_okapi::gen::OpenApiGenerator;
+use rocket_okapi::r#gen::OpenApiGenerator;
 use rocket_okapi::okapi::schemars;
 use rocket_okapi::{okapi, JsonSchema, OpenApiError};
 use rocket_okapi::okapi::openapi3::{Responses, Response as OAResponse, MediaType, RefOr};

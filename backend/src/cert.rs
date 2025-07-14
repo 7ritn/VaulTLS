@@ -153,7 +153,7 @@ pub(crate) fn create_user_cert(
 
     // Create the PKCS#12 structure
     let pkcs12 = Pkcs12::builder()
-        .name(&name)
+        .name(name)
         .ca(ca_stack)
         .cert(&user_cert)
         .pkey(&user_key)

@@ -33,12 +33,12 @@ type ApiError = data::error::ApiError;
 
 pub async fn create_rocket() -> Rocket<Build> {
     println!("Starting mTLS Certificates API");
-    println!("Version {}", VAULTLS_VERSION);
+    println!("Version {VAULTLS_VERSION}");
 
     println!("Loading settings from file");
     let mut settings = Settings::load_from_file(None).await.expect("Failed loading settings");
 
-    println!("Trying to use database at {}", DB_FILE_PATH);
+    println!("Trying to use database at {DB_FILE_PATH}");
     let db_path = Path::new(DB_FILE_PATH);
     let db_initialized = db_path.exists();
     let db = VaulTLSDB::new(settings.get_db_encrypted(), false).expect("Failed opening SQLite database");
@@ -58,7 +58,7 @@ pub async fn create_rocket() -> Rocket<Build> {
         true => None,
         false => {
             println!("OIDC enabled. Trying to connect to {}.", oidc_settings.auth_url);
-            OidcAuth::new(&settings.get_oidc()).await.ok()
+            OidcAuth::new(settings.get_oidc()).await.ok()
         }
     };
 

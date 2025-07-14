@@ -22,7 +22,7 @@ pub fn hash_password_string(password: &Option<String>) -> Result<Option<Password
     Ok(match password {
         Some(password) => {
             let password_hash = hash_password(password)?;
-            Some(PasswordHashString::new(&*password_hash)?)
+            Some(PasswordHashString::new(&password_hash)?)
         },
         None => None,
     })

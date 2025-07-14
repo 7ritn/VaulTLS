@@ -1,5 +1,3 @@
-mod common;
-
 use crate::common::constants::*;
 use crate::common::helper::get_timestamp;
 use crate::common::test_client::VaulTLSClient;
@@ -14,6 +12,7 @@ use rustls::server::WebPkiClientVerifier;
 use rustls::{ClientConfig, ServerConfig};
 use std::sync::Arc;
 use std::time::Duration;
+use serde_json::Value;
 use tokio::io::{duplex, AsyncReadExt, AsyncWriteExt};
 use tokio::time::sleep;
 use tokio_rustls::{TlsAcceptor, TlsConnector};
@@ -22,6 +21,7 @@ use vaultls::data::enums::{CertificateType, UserRole};
 use vaultls::data::objects::User;
 use x509_parser::asn1_rs::FromDer;
 use x509_parser::prelude::X509Certificate;
+use vaultls::data::api::IsSetupResponse;
 
 #[tokio::test]
 async fn test_version() -> Result<()>{
@@ -35,6 +35,25 @@ async fn test_version() -> Result<()>{
     assert_eq!(response.status(), Status::Ok);
     assert_eq!(response.content_type(), Some(ContentType::Plain));
     assert_eq!(response.into_string().await, Some("v0.7.0".into()));
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_is_setup() -> Result<()> {
+    let client = VaulTLSClient::new_setup().await;
+
+    let request = client
+        .get("/server/setup");
+    let response = request.dispatch().await;
+
+    assert_eq!(response.status(), Status::Ok);
+    assert_eq!(response.content_type(), Some(ContentType::JSON));
+
+    let is_setup: IsSetupResponse = serde_json::from_str(&response.into_string().await.unwrap())?;
+    assert_eq!(is_setup.setup, true);
+    assert_eq!(is_setup.password, true);
+    assert_eq!(is_setup.oidc, String::new());
 
     Ok(())
 }
@@ -57,14 +76,7 @@ async fn test_ca_download() -> Result<()>{
 async fn test_login() -> Result<()>{
     let client = VaulTLSClient::new_authenticated().await;
 
-    let request = client
-        .get("/auth/me");
-    let response = request.dispatch().await;
-
-    assert_eq!(response.status(), Status::Ok);
-    assert_eq!(response.content_type(), Some(ContentType::JSON));
-
-    let user: User = serde_json::from_str(&response.into_string().await.unwrap())?;
+    let user: User = client.get_current_user().await?;
     assert_eq!(user.id, 1);
     assert_eq!(user.name, TEST_USER_NAME);
     assert_eq!(user.email, TEST_USER_EMAIL);
@@ -196,16 +208,20 @@ async fn test_tls_connection() -> Result<()> {
 async fn test_create_user() -> Result<()> {
     let client = VaulTLSClient::new_authenticated().await;
     client.create_user().await?;
-    client.switch_user().await?;
 
     let request = client
-        .get("/auth/me");
+        .get("/users");
     let response = request.dispatch().await;
 
     assert_eq!(response.status(), Status::Ok);
     assert_eq!(response.content_type(), Some(ContentType::JSON));
 
-    let user: User = serde_json::from_str(&response.into_string().await.unwrap())?;
+    let users: Vec<User> = serde_json::from_str(&response.into_string().await.unwrap())?;
+    assert_eq!(users.len(), 2);
+
+    client.switch_user().await?;
+
+    let user: User = client.get_current_user().await?;
     assert_eq!(user.id, 2);
     assert_eq!(user.name, TEST_SECOND_USER_NAME);
     assert_eq!(user.email, TEST_SECOND_USER_EMAIL);
@@ -215,10 +231,45 @@ async fn test_create_user() -> Result<()> {
 }
 
 #[tokio::test]
+async fn test_update_user() -> Result<()> {
+    let client = VaulTLSClient::new_authenticated().await;
+    let mut user = client.get_current_user().await?;
+
+    assert_eq!(user.email, TEST_USER_EMAIL);
+
+    user.email = TEST_SECOND_USER_EMAIL.to_string();
+
+    let request = client
+        .put("/users/1")
+        .header(ContentType::JSON)
+        .body(serde_json::to_string(&user)?);
+    let response = request.dispatch().await;
+    assert_eq!(response.status(), Status::Ok);
+
+    user = client.get_current_user().await?;
+    assert_eq!(user.email, TEST_SECOND_USER_EMAIL);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_delete_user() -> Result<()> {
+    let client = VaulTLSClient::new_authenticated().await;
+    client.create_user().await?;
+
+    let request = client
+        .delete("/users/2");
+    let response = request.dispatch().await;
+    assert_eq!(response.status(), Status::Ok);
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn test_create_cert_for_second_user() -> Result<()> {
     let client = VaulTLSClient::new_authenticated().await;
     client.create_user().await?;
-    client.create_client_cert(Some(2)).await?;
+    client.create_client_cert(Some(2), Some(TEST_PASSWORD.to_string())).await?;
     client.switch_user().await?;
     let cert_der = client.download_cert_as_p12("1").await?;
     let (_, cert_x509) = X509Certificate::from_der(&cert_der)?;
@@ -227,6 +278,22 @@ async fn test_create_cert_for_second_user() -> Result<()> {
 
     let xku = cert_x509.subject_alternative_name()?.expect("No subject alternative name");
     assert_eq!(xku.value.general_names[0].to_string(), formatcp!("RFC822Name({})", TEST_SECOND_USER_EMAIL));
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_settings() -> Result<()> {
+    let client = VaulTLSClient::new_authenticated().await;
+    let mut settings = client.get_settings().await?;
+    assert_eq!(settings["common"]["password_rule"], 0);
+
+    settings["common"]["password_rule"] = Value::Number(2.into());
+
+    client.put_settings(settings).await?;
+
+    settings = client.get_settings().await?;
+    assert_eq!(settings["common"]["password_rule"], 2);
 
     Ok(())
 }

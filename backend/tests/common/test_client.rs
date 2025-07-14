@@ -5,11 +5,13 @@ use openssl::pkcs12::Pkcs12;
 use rocket::http::{ContentType, Status};
 use rocket::local::asynchronous::Client;
 use std::ops::{Deref, DerefMut};
+use serde_json::Value;
 use vaultls::cert::Certificate;
 use vaultls::create_test_rocket;
 use vaultls::data::api::{CreateUserCertificateRequest, CreateUserRequest, LoginRequest, SetupRequest};
 use vaultls::data::enums::{CertificateType, UserRole};
 use x509_parser::pem::Pem;
+use vaultls::data::objects::User;
 
 pub(crate) struct VaulTLSClient(Client);
 
@@ -49,7 +51,7 @@ impl VaulTLSClient {
         };
 
         let request = client
-            .post("/setup")
+            .post("/server/setup")
             .header(ContentType::JSON)
             .body(serde_json::to_string(&setup_data).unwrap());
         let response = request.dispatch().await;
@@ -67,18 +69,25 @@ impl VaulTLSClient {
 
     pub(crate) async fn new_with_cert() -> Self {
         let client = Self::new_authenticated().await;
-        client.create_client_cert(None).await.unwrap();
+        client.create_client_cert(None, Some(TEST_PASSWORD.to_string())).await.unwrap();
         client
     }
 
-    pub(crate) async fn create_client_cert(&self, user_id: Option<i64>) -> Result<()> {
+    pub(crate) async fn new_authenticated_unprivileged() -> Self {
+        let client = Self::new_authenticated().await;
+        client.create_user().await.unwrap();
+        client.switch_user().await.unwrap();
+        client
+    }
+
+    pub(crate) async fn create_client_cert(&self, user_id: Option<i64>, password: Option<String>) -> Result<()> {
         let cert_req = CreateUserCertificateRequest {
             cert_name: TEST_CLIENT_CERT_NAME.to_string(),
             validity_in_years: Some(1),
             user_id: user_id.unwrap_or(1),
             notify_user: None,
             system_generated_password: false,
-            pkcs12_password: Some(TEST_PASSWORD.to_string()),
+            pkcs12_password: password,
             cert_type: None,
             dns_names: None,
         };
@@ -150,6 +159,16 @@ impl VaulTLSClient {
         Ok(())
     }
 
+    pub(crate) async fn get_current_user(&self) -> Result<User> {
+        let request = self
+            .get("/auth/me");
+        let response = request.dispatch().await;
+        assert_eq!(response.status(), Status::Ok);
+        assert_eq!(response.content_type(), Some(ContentType::JSON));
+
+        Ok(serde_json::from_str(&response.into_string().await.unwrap())?)
+    }
+
     pub(crate) async fn switch_user(&self) -> Result<()> {
         let request = self
             .post("/auth/logout");
@@ -204,5 +223,27 @@ impl VaulTLSClient {
         Ok(Pem::iter_from_buffer(&x509_pem)
             .nth(0)
             .expect("No PEM block found")?)
+    }
+
+    pub(crate) async fn get_settings(&self) -> Result<Value> {
+        let request = self
+            .get("/settings");
+        let response = request.dispatch().await;
+        assert_eq!(response.status(), Status::Ok);
+        assert_eq!(response.content_type(), Some(ContentType::JSON));
+
+        Ok(serde_json::from_str(&response.into_string().await.unwrap())?)
+    }
+
+    pub(crate) async fn put_settings(&self, settings: Value) -> Result<()> {
+        let request = self
+            .put("/settings")
+            .header(ContentType::JSON)
+            .body(serde_json::to_string(&settings)?);
+        let response = request.dispatch().await;
+
+        assert_eq!(response.status(), Status::Ok);
+
+        Ok(())
     }
 }

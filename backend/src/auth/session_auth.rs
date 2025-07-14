@@ -5,7 +5,7 @@ use rocket::request::{FromRequest, Outcome, Request};
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use const_format::concatcp;
-use rocket_okapi::gen::OpenApiGenerator;
+use rocket_okapi::r#gen::OpenApiGenerator;
 use rocket_okapi::okapi::openapi3::{Object, SecurityRequirement, SecurityScheme, SecuritySchemeData};
 use rocket_okapi::request::{OpenApiFromRequest, RequestHeaderInput};
 use crate::data::enums::UserRole;
@@ -93,7 +93,7 @@ impl<'r> FromRequest<'r> for AuthenticatedPrivileged {
 
 impl_openapi_auth!(AuthenticatedPrivileged, "UserRole::Admin");
 
-pub(crate) async fn authenticate_auth_token<'r>(request: &'r Request<'_>) -> Option<Claims> {
+pub(crate) async fn authenticate_auth_token(request: &Request<'_>) -> Option<Claims> {
     let token = request.cookies().get_private("auth_token")?.value().to_string();
     let config = request.rocket().state::<AppState>()?;
 

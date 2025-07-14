@@ -4,7 +4,7 @@ use rocket::Request;
 use rocket::response::Responder;
 use rocket::response::status::Custom;
 use rocket_okapi::{okapi, JsonSchema, OpenApiError};
-use rocket_okapi::gen::OpenApiGenerator;
+use rocket_okapi::r#gen::OpenApiGenerator;
 use rocket_okapi::okapi::openapi3::Responses;
 use rocket_okapi::response::OpenApiResponderInner;
 use serde::Serialize;
@@ -47,10 +47,10 @@ impl<'r> Responder<'r, 'static> for ApiError {
 }
 
 impl OpenApiResponderInner for ApiError {
-    fn responses(gen: &mut OpenApiGenerator) -> Result<Responses, OpenApiError> {
+    fn responses(generator: &mut OpenApiGenerator) -> Result<Responses, OpenApiError> {
         use rocket_okapi::okapi::openapi3::{Responses, Response as OpenApiResponse, RefOr};
 
-        let schema = gen.json_schema::<ErrorResponse>();
+        let schema = generator.json_schema::<ErrorResponse>();
 
         let mut responses = Responses::default();
 
@@ -92,7 +92,7 @@ impl OpenApiResponderInner for ApiError {
 
 impl Display for ApiError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self)
+        write!(f, "{self:?}")
     }
 }
 

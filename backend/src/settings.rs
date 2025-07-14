@@ -16,7 +16,7 @@ use crate::ApiError;
 use crate::helper::get_secret;
 
 /// Settings for the backend.
-#[derive(Serialize, Deserialize, JsonSchema, Clone, Default, Debug)]
+#[derive(Serialize, Deserialize, JsonSchema, Clone, Default)]
 pub(crate) struct Settings {
     #[serde(default)]
     mail: Mail,
@@ -31,6 +31,7 @@ pub(crate) struct Settings {
 }
 
 /// Wrapper for the settings to make them serializable for the frontend.
+#[derive(Deserialize, Default)]
 pub(crate) struct FrontendSettings(pub(crate) Settings);
 
 /// Serialize the settings for the frontend.
@@ -54,20 +55,20 @@ impl JsonSchema for FrontendSettings {
         "FrontendSettings".to_string()
     }
 
-    fn json_schema(gen: &mut SchemaGenerator) -> Schema {
+    fn json_schema(generator: &mut SchemaGenerator) -> Schema {
         let mut props = schemars::Map::new();
 
         props.insert(
             "common".to_string(),
-            gen.subschema_for::<Common>(),
+            generator.subschema_for::<Common>(),
         );
         props.insert(
             "mail".to_string(),
-            gen.subschema_for::<Mail>(),
+            generator.subschema_for::<Mail>(),
         );
         props.insert(
             "oidc".to_string(),
-            gen.subschema_for::<OIDC>(),
+            generator.subschema_for::<OIDC>(),
         );
 
         Schema::Object(SchemaObject {
@@ -78,7 +79,7 @@ impl JsonSchema for FrontendSettings {
                     "common".to_string(),
                     "mail".to_string(),
                     "oidc".to_string(),
-                ].into_iter()),
+                ]),
                 ..Default::default()
             })),
             ..Default::default()
@@ -121,7 +122,7 @@ pub(crate) struct Mail {
 impl Mail {
     /// Check if the mail settings are valid.
     pub(crate) fn is_valid(&self) -> bool {
-        self.smtp_host.len() > 0 && self.smtp_port > 0 && self.from.len() > 0
+        !self.smtp_host.is_empty() && self.smtp_port > 0 && !self.from.is_empty()
     }
 }
 
@@ -139,6 +140,7 @@ impl Default for Auth {
 
 /// OpenID Connect settings for the backend.
 #[derive(Serialize, Deserialize, JsonSchema, Clone, Default, Debug)]
+#[allow(clippy::upper_case_acronyms)]
 pub(crate) struct OIDC {
     pub(crate) id: String,
     pub(crate) secret: String,
@@ -198,18 +200,18 @@ impl Settings {
             .truncate(true)
             .open(path)
             .await
-            .map_err(|e| ApiError::Other(format!("Failed to open settings file: {}", e)))?;
+            .map_err(|e| ApiError::Other(format!("Failed to open settings file: {e}")))?;
 
         let contents = serde_json::to_string_pretty(self)
-            .map_err(|e| ApiError::Other(format!("Failed to serialize settings: {}", e)))?;
+            .map_err(|e| ApiError::Other(format!("Failed to serialize settings: {e}")))?;
         
         file.write_all(contents.as_bytes())
             .await
-            .map_err(|e| ApiError::Other(format!("Failed to write settings: {}", e)))?;
+            .map_err(|e| ApiError::Other(format!("Failed to write settings: {e}")))?;
         
         file.sync_all()
             .await
-            .map_err(|e| ApiError::Other(format!("Failed to flush settings to disk: {}", e)))?;
+            .map_err(|e| ApiError::Other(format!("Failed to flush settings to disk: {e}")))?;
 
         Ok(())
     }

@@ -45,7 +45,7 @@ impl VaulTLSDB {
             }
 
         }
-        connection.pragma_update(None, "foreign_keys", &"ON")?;
+        connection.pragma_update(None, "foreign_keys", "ON")?;
         // This if statement can be removed in a future version
         if db_initialized {
             let user_version: i32 = connection
@@ -53,7 +53,7 @@ impl VaulTLSDB {
                 .expect("Failed to get PRAGMA user_version");
             // Database already initialized, update user_version to 1
             if user_version == 0 {
-                connection.pragma_update(None, "user_version", &"1")?;
+                connection.pragma_update(None, "user_version", "1")?;
             }
         }
         
@@ -64,7 +64,7 @@ impl VaulTLSDB {
                 println!("Migrating to encrypted database");
                 Self::create_encrypt_db(&connection, db_secret)?;
                 drop(connection);
-                let conn = Self::migrate_to_encrypted_db(&db_secret)?;
+                let conn = Self::migrate_to_encrypted_db(db_secret)?;
                 return Ok(Self { connection: conn});
             }
         }
@@ -76,8 +76,8 @@ impl VaulTLSDB {
     fn create_encrypt_db(conn: &Connection, new_db_secret: &str) -> Result<()> {
         let encrypted_path = TEMP_DB_FILE_PATH;
         conn.execute(
-            &format!("ATTACH DATABASE '{}' AS encrypted KEY '{}';", encrypted_path, new_db_secret),
-            [],
+            "ATTACH DATABASE ?1 AS encrypted KEY ?2",
+            params![encrypted_path, new_db_secret],
         )?;
 
         // Migrate data
@@ -87,8 +87,8 @@ impl VaulTLSDB {
             .query_row("PRAGMA user_version;", [], |row| row.get(0));
         if let Ok(user_version) = user_version {
             conn.execute(
-                &format!("PRAGMA encrypted.user_version = '{}';", user_version),
-                []
+                "PRAGMA encrypted.user_version = ?1",
+                params![user_version]
             )?;
         }
 
@@ -102,7 +102,7 @@ impl VaulTLSDB {
         fs::rename(TEMP_DB_FILE_PATH, DB_FILE_PATH)?;
         let conn = Connection::open(DB_FILE_PATH)?;
         conn.pragma_update(None, "key", db_secret)?;
-        conn.pragma_update(None, "foreign_keys", &"ON")?;
+        conn.pragma_update(None, "foreign_keys", "ON")?;
         Ok(conn)
     }
 
