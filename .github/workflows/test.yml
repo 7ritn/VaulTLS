@@ -16,9 +16,6 @@ jobs:
       - name: Install Clippy
         working-directory: ./backend
         run: rustup component add clippy
-      - name: Build
-        working-directory: ./backend
-        run: cargo build --verbose
       - name: Run Clippy (deny warnings)
         working-directory: ./backend
         run: cargo clippy --all-targets --all-features -- -D warnings

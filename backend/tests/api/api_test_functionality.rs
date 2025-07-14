@@ -51,8 +51,8 @@ async fn test_is_setup() -> Result<()> {
     assert_eq!(response.content_type(), Some(ContentType::JSON));
 
     let is_setup: IsSetupResponse = serde_json::from_str(&response.into_string().await.unwrap())?;
-    assert_eq!(is_setup.setup, true);
-    assert_eq!(is_setup.password, true);
+    assert!(is_setup.setup);
+    assert!(is_setup.password);
     assert_eq!(is_setup.oidc, String::new());
 
     Ok(())
@@ -257,10 +257,10 @@ async fn test_delete_user() -> Result<()> {
     let client = VaulTLSClient::new_authenticated().await;
     client.create_user().await?;
 
-    let request = client
-        .delete("/users/2");
-    let response = request.dispatch().await;
-    assert_eq!(response.status(), Status::Ok);
+        let request = client
+            .delete("/users/2");
+        let response = request.dispatch().await;
+        assert_eq!(response.status(), Status::Ok);
 
     Ok(())
 }

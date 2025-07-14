@@ -198,14 +198,14 @@ impl VaulTLSClient {
 
     pub(crate) async fn download_cert(&self, cert_id: &str) -> Result<Vec<u8>> {
         let request = self
-            .get(format!("/certificates/{}/download", cert_id));
+            .get(format!("/certificates/{cert_id}/download"));
         let response = request.dispatch().await;
 
         assert_eq!(response.status(), Status::Ok);
         assert_eq!(response.content_type(), Some(ContentType::Text));
 
         let Some(body) = response.into_bytes().await else { return Err(anyhow::anyhow!("No body")) };
-        assert!(body.len() > 0);
+        assert!(!body.is_empty());
 
         Ok(body)
     }
