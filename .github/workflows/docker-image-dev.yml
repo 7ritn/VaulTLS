@@ -8,6 +8,7 @@ on:
 
 jobs:
   build:
+    if: ${{ false }}
     strategy:
       matrix:
         arch: [amd64, arm64]
