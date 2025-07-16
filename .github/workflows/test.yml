@@ -1,24 +1,28 @@
-name: Test VaulTLS
+name: Test
 
 on:
   push:
-    branches: [ main ]
+    branches:
+      - main
   pull_request:
-    branches: [ main ]
+    branches:
+      - main
+  workflow_dispatch:
 
 jobs:
-  build-and-test:
+  e2e:
     runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      - name: Install Clippy
-        working-directory: ./backend
-        run: rustup component add clippy
-      - name: Run Clippy (deny warnings)
-        working-directory: ./backend
-        run: cargo clippy --all-targets --all-features -- -D warnings
-      - name: Run Tests
-        working-directory: ./backend
-        run: cargo test --all
+
+      - name: Set up Docker Compose
+        run: sudo apt-get update && sudo apt-get install -y docker-compose
+
+      - name: Build and Run Compose
+        working-directory: ./tests
+        run: docker-compose up --abort-on-container-exit --exit-code-from test

@@ -10,27 +10,27 @@ RUN --mount=type=cache,target=/root/.npm npm install
 COPY frontend/ ./
 RUN npm run build
 
-# Stage 2: Build the Rust backend
+# Stage 2: Build the Rust backend binary
 FROM rust:1.87 AS backend-builder
 
 WORKDIR /app/backend
 COPY backend/ ./
+
 RUN --mount=type=cache,target=/app/backend/target \
     --mount=type=cache,target=/usr/local/cargo/git/db \
     --mount=type=cache,target=/usr/local/cargo/registry/ \
-    cargo build --release && cp target/release/backend backend
+    cargo test --all --locked \
+    && cargo build --release \
+    && cp target/release/backend backend
 
-# Stage 3: Final container with Nginx and the backend binary
-FROM docker.io/nginx:stable
-
+# Stage 3 Final container with Nginx and backend binary
+FROM nginx:stable
 
 WORKDIR /app/data
 COPY --from=frontend-builder /app/frontend/dist/ /usr/share/nginx/html/
 COPY container/nginx.conf /etc/nginx/nginx.conf
 COPY --from=backend-builder /app/backend/backend /app/bin/backend
 
-# Expose port 80 for HTTP
 EXPOSE 80
 
-# Start both Nginx and the backend server
 CMD ["/bin/sh", "-c", "nginx && /app/bin/backend"]
