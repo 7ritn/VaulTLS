@@ -24,11 +24,12 @@
         </thead>
         <tbody>
           <tr v-for="user in userStore.users" :key="user.id">
-            <td>{{ user.name }}</td>
-            <td>{{ user.email }}</td>
-            <td>{{ UserRole[user.role] }}</td>
+            <td :id="'UserName-' + user.id">{{ user.name }}</td>
+            <td :id="'UserMail-' + user.id">{{ user.email }}</td>
+            <td :id="'UserRole-' + user.id">{{ UserRole[user.role] }}</td>
             <td>
-              <button 
+              <button
+                :id="'UserDeletebutton-' + user.id"
                 class="btn btn-danger btn-sm"
                 @click="confirmDeleteUser(user)"
               >

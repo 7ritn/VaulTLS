@@ -17,16 +17,16 @@
         </thead>
         <tbody>
           <tr v-for="cert in certificates.values()" :key="cert.id">
-            <td id="{{cert.id + ':UserId'}}" v-if="authStore.isAdmin">{{ userStore.idToName(cert.user_id) }}</td>
-            <td id="{{cert.id + ':Name'}}" >{{ cert.name }}</td>
-            <td id="{{cert.id + ':Type'}}" class="d-none d-sm-table-cell">{{ CertificateType[cert.certificate_type] }}</td>
-            <td id="{{cert.id + ':CreatedOn'}}" class="d-none d-sm-table-cell">{{ new Date(cert.created_on).toLocaleDateString() }}</td>
-            <td id="{{cert.id + ':ValidUntil'}}" >{{ new Date(cert.valid_until).toLocaleDateString() }}</td>
-            <td id="{{cert.id + ':Password'}}"  class="password-cell">
+            <td :id="'UserId-' + cert.id" v-if="authStore.isAdmin">{{ userStore.idToName(cert.user_id) }}</td>
+            <td :id="'CertName-' + cert.id" >{{ cert.name }}</td>
+            <td :id="'CertType-' + cert.id" class="d-none d-sm-table-cell">{{ CertificateType[cert.certificate_type] }}</td>
+            <td :id="'CreatedOn-' + cert.id" class="d-none d-sm-table-cell">{{ new Date(cert.created_on).toLocaleDateString() }}</td>
+            <td :id="'ValidUntil-' + cert.id" >{{ new Date(cert.valid_until).toLocaleDateString() }}</td>
+            <td :id="'Password-' + cert.id"  class="password-cell">
               <div class="d-flex align-items-center">
                 <template v-if="shownCerts.has(cert.id)">
                   <input
-                      id="{{cert.id + ':PasswordInput'}}"
+                      :id="'PasswordInput-' + cert.id"
                       type="text"
                       :value="cert.pkcs12_password"
                       readonly
@@ -38,7 +38,7 @@
                   <span>•••••••</span>
                 </template>
                 <img
-                    id="{{cert.id + ':PasswordButton'}}"
+                    :id="'PasswordButton-' + cert.id"
                     :src="shownCerts.has(cert.id) ? '/images/eye-open.png' : '/images/eye-hidden.png'"
                     class="ms-2"
                     style="width: 20px; cursor: pointer;"
@@ -50,14 +50,14 @@
             <td>
               <div class="d-flex flex-sm-row flex-column gap-1">
                 <button
-                    id="{{cert.id + ':DownloadButton'}}"
+                    :id="'DownloadButton-' + cert.id"
                     class="btn btn-primary btn-sm flex-grow-1"
                     @click="downloadCertificate(cert.id)"
                 >
                   Download
                 </button>
                 <button
-                    id="{{cert.id + ':DeleteButton'}}"
+                    :id="'DeleteButton-' + cert.id"
                     v-if="authStore.isAdmin"
                     class="btn btn-danger btn-sm flex-grow-1"
                     @click="confirmDeletion(cert)"

@@ -42,7 +42,25 @@ def page(context):
     page.wait_for_url("**/Overview")
     return page
 
-def test_dashboard(page):
+def test_certificates(page):
     page.goto("http://vaultls/overview")
     page.wait_for_url("**/overview")
     assert "Certificates" in page.locator("h1").inner_text()
+    page.click("button:has-text('Create New Certificate')")
+    page.fill("#certName", "test_cert")
+    page.select_option("#userId", "1")
+    page.fill("#certPassword", "password")
+    page.click("button:has-text('Create Certificate')")
+    page.click("#PasswordButton-1")
+    assert "password" in page.locator("#PasswordInput-1").input_value()
+
+def test_users(page):
+    page.goto("http://vaultls/users")
+    page.wait_for_url("**/users")
+    assert "Users" in page.locator("h1").inner_text()
+    page.click("button:has-text('Create New User')")
+    page.fill("#user_name", "test2")
+    page.fill("#user_email", "test2@example.com")
+    page.fill("#password", "password")
+    page.click("button:has-text('Create User')")
+    assert "test2" in page.locator("#UserName-2").inner_text()
