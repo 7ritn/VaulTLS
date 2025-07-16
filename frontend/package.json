@@ -11,6 +11,7 @@
     "type-check": "vue-tsc --build"
   },
   "dependencies": {
+    "@playwright/test": "^1.54.1",
     "axios": "^1.10.0",
     "bootstrap": "^5.3.7",
     "pinia": "^3.0.3",

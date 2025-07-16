@@ -49,7 +49,7 @@ impl VaulTLSDB {
         // This if statement can be removed in a future version
         if db_initialized {
             let user_version: i32 = connection
-                .query_one("SELECT user_version FROM pragma_user_version", [], |row| row.get(0))
+                .pragma_query_value(None, "user_version", |row| row.get(0))
                 .expect("Failed to get PRAGMA user_version");
             // Database already initialized, update user_version to 1
             if user_version == 0 {
@@ -84,12 +84,9 @@ impl VaulTLSDB {
         conn.query_row("SELECT sqlcipher_export('encrypted');", [], |_row| Ok(()))?;
         // Copy user_version for migrations
         let user_version: Result<i64> = conn
-            .query_row("PRAGMA user_version;", [], |row| row.get(0));
+            .pragma_query_value(None, "user_version", |row| row.get(0));
         if let Ok(user_version) = user_version {
-            conn.execute(
-                "PRAGMA encrypted.user_version = ?1",
-                params![user_version]
-            )?;
+            conn.pragma_update(Some("encrypted"), "user_version", user_version.to_string())?;
         }
 
         conn.execute("DETACH DATABASE encrypted;", [])?;

@@ -15,6 +15,13 @@ export const useAuthStore = defineStore('auth', {
         }
     },
     actions: {
+        async init() {
+            this.isAuthenticated = localStorage.getItem('is_authenticated') === 'true';
+            if (this.isAuthenticated) {
+                await this.fetchCurrentUser();
+            }
+        },
+
         // Trigger the login of a user by email and password
         async login(email: string | undefined, password: string | undefined) {
             try {

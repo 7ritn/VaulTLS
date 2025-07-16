@@ -7,6 +7,7 @@ import router from './router/router';
 
 import App from './App.vue'
 import {useSetupStore} from "@/stores/setup.ts";
+import {useAuthStore} from "@/stores/auth.ts";
 
 
 async function initApp() {
@@ -19,6 +20,9 @@ async function initApp() {
     // Initialize the store
     const setupStore = useSetupStore();
     await setupStore.init()
+
+    const authStore = useAuthStore();
+    await authStore.init();
 
     app.use(router);
 

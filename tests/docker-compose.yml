@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  vaultls:
+    build:
+      context: ../
+      dockerfile: Containerfile
+    volumes:
+      - /app/data
+    environment:
+      - "VAULTLS_API_SECRET=cpCeMZga+H72Ux99y3v+Ht2IDH2NEClh40UTT4Mrxm4="
+      - "VAULTLS_URL=http://localhost:5173/"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+
+  test:
+    build:
+      context: ./e2e
+      dockerfile: Containerfile
+    depends_on:
+      vaultls:
+        condition: service_healthy
+    environment:
+      - "VAULTLS_URL=http://vaultls/"
+    entrypoint: ["pytest", "/app/test_vaultls.py"]

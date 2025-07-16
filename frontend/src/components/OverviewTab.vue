@@ -17,15 +17,16 @@
         </thead>
         <tbody>
           <tr v-for="cert in certificates.values()" :key="cert.id">
-            <td v-if="authStore.isAdmin">{{ userStore.idToName(cert.user_id) }}</td>
-            <td>{{ cert.name }}</td>
-            <td class="d-none d-sm-table-cell">{{ CertificateType[cert.certificate_type] }}</td>
-            <td class="d-none d-sm-table-cell">{{ new Date(cert.created_on).toLocaleDateString() }}</td>
-            <td>{{ new Date(cert.valid_until).toLocaleDateString() }}</td>
-            <td class="password-cell">
+            <td id="{{cert.id + ':UserId'}}" v-if="authStore.isAdmin">{{ userStore.idToName(cert.user_id) }}</td>
+            <td id="{{cert.id + ':Name'}}" >{{ cert.name }}</td>
+            <td id="{{cert.id + ':Type'}}" class="d-none d-sm-table-cell">{{ CertificateType[cert.certificate_type] }}</td>
+            <td id="{{cert.id + ':CreatedOn'}}" class="d-none d-sm-table-cell">{{ new Date(cert.created_on).toLocaleDateString() }}</td>
+            <td id="{{cert.id + ':ValidUntil'}}" >{{ new Date(cert.valid_until).toLocaleDateString() }}</td>
+            <td id="{{cert.id + ':Password'}}"  class="password-cell">
               <div class="d-flex align-items-center">
                 <template v-if="shownCerts.has(cert.id)">
                   <input
+                      id="{{cert.id + ':PasswordInput'}}"
                       type="text"
                       :value="cert.pkcs12_password"
                       readonly
@@ -37,6 +38,7 @@
                   <span>•••••••</span>
                 </template>
                 <img
+                    id="{{cert.id + ':PasswordButton'}}"
                     :src="shownCerts.has(cert.id) ? '/images/eye-open.png' : '/images/eye-hidden.png'"
                     class="ms-2"
                     style="width: 20px; cursor: pointer;"
@@ -48,12 +50,14 @@
             <td>
               <div class="d-flex flex-sm-row flex-column gap-1">
                 <button
+                    id="{{cert.id + ':DownloadButton'}}"
                     class="btn btn-primary btn-sm flex-grow-1"
                     @click="downloadCertificate(cert.id)"
                 >
                   Download
                 </button>
                 <button
+                    id="{{cert.id + ':DeleteButton'}}"
                     v-if="authStore.isAdmin"
                     class="btn btn-danger btn-sm flex-grow-1"
                     @click="confirmDeletion(cert)"
@@ -68,6 +72,7 @@
     </div>
 
     <button
+        id="DownloadCAButton"
         class="btn btn-primary mx-1"
         @click="downloadCA"
     >
@@ -75,6 +80,7 @@
     </button>
 
     <button
+        id="CreateCertificateButton"
         v-if="authStore.isAdmin"
         class="btn btn-primary mx-1"
         @click="showGenerateModal"
@@ -270,7 +276,6 @@ import {useCertificateStore} from '@/stores/certificates';
 import {type Certificate, CertificateType} from "@/types/Certificate";
 import type {CertificateRequirements} from "@/types/CertificateRequirements";
 import {useAuthStore} from "@/stores/auth.ts";
-import {UserRole} from "@/types/User.ts";
 import {useUserStore} from "@/stores/users.ts";
 import {useSettingsStore} from "@/stores/settings.ts";
 import {PasswordRule} from "@/types/Settings.ts";
