@@ -181,7 +181,6 @@ pub(crate) async fn oidc_callback(
             let token = generate_token(&jwt_key, user.id, user.role)?;
 
             let auth_cookie = Cookie::build(("auth_token", token))
-                .secure(true)
                 .http_only(true)
                 .same_site(SameSite::Lax);
             jar.add_private(auth_cookie);

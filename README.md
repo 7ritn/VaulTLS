@@ -84,6 +84,8 @@ User certificates can be downloaded through the web interface.
 The CA certificate to be integrated with your reverse proxy is available as a file at /app/data/ca.cert 
 and as download via the API endpoint /api/certificates/ca/download.
 
+Further API documentation is available at the endpoint /api
+
 ### PKCS12 Passwords
 By default, PKCS12 passwords are optional and certificates will be generated with no password. In the settings page, the PKCS12 password requirements can be set with the following options:
 
