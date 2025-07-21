@@ -12,6 +12,8 @@ use rustls::server::WebPkiClientVerifier;
 use rustls::{ClientConfig, ServerConfig};
 use std::sync::Arc;
 use std::time::Duration;
+use argon2::password_hash::SaltString;
+use argon2::PasswordHasher;
 use serde_json::Value;
 use tokio::io::{duplex, AsyncReadExt, AsyncWriteExt};
 use tokio::time::sleep;
@@ -21,7 +23,8 @@ use vaultls::data::enums::{CertificateType, UserRole};
 use vaultls::data::objects::User;
 use x509_parser::asn1_rs::FromDer;
 use x509_parser::prelude::X509Certificate;
-use vaultls::data::api::IsSetupResponse;
+use vaultls::constants::ARGON2;
+use vaultls::data::api::{IsSetupResponse, SetupRequest};
 
 #[tokio::test]
 async fn test_version() -> Result<()>{
@@ -73,7 +76,7 @@ async fn test_ca_download() -> Result<()>{
 }
 
 #[tokio::test]
-async fn test_login() -> Result<()>{
+async fn test_login() -> Result<()> {
     let client = VaulTLSClient::new_authenticated().await;
 
     let user: User = client.get_current_user().await?;
@@ -83,6 +86,48 @@ async fn test_login() -> Result<()>{
     assert_eq!(user.role, UserRole::Admin);
 
     Ok(())
+}
+
+#[tokio::test]
+async fn test_setup_hash() -> Result<()> {
+    let client = VaulTLSClient::new().await;
+
+    let salt_str = "VaulTLSVaulTLSVaulTLSVaulTLS".to_owned();
+    let salt = SaltString::encode_b64(salt_str.as_bytes()).unwrap();
+    let password_hash = ARGON2.hash_password(TEST_PASSWORD.as_bytes(), &salt).expect("hash_password");
+
+    let setup_data = SetupRequest{
+        name: TEST_USER_NAME.to_string(),
+        email: TEST_USER_EMAIL.to_string(),
+        ca_name: TEST_CA_NAME.to_string(),
+        ca_validity_in_years: 1,
+        password: Some(password_hash.to_string()),
+    };
+
+    let request = client
+        .post("/server/setup")
+        .header(ContentType::JSON)
+        .body(serde_json::to_string(&setup_data)?);
+    let response = request.dispatch().await;
+    assert_eq!(response.status(), Status::Ok);
+    drop(response);
+
+    client.login(TEST_USER_EMAIL, &password_hash.to_string()).await?;
+
+    Ok(())
+
+}
+
+#[tokio::test]
+async fn test_login_hash() -> Result<()> {
+    let client = VaulTLSClient::new_authenticated().await;
+    client.logout().await?;
+
+    let salt_str = "VaulTLSVaulTLSVaulTLSVaulTLS".to_owned();
+    let salt = SaltString::encode_b64(salt_str.as_bytes()).unwrap();
+    let password_hash = ARGON2.hash_password(TEST_PASSWORD.as_bytes(), &salt).expect("hash_password");
+
+    client.login(TEST_USER_EMAIL, &password_hash.to_string()).await
 }
 
 #[tokio::test]

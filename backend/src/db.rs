@@ -1,18 +1,16 @@
-use std::fs;
-use std::path::Path;
-use rusqlite::fallible_iterator::FallibleIterator;
-use std::str::FromStr;
-use anyhow::anyhow;
-use argon2::password_hash::PasswordHashString;
-use rusqlite::{params, Connection, Result};
-use include_dir::{include_dir, Dir};
-use rusqlite_migration::Migrations;
 use crate::cert::Certificate;
 use crate::constants::{DB_FILE_PATH, TEMP_DB_FILE_PATH};
-use crate::data::enums::UserRole;
-use crate::ApiError;
+use crate::data::enums::{Password, UserRole};
 use crate::data::objects::User;
 use crate::helper::get_secret;
+use crate::ApiError;
+use anyhow::anyhow;
+use include_dir::{include_dir, Dir};
+use rusqlite::fallible_iterator::FallibleIterator;
+use rusqlite::{params, Connection, Result};
+use rusqlite_migration::Migrations;
+use std::fs;
+use std::path::Path;
 
 static MIGRATIONS_DIR: Dir = include_dir!("$CARGO_MANIFEST_DIR/migrations");
 
@@ -253,18 +251,13 @@ impl VaulTLSDB {
             "SELECT id, name, email, password_hash, oidc_id, role FROM users WHERE id=?1",
             params![id],
             |row| {
-                let hash: Option<String> = row.get(3)?;
-                let hash_string = match hash {
-                    Some(hash) => PasswordHashString::from_str(hash.as_str()).ok(),
-                    None => None
-                };
                 let role_number: u8 = row.get(5)?;
                 Ok(User {
                     id: row.get(0)?,
                     name: row.get(1)?,
                     email: row.get(2)?,
-                    password_hash: hash_string,
-                    oidc_id: row.get(4)?,
+                    password_hash: row.get(3).ok(),
+                    oidc_id: row.get(4).ok(),
                     role: UserRole::try_from(role_number).unwrap(),
                 })
             }
@@ -277,14 +270,13 @@ impl VaulTLSDB {
             "SELECT id, name, email, password_hash, oidc_id, role FROM users WHERE email=?1",
             params![email],
             |row| {
-                let hash: String = row.get(3)?;
                 let role_number: u8 = row.get(5)?;
                 Ok(User {
                     id: row.get(0)?,
                     name: row.get(1)?,
                     email: row.get(2)?,
-                    password_hash: PasswordHashString::from_str(hash.as_str()).ok(),
-                    oidc_id: row.get(4)?,
+                    password_hash: row.get(3).ok(),
+                    oidc_id: row.get(4).ok(),
                     role: UserRole::try_from(role_number).map_err(|_| rusqlite::Error::QueryReturnedNoRows)?,
                 })
             }
@@ -310,10 +302,10 @@ impl VaulTLSDB {
 
     /// Set a new password for a user
     /// The password needs to be hashed already
-    pub(crate) fn set_user_password(&self, id: i64, password_hash: &String) -> Result<(), ApiError> {
+    pub(crate) fn set_user_password(&self, id: i64, password_hash: &Password) -> Result<(), ApiError> {
         self.connection.execute(
             "UPDATE users SET password_hash = ?1 WHERE id=?2",
-            params![password_hash, id]
+            params![password_hash.to_string(), id]
         )?;
 
         Ok(())

@@ -86,6 +86,7 @@ import { ref } from 'vue';
 import router from '../router/router';
 import { setup } from "@/api/auth.ts";
 import {useSetupStore} from "@/stores/setup.ts";
+import {hashPassword} from "@/utils/hash.ts";
 
 const setupStore = useSetupStore();
 
@@ -98,12 +99,14 @@ const errorMessage = ref('');
 
 const setupPassword = async () => {
   try {
+    let hash = password.value ? await hashPassword(password.value) : null;
+
     await setup({
       name: username.value,
       email: email.value,
       ca_name: ca_name.value,
       ca_validity_in_years: ca_validity_in_years.value,
-      password: password.value || null,
+      password: hash || null,
     });
     await setupStore.reload();
     await router.replace({ name: 'Login' });

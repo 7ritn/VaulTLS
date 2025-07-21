@@ -1,11 +1,10 @@
 use crate::helper;
 use std::sync::Arc;
-use argon2::password_hash::PasswordHashString;
 use rocket::serde::{Deserialize, Serialize};
 use rocket_okapi::JsonSchema;
 use tokio::sync::Mutex;
 use crate::auth::oidc_auth::OidcAuth;
-use crate::data::enums::UserRole;
+use crate::data::enums::{Password, UserRole};
 use crate::db::VaulTLSDB;
 use crate::notification::Mailer;
 use crate::settings::Settings;
@@ -25,7 +24,7 @@ pub struct User {
     pub email: String,
     #[serde(rename = "has_password", serialize_with = "helper::serialize_password_hash", skip_deserializing)]
     #[schemars(skip)]
-    pub password_hash: Option<PasswordHashString>,
+    pub password_hash: Option<Password>,
     #[serde(skip)]
     pub oidc_id: Option<String>,
     pub role: UserRole

@@ -14,19 +14,6 @@ class ApiClient {
                 'Content-Type': 'application/json',
             },
         });
-
-        // Response interceptor to handle token expiration
-        this.client.interceptors.response.use(
-            (response) => response,
-            async (error) => {
-                if (error.response && error.response.status === 401) {
-                    const authStore = useAuthStore();
-                    await authStore.logout();
-                    window.location.href = '/';
-                }
-                return Promise.reject(error);
-            }
-        );
     }
 
     async get<T>(url: string, params: Record<string, any> = {}): Promise<T> {
