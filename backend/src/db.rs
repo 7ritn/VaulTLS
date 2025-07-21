@@ -1,6 +1,6 @@
 use crate::cert::Certificate;
 use crate::constants::{DB_FILE_PATH, TEMP_DB_FILE_PATH};
-use crate::data::enums::{Password, UserRole};
+use crate::data::enums::UserRole;
 use crate::data::objects::User;
 use crate::helper::get_secret;
 use crate::ApiError;
@@ -11,6 +11,7 @@ use rusqlite::{params, Connection, Result};
 use rusqlite_migration::Migrations;
 use std::fs;
 use std::path::Path;
+use crate::auth::password_auth::Password;
 
 static MIGRATIONS_DIR: Dir = include_dir!("$CARGO_MANIFEST_DIR/migrations");
 

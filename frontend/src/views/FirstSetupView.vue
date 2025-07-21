@@ -106,7 +106,7 @@ const setupPassword = async () => {
       email: email.value,
       ca_name: ca_name.value,
       ca_validity_in_years: ca_validity_in_years.value,
-      password: hash || null,
+      password: password.value || null,
     });
     await setupStore.reload();
     await router.replace({ name: 'Login' });
