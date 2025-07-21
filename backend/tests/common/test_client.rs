@@ -170,11 +170,7 @@ impl VaulTLSClient {
     }
 
     pub(crate) async fn switch_user(&self) -> Result<()> {
-        let request = self
-            .post("/auth/logout");
-        let response = request.dispatch().await;
-        assert_eq!(response.status(), Status::Ok);
-
+        self.logout().await?;
         self.login(TEST_SECOND_USER_EMAIL, TEST_PASSWORD).await?;
 
         Ok(())
@@ -190,6 +186,15 @@ impl VaulTLSClient {
             .post("/auth/login")
             .header(ContentType::JSON)
             .body(serde_json::to_string(&login_data)?);
+        let response = request.dispatch().await;
+        assert_eq!(response.status(), Status::Ok);
+
+        Ok(())
+    }
+    
+    pub(crate) async fn logout(&self) -> Result<()> {
+        let request = self
+            .post("/auth/logout");
         let response = request.dispatch().await;
         assert_eq!(response.status(), Status::Ok);
 

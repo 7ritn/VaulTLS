@@ -3,16 +3,15 @@ use rocket::{delete, get, post, put, State};
 use rocket::response::Redirect;
 use rocket::serde::json::Json;
 use rocket::http::{Cookie, CookieJar, SameSite};
-use crate::auth::password_auth::verify_password;
+use crate::auth::password_auth::{client_hash_password, double_hash_password, server_hash_password};
 use crate::auth::session_auth::{generate_token, Authenticated, AuthenticatedPrivileged};
 use crate::cert;
 use crate::cert::{create_ca, get_pem, save_ca, Certificate};
 use crate::constants::VAULTLS_VERSION;
 use crate::data::api::{CallbackQuery, ChangePasswordRequest, CreateUserCertificateRequest, CreateUserRequest, DownloadResponse, IsSetupResponse, LoginRequest, SetupRequest};
-use crate::data::enums::{CertificateType, PasswordRule, UserRole};
+use crate::data::enums::{CertificateType, Password, PasswordRule, UserRole};
 use crate::data::error::ApiError;
 use crate::data::objects::{AppState, User};
-use crate::helper::{hash_password, hash_password_string};
 use crate::notification::{MailMessage, Mailer};
 use crate::settings::{FrontendSettings, Settings};
 
@@ -59,15 +58,17 @@ pub(crate) async fn setup(
         return Err(ApiError::Other("Password is required".to_string()))
     }
 
-    if setup_req.password.is_some() {
+    let mut password_hash = None;
+    if let Some(ref password) = setup_req.password {
         settings.set_password_enabled(true).await?;
+        password_hash = Some(server_hash_password(password)?);
     }
 
     let mut user = User{
         id: -1,
         name: setup_req.name.clone(),
         email: setup_req.email.clone(),
-        password_hash: hash_password_string(&setup_req.password)?,
+        password_hash,
         oidc_id: None,
         role: UserRole::Admin,
     };
@@ -93,16 +94,30 @@ pub(crate) async fn login(
     let db = state.db.lock().await;
     let user: User = db.get_user_by_email(&login_req_opt.email).map_err(|_| ApiError::Unauthorized(Some("Invalid credentials".to_string())))?;
     if let Some(password_hash) = user.password_hash {
-        verify_password(&password_hash, &login_req_opt.password)?;
-        let jwt_key = settings.get_jwt_key()?;
-        let token = generate_token(&jwt_key, user.id, user.role)?;
+        if password_hash == &login_req_opt.password
+            || password_hash == &client_hash_password(&login_req_opt.password)? {
+            let jwt_key = settings.get_jwt_key()?;
+            let token = generate_token(&jwt_key, user.id, user.role)?;
 
-        let cookie = Cookie::build(("auth_token", token.clone()))
-            .http_only(true)
-            .same_site(SameSite::Lax);
-        jar.add_private(cookie);
+            let cookie = Cookie::build(("auth_token", token.clone()))
+                .http_only(true)
+                .same_site(SameSite::Lax);
+            jar.add_private(cookie);
 
-        return Ok(());
+            println!("Login successful for user {}", user.name);
+
+            if let Password::V1(_) = password_hash {
+                println!("Migrating user {} password to V2", user.name);
+                let migration_password = double_hash_password(&login_req_opt.password)?;
+                db.set_user_password(user.id, &migration_password)?;
+            }
+
+            return Ok(());
+        } else if let Password::V1(hash_string) = password_hash {
+            // User tried to supply a hashed password, but has not been migrated yet
+            // Require user to supply plaintext password to log in
+            return Err(ApiError::Conflict(hash_string.to_string()))
+        }
     }
     Err(ApiError::Unauthorized(Some("Invalid credentials".to_string())))
 }
@@ -121,13 +136,17 @@ pub(crate) async fn change_password(
     let password_hash = db.get_user(user_id)?.password_hash;
 
     if let Some(password_hash) = password_hash {
-        match &change_pass_req.old_password {
-            Some(old_password) => verify_password(&password_hash, old_password)?,
-            None => return Err(ApiError::BadRequest("Old password is required".to_string()))
+        if let Some(ref old_password) = change_pass_req.old_password {
+            if password_hash != old_password {
+                return Err(ApiError::BadRequest("Old password is incorrect".to_string()))
+            }
+        } else {
+            return Err(ApiError::BadRequest("Old password is required".to_string()))
         }
+
     }
 
-    let password_hash = hash_password(&change_pass_req.new_password)?;
+    let password_hash = server_hash_password(&change_pass_req.new_password)?;
     db.set_user_password(user_id, &password_hash)
 }
 
@@ -391,11 +410,16 @@ pub(crate) async fn create_user(
 ) -> Result<Json<i64>, ApiError> {
     let db = state.db.lock().await;
 
+    let password_hash = match payload.password {
+        Some(ref p) => Some(server_hash_password(p)?),
+        None => None,
+    };
+
     let mut user = User{
         id: -1,
         name: payload.user_name.to_string(),
         email: payload.user_email.to_string(),
-        password_hash: hash_password_string(&payload.password)?,
+        password_hash,
         oidc_id: None,
         role: payload.role
     };

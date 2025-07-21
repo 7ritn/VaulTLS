@@ -26,7 +26,7 @@ mod notification;
 pub mod data;
 mod helper;
 mod auth;
-mod constants;
+pub mod constants;
 mod api;
 
 type ApiError = data::error::ApiError;

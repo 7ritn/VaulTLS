@@ -14,6 +14,7 @@
     "@playwright/test": "^1.54.1",
     "axios": "^1.10.0",
     "bootstrap": "^5.3.7",
+    "hash-wasm": "^4.12.0",
     "pinia": "^3.0.3",
     "vue": "^3.5.17",
     "vue-boring-avatars": "^1.4.0",

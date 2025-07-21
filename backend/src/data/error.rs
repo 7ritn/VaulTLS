@@ -23,6 +23,7 @@ pub enum ApiError {
     BadRequest(String),
     Forbidden(Option<String>),
     NotFound(Option<String>),
+    Conflict(String),
     Other(String),
 }
 
@@ -35,6 +36,7 @@ impl<'r> Responder<'r, 'static> for ApiError {
             ApiError::BadRequest(e) => (Status::BadRequest, e),
             ApiError::Forbidden(e) => (Status::Forbidden, e.unwrap_or_default()),
             ApiError::NotFound(e) => (Status::NotFound, e.unwrap_or_default()),
+            ApiError::Conflict(e) => (Status::Conflict, e),
             ApiError::Other(e) => (Status::InternalServerError, e),
         };
 
