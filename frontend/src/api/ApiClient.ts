@@ -14,6 +14,18 @@ class ApiClient {
                 'Content-Type': 'application/json',
             },
         });
+
+        this.client.interceptors.response.use(
+            (response) => response,
+            (error) => {
+                if (error.response?.status === 401) {
+                    const authStore = useAuthStore();
+                    authStore.logout();
+                }
+                return Promise.reject(error);
+            }
+        );
+
     }
 
     async get<T>(url: string, params: Record<string, any> = {}): Promise<T> {

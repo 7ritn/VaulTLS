@@ -3,13 +3,13 @@ use rocket::{delete, get, post, put, State};
 use rocket::response::Redirect;
 use rocket::serde::json::Json;
 use rocket::http::{Cookie, CookieJar, SameSite};
-use crate::auth::password_auth::{client_hash_password, double_hash_password, server_hash_password};
+use crate::auth::password_auth::Password;
 use crate::auth::session_auth::{generate_token, Authenticated, AuthenticatedPrivileged};
 use crate::cert;
 use crate::cert::{create_ca, get_pem, save_ca, Certificate};
 use crate::constants::VAULTLS_VERSION;
 use crate::data::api::{CallbackQuery, ChangePasswordRequest, CreateUserCertificateRequest, CreateUserRequest, DownloadResponse, IsSetupResponse, LoginRequest, SetupRequest};
-use crate::data::enums::{CertificateType, Password, PasswordRule, UserRole};
+use crate::data::enums::{CertificateType, PasswordRule, UserRole};
 use crate::data::error::ApiError;
 use crate::data::objects::{AppState, User};
 use crate::notification::{MailMessage, Mailer};
@@ -61,7 +61,7 @@ pub(crate) async fn setup(
     let mut password_hash = None;
     if let Some(ref password) = setup_req.password {
         settings.set_password_enabled(true).await?;
-        password_hash = Some(server_hash_password(password)?);
+        password_hash = Some(Password::new_server_hash(password)?);
     }
 
     let mut user = User{
@@ -92,10 +92,10 @@ pub(crate) async fn login(
 ) -> Result<(), ApiError> {
     let settings = state.settings.lock().await;
     let db = state.db.lock().await;
+
     let user: User = db.get_user_by_email(&login_req_opt.email).map_err(|_| ApiError::Unauthorized(Some("Invalid credentials".to_string())))?;
     if let Some(password_hash) = user.password_hash {
-        if password_hash == &login_req_opt.password
-            || password_hash == &client_hash_password(&login_req_opt.password)? {
+        if password_hash.verify(&login_req_opt.password) {
             let jwt_key = settings.get_jwt_key()?;
             let token = generate_token(&jwt_key, user.id, user.role)?;
 
@@ -108,7 +108,7 @@ pub(crate) async fn login(
 
             if let Password::V1(_) = password_hash {
                 println!("Migrating user {} password to V2", user.name);
-                let migration_password = double_hash_password(&login_req_opt.password)?;
+                let migration_password = Password::new_double_hash(&login_req_opt.password)?;
                 db.set_user_password(user.id, &migration_password)?;
             }
 
@@ -131,13 +131,13 @@ pub(crate) async fn change_password(
     authentication: Authenticated
 ) -> Result<(), ApiError> {
     let db = state.db.lock().await;
-    let user_id = authentication.claims.id;
 
+    let user_id = authentication.claims.id;
     let password_hash = db.get_user(user_id)?.password_hash;
 
     if let Some(password_hash) = password_hash {
         if let Some(ref old_password) = change_pass_req.old_password {
-            if password_hash != old_password {
+            if password_hash.verify(old_password) {
                 return Err(ApiError::BadRequest("Old password is incorrect".to_string()))
             }
         } else {
@@ -146,7 +146,7 @@ pub(crate) async fn change_password(
 
     }
 
-    let password_hash = server_hash_password(&change_pass_req.new_password)?;
+    let password_hash = Password::new_server_hash(&change_pass_req.new_password)?;
     db.set_user_password(user_id, &password_hash)
 }
 
@@ -411,7 +411,7 @@ pub(crate) async fn create_user(
     let db = state.db.lock().await;
 
     let password_hash = match payload.password {
-        Some(ref p) => Some(server_hash_password(p)?),
+        Some(ref p) => Some(Password::new_server_hash(p)?),
         None => None,
     };
 

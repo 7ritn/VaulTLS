@@ -1,7 +1,7 @@
 use std::{env, fs};
 use std::path::Path;
 use serde::Serializer;
-use crate::data::enums::Password;
+use crate::auth::password_auth::Password;
 
 /// Serializes a Password to a boolean
 pub fn serialize_password_hash<S>(password_hash: &Option<Password>, s: S) -> Result<S::Ok, S::Error>
