@@ -2,9 +2,11 @@ name: Test
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
   pull_request:
-    branches: [main]
+    branches:
+      - main
   workflow_dispatch:
 
 jobs:
@@ -21,68 +23,32 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # NPM cache
-      - name: Cache NPM
-        uses: actions/cache@v4
-        with:
-          path: ~/.npm
-          key: ${{ runner.os }}-npm-${{ hashFiles('frontend/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-npm-
-
-      # Cargo registry cache
-      - name: Cache Cargo Registry
-        uses: actions/cache@v4
-        with:
-          path: /tmp/cargo/registry
-          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-registry-
-
-      # Cargo git cache
-      - name: Cache Cargo Git
-        uses: actions/cache@v4
-        with:
-          path: /tmp/cargo/git
-          key: ${{ runner.os }}-cargo-git-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-git-
-
-      # Cargo target build cache
-      - name: Cache Cargo Target
-        uses: actions/cache@v4
-        with:
-          path: /tmp/target
-          key: ${{ runner.os }}-cargo-target-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-target-
-
-      # Docker Buildx layer cache
-      - name: Cache Docker Layers
+      - name: Cache Docker layers
         uses: actions/cache@v4
         with:
           path: /tmp/.buildx-cache
-          key: ${{ runner.os }}-buildx-${{ hashFiles('Containerfile') }}
+          key: ${{ runner.os }}-buildx-${{ github.sha }}
           restore-keys: |
             ${{ runner.os }}-buildx-
+
+      - name: Build Docker image with cache
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Containerfile
+          tags: vaultls:test
+          cache-from: type=local,src=/tmp/.buildx-cache
+          cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
+          load: true  # Needed so the image is available to docker-compose locally
+
+      - name: Move new cache to old cache location
+        run: |
+          rm -rf /tmp/.buildx-cache
+          mv /tmp/.buildx-cache-new /tmp/.buildx-cache
 
       - name: Set up Docker Compose
         run: sudo apt-get update && sudo apt-get install -y docker-compose
 
-      - name: Build Docker Image with Cache
-        run: |
-          docker buildx create --use
-          docker buildx build \
-            --file Containerfile.github \
-            --tag vaultls:test \
-            --load \
-            --cache-from type=local,src=/tmp/.buildx-cache \
-            --cache-to type=local,dest=/tmp/.buildx-cache \
-            --build-arg CARGO_REGISTRY_CACHE=/tmp/cargo/registry \
-            --build-arg CARGO_GIT_CACHE=/tmp/cargo/git \
-            --build-arg CARGO_TARGET_DIR=/tmp/target \
-            .
-
-      - name: Run E2E Tests
+      - name: Run Docker Compose for E2E tests
         working-directory: ./tests
         run: docker-compose up --abort-on-container-exit --exit-code-from test
