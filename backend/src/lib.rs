@@ -77,8 +77,8 @@ pub async fn create_rocket() -> Rocket<Build> {
     };
 
     match mailer.is_some() {
-        true => println!("Mail notifications is active."),
-        false => println!("Mail notifications is inactive.")
+        true => println!("Mail notifications are active."),
+        false => println!("Mail notifications are inactive.")
     }
 
     let rocket_secret = get_secret("VAULTLS_API_SECRET").expect("Failed to get VAULTLS_API_SECRET");
@@ -176,8 +176,8 @@ pub async fn create_test_rocket() -> Rocket<Build> {
     };
 
     match mailer.is_some() {
-        true => println!("Mail notifications is active."),
-        false => println!("Mail notifications is inactive.")
+        true => println!("Mail notifications are active."),
+        false => println!("Mail notifications are inactive.")
     }
 
     let app_state = AppState {

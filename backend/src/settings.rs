@@ -174,6 +174,11 @@ pub(crate) struct OIDC {
 }
 
 impl OIDC {
+    /// Check if the OIDC settings are valid.
+    pub(crate) fn is_valid(&self) -> bool {
+        !(self.id.is_empty() || self.secret.is_empty() || self.auth_url.is_empty() || self.callback_url.is_empty())
+    }
+    
     /// Replace OIDC settings with environment variables.
     fn load_from_env(&mut self) {
         let get_env = || -> anyhow::Result<OIDC> {

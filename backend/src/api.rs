@@ -3,6 +3,7 @@ use rocket::{delete, get, post, put, State};
 use rocket::response::Redirect;
 use rocket::serde::json::Json;
 use rocket::http::{Cookie, CookieJar, SameSite};
+use crate::auth::oidc_auth::OidcAuth;
 use crate::auth::password_auth::Password;
 use crate::auth::session_auth::{generate_token, Authenticated, AuthenticatedPrivileged};
 use crate::cert;
@@ -373,8 +374,16 @@ pub(crate) async fn update_settings(
 
     settings.set_settings(&payload).await?;
 
-    if let Some(oidc) = &mut *oidc {
-        oidc.update_config(settings.get_oidc()).await?;
+    let oidc_settings = settings.get_oidc();
+    if oidc_settings.is_valid() {
+        *oidc = OidcAuth::new(oidc_settings).await.ok()
+    } else {
+        *oidc = None;
+    }
+
+    match oidc.is_some() {
+        true => println!("OIDC is active."),
+        false => println!("OIDC is inactive.")
     }
 
     let mut mailer = state.mailer.lock().await;
@@ -383,6 +392,11 @@ pub(crate) async fn update_settings(
         *mailer = Mailer::new(mail_settings, settings.get_vaultls_url()).await.ok()
     } else {
         *mailer = None;
+    }
+
+    match mailer.is_some() {
+        true => println!("Mail notifications are active."),
+        false => println!("Mail notifications are inactive.")
     }
 
     Ok(())
