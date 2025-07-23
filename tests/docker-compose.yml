@@ -2,6 +2,7 @@ version: '3.8'
 
 services:
   vaultls:
+    image: vaultls:test
     build:
       context: ../
       dockerfile: Containerfile
