@@ -35,12 +35,6 @@ impl OidcAuth {
         Ok(OidcAuth{ client_id, client_secret, callback_url, provider, http_client, oidc_state: Default::default() })
     }
 
-    /// Update struct when settings change
-    pub(crate) async fn update_config(&mut self, oidc_config: &OIDC) -> Result<(), anyhow::Error> {
-        *self = OidcAuth::new(oidc_config).await?;
-        Ok(())
-    }
-
     /// Generate OIDC authentication URL
     pub(crate) async fn generate_oidc_url(&mut self) -> Result<Url, anyhow::Error> {
         let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
@@ -112,13 +106,39 @@ impl OidcAuth {
 
         // Use claims from userinfo instead
         let oidc_id = userinfo.subject();
-        let Some(user_name) = userinfo.preferred_username() else { return Err(anyhow!("No user name")) };
-        let Some(user_email) = userinfo.email() else { return Err(anyhow!("No user email")) };
+        let Some(user_email) = userinfo.email().map(|email| email.to_string()) else { return Err(anyhow!("No user email")) };
+
+        let user_name = if let Some(name) = userinfo.preferred_username() {
+            name.to_string()
+        } else {
+            let given_family = if let (Some(given), Some(family)) = (userinfo.given_name(), userinfo.family_name()) {
+                match (given.get(None), family.get(None)) {
+                    (Some(g), Some(f)) => Some(format!(
+                        "{} {}",
+                        g.as_str(),
+                        f.as_str()
+                    )),
+                    _ => None,
+                }
+            } else { None };
+
+            let name = if let Some(name) = userinfo.name() {
+                name.get(None).map(|s| s.to_string())
+            } else { None };
+
+            if let Some(given_family) = given_family {
+                given_family
+            } else if let Some(name) = name {
+                name
+            } else {
+                user_email.clone()
+            }
+        };
 
         Ok(User{
             id: -1,
-            name: user_name.to_string(),
-            email: user_email.to_string(),
+            name: user_name,
+            email: user_email,
             password_hash: None,
             oidc_id: Some(oidc_id.to_string()),
             role: UserRole::User
