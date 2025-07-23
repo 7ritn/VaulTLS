@@ -2,11 +2,9 @@ name: Test
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   pull_request:
-    branches:
-      - main
+    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -20,9 +18,63 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # Set up Docker Buildx
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Cache NPM (Node.js)
+      - name: Cache NPM
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-${{ hashFiles('frontend/package-lock.json') }}
+          restore-keys: ${{ runner.os }}-npm-
+
+      # Cache Cargo registry
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: /usr/local/cargo/registry
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-registry-
+
+      # Cache Cargo Git DB
+      - name: Cache Cargo git db
+        uses: actions/cache@v4
+        with:
+          path: /usr/local/cargo/git
+          key: ${{ runner.os }}-cargo-git-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-git-
+
+      # Cache Cargo target directory (build artifacts)
+      - name: Cache Cargo target
+        uses: actions/cache@v4
+        with:
+          path: backend/target
+          key: ${{ runner.os }}-cargo-target-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-target-
+
+      # Cache Docker buildx cache
+      - name: Cache Docker layers
+        uses: actions/cache@v4
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx-${{ hashFiles('Containerfile') }}
+          restore-keys: ${{ runner.os }}-buildx-
+
       - name: Set up Docker Compose
         run: sudo apt-get update && sudo apt-get install -y docker-compose
 
-      - name: Build and Run Compose
+      - name: Build and Load Docker image with cache
+        run: |
+          docker buildx create --use
+          docker buildx build \
+            --cache-from type=local,src=/tmp/.buildx-cache \
+            --cache-to type=local,dest=/tmp/.buildx-cache \
+            --file Containerfile \
+            --tag myapp:test \
+            --load .
+
+      - name: Run Docker Compose
         working-directory: ./tests
         run: docker-compose up --abort-on-container-exit --exit-code-from test
