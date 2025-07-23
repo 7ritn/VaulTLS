@@ -1,6 +1,27 @@
 import pytest
 from playwright.sync_api import sync_playwright
 import os
+import time
+import requests
+
+MAILHOG_API_URL = "http://mailhog:8025"
+
+def wait_for_email(subject_keyword, timeout=10):
+    start = time.time()
+    while time.time() - start < timeout:
+        res = requests.get(MAILHOG_API_URL + "/api/v2/messages")
+        res.raise_for_status()
+        messages = res.json().get("items", [])
+        for msg in messages:
+            subject = msg['Content']['Headers'].get('Subject', [''])[0]
+            if subject_keyword in subject:
+                return msg
+        time.sleep(1)
+    raise TimeoutError("Expected email not found")
+
+def delete_all_emails():
+    requests.delete(MAILHOG_API_URL + "/api/v1/messages")
+
 
 @pytest.fixture(scope="session")
 def context():
@@ -43,6 +64,8 @@ def page(context):
     return page
 
 def test_certificates(page):
+    delete_all_emails()
+
     page.goto("http://vaultls/overview")
     page.wait_for_url("**/overview")
     assert "Certificates" in page.locator("h1").inner_text()
@@ -50,9 +73,13 @@ def test_certificates(page):
     page.fill("#certName", "test_cert")
     page.select_option("#userId", "1")
     page.fill("#certPassword", "password")
+    page.locator("#notify-user").check()
     page.click("button:has-text('Create Certificate')")
     page.click("#PasswordButton-1")
     assert "password" in page.locator("#PasswordInput-1").input_value()
+
+    time.sleep(1)
+    wait_for_email("VaulTLS")
 
 def test_users(page):
     page.goto("http://vaultls/users")

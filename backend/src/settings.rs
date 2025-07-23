@@ -124,6 +124,31 @@ impl Mail {
     pub(crate) fn is_valid(&self) -> bool {
         !self.smtp_host.is_empty() && self.smtp_port > 0 && !self.from.is_empty()
     }
+
+    /// Replace mail settings with environment variables.
+    fn load_from_env(&mut self) {
+        let get_env = || -> anyhow::Result<Mail> {
+            let host = env::var("VAULTLS_MAIL_HOST")?;
+            let port = env::var("VAULTLS_MAIL_PORT")?;
+            let encryption = env::var("VAULTLS_MAIL_ENCRYPTION").unwrap_or_default().into();
+            let username = env::var("VAULTLS_MAIL_USERNAME").ok();
+            let password = get_secret("VAULTLS_OIDC_SECRET_PASSWORD").ok();
+            let from = env::var("VAULTLS_MAIL_FROM").unwrap_or_default();
+
+            Ok(Mail{
+                smtp_host: host,
+                smtp_port: port.parse().expect("Mail port is not a number"),
+                encryption,
+                username,
+                password,
+                from,
+            })
+        };
+
+        if let Ok(oidc_env) = get_env() {
+            *self = oidc_env;
+        }
+    }
 }
 
 /// Authentication settings for the backend.
@@ -185,6 +210,7 @@ impl Settings {
             .unwrap_or("{}".to_string());
         let mut settings: Self = serde_json::from_str(&settings_string).unwrap_or(Default::default());
         settings.common.load_from_env();
+        settings.mail.load_from_env();
         settings.oidc.load_from_env();
         settings.save_to_file(None).await?;
         Ok(settings)

@@ -62,6 +62,11 @@ pub async fn create_rocket() -> Rocket<Build> {
         }
     };
 
+    match oidc.is_some() {
+        true => println!("OIDC is active."),
+        false => println!("OIDC is inactive.")
+    }
+
     let mail_settings = settings.get_mail();
     let mailer = match mail_settings.is_valid() {
         true => {
@@ -70,6 +75,12 @@ pub async fn create_rocket() -> Rocket<Build> {
         },
         false => None
     };
+
+    match mailer.is_some() {
+        true => println!("Mail notifications is active."),
+        false => println!("Mail notifications is inactive.")
+    }
+
     let rocket_secret = get_secret("VAULTLS_API_SECRET").expect("Failed to get VAULTLS_API_SECRET");
     unsafe { env::set_var("ROCKET_SECRET_KEY", rocket_secret) }
 
@@ -154,7 +165,20 @@ pub async fn create_test_rocket() -> Rocket<Build> {
     let db = VaulTLSDB::new(false, true).expect("Failed opening SQLite database");
     let settings = Settings::default();
     let oidc = None;
-    let mailer = None;
+
+    let mail_settings = settings.get_mail();
+    let mailer = match mail_settings.is_valid() {
+        true => {
+            println!("Mail enabled. Trying to connect to {}.", mail_settings.smtp_host);
+            Mailer::new(mail_settings, settings.get_vaultls_url()).await.ok()
+        },
+        false => None
+    };
+
+    match mailer.is_some() {
+        true => println!("Mail notifications is active."),
+        false => println!("Mail notifications is inactive.")
+    }
 
     let app_state = AppState {
         db: Arc::new(Mutex::new(db)),

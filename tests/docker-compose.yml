@@ -1,16 +1,32 @@
 version: '3.8'
 
 services:
+  mailhog:
+    container_name: mailhog
+    image: mailhog/mailhog:latest
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8025/api/v2/messages" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+
   vaultls:
     image: vaultls:test
     build:
       context: ../
       dockerfile: Containerfile
+    depends_on:
+      mailhog:
+        condition: service_started
     volumes:
       - /app/data
     environment:
       - "VAULTLS_API_SECRET=cpCeMZga+H72Ux99y3v+Ht2IDH2NEClh40UTT4Mrxm4="
       - "VAULTLS_URL=http://localhost:5173/"
+      - "VAULTLS_MAIL_HOST=mailhog"
+      - "VAULTLS_MAIL_PORT=1025"
+      - "VAULTLS_MAIL_FROM=test@vaultls.dev"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost/"]
       interval: 30s

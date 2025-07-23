@@ -33,6 +33,17 @@ pub(crate) enum MailEncryption {
     STARTTLS = 2
 }
 
+impl From<String> for MailEncryption {
+    fn from(value: String) -> Self {
+        match value.to_uppercase().as_str()
+        {
+            "TLS" => MailEncryption::TLS,
+            "STARTTLS" => MailEncryption::STARTTLS,
+            _ => MailEncryption::None
+        }
+    }
+}
+
 #[derive(Serialize_repr, Deserialize_repr, JsonSchema, Clone, Debug, Copy, PartialEq, Eq, Default)]
 #[repr(u8)]
 pub(crate) enum PasswordRule {
