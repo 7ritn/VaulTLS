@@ -18,63 +18,71 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # Set up Docker Buildx
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # Cache NPM (Node.js)
+      # NPM cache
       - name: Cache NPM
         uses: actions/cache@v4
         with:
           path: ~/.npm
           key: ${{ runner.os }}-npm-${{ hashFiles('frontend/package-lock.json') }}
-          restore-keys: ${{ runner.os }}-npm-
+          restore-keys: |
+            ${{ runner.os }}-npm-
 
-      # Cache Cargo registry
-      - name: Cache Cargo registry
+      # Cargo registry cache
+      - name: Cache Cargo Registry
         uses: actions/cache@v4
         with:
-          path: /usr/local/cargo/registry
+          path: /tmp/cargo/registry
           key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-registry-
+          restore-keys: |
+            ${{ runner.os }}-cargo-registry-
 
-      # Cache Cargo Git DB
-      - name: Cache Cargo git db
+      # Cargo git cache
+      - name: Cache Cargo Git
         uses: actions/cache@v4
         with:
-          path: /usr/local/cargo/git
+          path: /tmp/cargo/git
           key: ${{ runner.os }}-cargo-git-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-git-
+          restore-keys: |
+            ${{ runner.os }}-cargo-git-
 
-      # Cache Cargo target directory (build artifacts)
-      - name: Cache Cargo target
+      # Cargo target build cache
+      - name: Cache Cargo Target
         uses: actions/cache@v4
         with:
-          path: backend/target
+          path: /tmp/target
           key: ${{ runner.os }}-cargo-target-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-target-
+          restore-keys: |
+            ${{ runner.os }}-cargo-target-
 
-      # Cache Docker buildx cache
-      - name: Cache Docker layers
+      # Docker Buildx layer cache
+      - name: Cache Docker Layers
         uses: actions/cache@v4
         with:
           path: /tmp/.buildx-cache
           key: ${{ runner.os }}-buildx-${{ hashFiles('Containerfile') }}
-          restore-keys: ${{ runner.os }}-buildx-
+          restore-keys: |
+            ${{ runner.os }}-buildx-
 
       - name: Set up Docker Compose
         run: sudo apt-get update && sudo apt-get install -y docker-compose
 
-      - name: Build and Load Docker image with cache
+      - name: Build Docker Image with Cache
         run: |
           docker buildx create --use
           docker buildx build \
+            --file Containerfile.github \
+            --tag vaultls:test \
+            --load \
             --cache-from type=local,src=/tmp/.buildx-cache \
             --cache-to type=local,dest=/tmp/.buildx-cache \
-            --file Containerfile \
-            --tag myapp:test \
-            --load .
+            --build-arg CARGO_REGISTRY_CACHE=/tmp/cargo/registry \
+            --build-arg CARGO_GIT_CACHE=/tmp/cargo/git \
+            --build-arg CARGO_TARGET_DIR=/tmp/target \
+            .
 
-      - name: Run Docker Compose
+      - name: Run E2E Tests
         working-directory: ./tests
         run: docker-compose up --abort-on-container-exit --exit-code-from test
