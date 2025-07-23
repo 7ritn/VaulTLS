@@ -148,8 +148,7 @@ abort @blocked
 ```
 
 ## Roadmap
-- Hash passwords in Frontend
 - Allow user details to be updated
 - Generate new certificates automatically if the old one expires soon
-- Add testing
+- Improve testing
 - Improve logging
