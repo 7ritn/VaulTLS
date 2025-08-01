@@ -138,7 +138,7 @@ pub(crate) async fn change_password(
 
     if let Some(password_hash) = password_hash {
         if let Some(ref old_password) = change_pass_req.old_password {
-            if password_hash.verify(old_password) {
+            if !password_hash.verify(old_password) {
                 return Err(ApiError::BadRequest("Old password is incorrect".to_string()))
             }
         } else {

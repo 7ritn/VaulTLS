@@ -2,7 +2,7 @@ import { defineStore } from 'pinia';
 import {change_password, current_user, login, logout} from "@/api/auth.ts";
 import type {ChangePasswordReq} from "@/types/Login.ts";
 import {type User, UserRole} from "@/types/User.ts";
-import {argon2id, argon2Verify} from 'hash-wasm';
+import {argon2Verify} from 'hash-wasm';
 import {hashPassword} from "@/utils/hash.ts";
 
 export const useAuthStore = defineStore('auth', {
@@ -76,9 +76,15 @@ export const useAuthStore = defineStore('auth', {
         },
 
         // Change the password of the current user
-        async changePassword(changePasswordReq: ChangePasswordReq) {
+        async changePassword(oldPassword: string, newPassword: string) {
             try {
                 this.error = null;
+                const oldHash = await hashPassword(oldPassword);
+                const newHash = await hashPassword(newPassword);
+                const changePasswordReq: ChangePasswordReq = {
+                    old_password: oldHash,
+                    new_password: newHash,
+                };
                 await change_password(changePasswordReq);
                 return true;
             } catch (err) {

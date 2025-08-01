@@ -274,11 +274,7 @@ const saved_successfully = ref(false);
 
 // Methods
 const changePassword = async () => {
-  const req = {
-    old_password: changePasswordReq.value.oldPassword,
-    new_password: changePasswordReq.value.newPassword,
-  };
-  await authStore.changePassword(req);
+  await authStore.changePassword(changePasswordReq.value.oldPassword, changePasswordReq.value.newPassword);
   showPasswordDialog.value = false;
   changePasswordReq.value = { oldPassword: '', newPassword: '' };
   confirmPassword.value = '';
