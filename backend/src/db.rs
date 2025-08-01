@@ -11,10 +11,12 @@ use rusqlite::{params, Connection, Result};
 use rusqlite_migration::Migrations;
 use std::fs;
 use std::path::Path;
+use tracing::{debug, info, trace, warn};
 use crate::auth::password_auth::Password;
 
 static MIGRATIONS_DIR: Dir = include_dir!("$CARGO_MANIFEST_DIR/migrations");
 
+#[derive(Debug)]
 pub(crate) struct VaulTLSDB {
     connection: Connection
 }
@@ -32,11 +34,13 @@ impl VaulTLSDB {
         let mut connection = if !mem {
             Connection::open(DB_FILE_PATH)?
         } else {
+            debug!("Opening in-memory database");
             Connection::open_in_memory()?
         };
         
         let db_secret = get_secret("VAULTLS_DB_SECRET");
         if db_encrypted {
+            debug!("Using encrypted database");
             if let Ok(ref db_secret) = db_secret {
                 connection.pragma_update(None, "key", db_secret)?;
             } else {
@@ -47,6 +51,7 @@ impl VaulTLSDB {
         connection.pragma_update(None, "foreign_keys", "ON")?;
         // This if statement can be removed in a future version
         if db_initialized {
+            debug!("Correcting user_version of database");
             let user_version: i32 = connection
                 .pragma_query_value(None, "user_version", |row| row.get(0))
                 .expect("Failed to get PRAGMA user_version");
@@ -60,10 +65,10 @@ impl VaulTLSDB {
 
         if !db_encrypted {
             if let Ok(ref db_secret) = db_secret {
-                println!("Migrating to encrypted database");
                 Self::create_encrypt_db(&connection, db_secret)?;
                 drop(connection);
                 let conn = Self::migrate_to_encrypted_db(db_secret)?;
+                info!("Migrated to encrypted database");
                 return Ok(Self { connection: conn});
             }
         }
@@ -105,6 +110,7 @@ impl VaulTLSDB {
     fn migrate_database(conn: &mut Connection) -> Result<()> {
         let migrations = Migrations::from_directory(&MIGRATIONS_DIR).expect("Failed to load migrations");
         migrations.to_latest(conn).expect("Failed to migrate database");
+        debug!("Database migrated to latest version");
 
         Ok(())
     }
@@ -326,12 +332,12 @@ impl VaulTLSDB {
         ).ok();
 
         if let Some(existing_oidc_user) = existing_oidc_user_option {
-            // User with the correct OIDC_ID exists
+            trace!("User with OIDC_ID {:?} already exists", user.oidc_id);
             user.id = existing_oidc_user.0;
             user.role = existing_oidc_user.1;
             Ok(())
         } else {
-            // User with the correct OIDC_ID does not exist
+            debug!("User with OIDC_ID {:?} does not exists", user.oidc_id);
             let existing_local_user_option = self.connection.query_row(
                 "SELECT id, oidc_id, role FROM users WHERE email=?1",
                 params![user.email],
@@ -343,12 +349,12 @@ impl VaulTLSDB {
                 }
             ).ok();
             if let Some(existing_local_user_option) = existing_local_user_option {
-                // Local user account exists
+                debug!("OIDC user matched with local account {:?}", existing_local_user_option.0);
                 if existing_local_user_option.1.is_some() {
-                    // Local user account has already a different OIDC_ID
+                    warn!("OIDC user matched with local account but has different OIDC ID already");
                     Err(ApiError::Unauthorized(Some("OIDC Subject ID mismatch".to_string())))
                 } else {
-                    // Local user account does not have a OIDC_ID
+                    debug!("Adding OIDC_ID {:?} to local account {:?}", user.oidc_id, existing_local_user_option.0);
                     self.connection.execute(
                         "UPDATE users SET oidc_id = ?1 WHERE id=?2",
                         params![user.oidc_id, existing_local_user_option.0]
@@ -358,7 +364,7 @@ impl VaulTLSDB {
                     Ok(())
                 }
             } else {
-                // Local user account does not exist
+                debug!("New local account is created for OIDC user");
                 self.add_user(user)
             }
         }

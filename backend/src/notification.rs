@@ -8,6 +8,7 @@ use crate::data::enums::MailEncryption;
 use crate::settings::Mail;
 use crate::cert::Certificate;
 
+#[derive(Debug)]
 pub(crate) struct Mailer{
     mailer: AsyncSmtpTransport<Tokio1Executor>,
     from: Mailbox,
@@ -15,6 +16,7 @@ pub(crate) struct Mailer{
 }
 
 /// A struct representing the message to be sent to the user
+#[derive(Debug)]
 pub(crate) struct MailMessage {
     pub(crate) to: String,
     pub(crate) subject: String,

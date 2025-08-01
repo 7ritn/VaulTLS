@@ -21,7 +21,7 @@ use crate::data::enums::CertificateType;
 use crate::data::enums::CertificateType::{Client, Server, CA};
 use crate::ApiError;
 
-#[derive(Default, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Default, Clone, Serialize, Deserialize, JsonSchema, Debug)]
 /// Certificate can be either CA or user certificate.
 /// Iff CA, cert and key must be set.
 /// Iff user cert, pkcs12 must be set.

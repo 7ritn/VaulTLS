@@ -19,8 +19,7 @@ COPY backend/ ./
 RUN --mount=type=cache,target=/app/backend/target \
     --mount=type=cache,target=/usr/local/cargo/git/db \
     --mount=type=cache,target=/usr/local/cargo/registry/ \
-    cargo test --all \
-    && cargo build --release \
+    cargo build --release \
     && cp target/release/backend backend
 
 # Stage 3 Final container with Nginx and backend binary

@@ -3,6 +3,7 @@ use rocket::{delete, get, post, put, State};
 use rocket::response::Redirect;
 use rocket::serde::json::Json;
 use rocket::http::{Cookie, CookieJar, SameSite};
+use tracing::{trace, debug, info, warn};
 use crate::auth::oidc_auth::OidcAuth;
 use crate::auth::password_auth::Password;
 use crate::auth::session_auth::{generate_token, Authenticated, AuthenticatedPrivileged};
@@ -52,6 +53,7 @@ pub(crate) async fn setup(
     let db = state.db.lock().await;
 
     if db.is_setup() {
+        warn!("Server is already setup.");
         return Err(ApiError::Unauthorized(None))
     }
 
@@ -80,6 +82,8 @@ pub(crate) async fn setup(
     save_ca(&ca)?;
     db.insert_ca(&mut ca)?;
 
+    info!("VaulTLS was successfully set up.");
+
     Ok(())
 }
 
@@ -94,7 +98,10 @@ pub(crate) async fn login(
     let settings = state.settings.lock().await;
     let db = state.db.lock().await;
 
-    let user: User = db.get_user_by_email(&login_req_opt.email).map_err(|_| ApiError::Unauthorized(Some("Invalid credentials".to_string())))?;
+    let user: User = db.get_user_by_email(&login_req_opt.email).map_err(|_| {
+        warn!(user=login_req_opt.email, "Invalid email");
+        ApiError::Unauthorized(Some("Invalid credentials".to_string()))
+    })?;
     if let Some(password_hash) = user.password_hash {
         if password_hash.verify(&login_req_opt.password) {
             let jwt_key = settings.get_jwt_key()?;
@@ -105,10 +112,10 @@ pub(crate) async fn login(
                 .same_site(SameSite::Lax);
             jar.add_private(cookie);
 
-            println!("Login successful for user {}", user.name);
+            info!(user=user.name, "Successful password-based user login.");
 
             if let Password::V1(_) = password_hash {
-                println!("Migrating user {} password to V2", user.name);
+                info!(user=user.name, "Migrating a user' password to V2.");
                 let migration_password = Password::new_double_hash(&login_req_opt.password)?;
                 db.set_user_password(user.id, &migration_password)?;
             }
@@ -120,6 +127,7 @@ pub(crate) async fn login(
             return Err(ApiError::Conflict(hash_string.to_string()))
         }
     }
+    warn!(user=user.name, "Invalid password");
     Err(ApiError::Unauthorized(Some("Invalid credentials".to_string())))
 }
 
@@ -134,28 +142,34 @@ pub(crate) async fn change_password(
     let db = state.db.lock().await;
 
     let user_id = authentication.claims.id;
-    let password_hash = db.get_user(user_id)?.password_hash;
+    let user = db.get_user(user_id)?;
+    let password_hash = user.password_hash;
 
     if let Some(password_hash) = password_hash {
         if let Some(ref old_password) = change_pass_req.old_password {
             if !password_hash.verify(old_password) {
+                warn!(user=user.name, "Password Change: Old password is incorrect");
                 return Err(ApiError::BadRequest("Old password is incorrect".to_string()))
             }
         } else {
+            warn!(user=user.name, "Password Change: Old password is required");
             return Err(ApiError::BadRequest("Old password is required".to_string()))
         }
-
     }
 
     let password_hash = Password::new_server_hash(&change_pass_req.new_password)?;
-    db.set_user_password(user_id, &password_hash)
+    db.set_user_password(user_id, &password_hash)?;
+
+    info!(user=user.name, "Password Change: Success");
+
+    Ok(())
 }
 
 #[openapi(tag = "Authentication")]
 #[post("/auth/logout")]
 /// Endpoint to logout.
 pub(crate) async fn logout(
-    jar: &CookieJar<'_>,
+    jar: &CookieJar<'_>
 ) -> Result<(), ApiError> {
     jar.remove_private(Cookie::build(("name", "auth_token")));
     Ok(())
@@ -172,10 +186,14 @@ pub(crate) async fn oidc_login(
     match &mut *oidc_option {
         Some(oidc) => {
             let url = oidc.generate_oidc_url().await?;
+            debug!(url=?url, "Redirecting to OIDC login URL");
             Ok(Redirect::to(url.to_string()))
 
         }
-        None => { Err(ApiError::BadRequest("OIDC not configured".to_string())) },
+        None => {
+            warn!("A user tried to login with OIDC, but OIDC is not configured.");
+            Err(ApiError::BadRequest("OIDC not configured".to_string()))
+        },
     }
 }
 
@@ -193,6 +211,7 @@ pub(crate) async fn oidc_callback(
 
     match &mut *oidc_option {
         Some(oidc) => {
+            trace!("Verifying OIDC authentication code.");
             let mut user = oidc.verify_auth_code(response.code.to_string(), response.state.to_string()).await?;
 
             db.register_oidc_user(&mut user)?;
@@ -204,6 +223,8 @@ pub(crate) async fn oidc_callback(
                 .http_only(true)
                 .same_site(SameSite::Lax);
             jar.add_private(auth_cookie);
+
+            info!(user=user.name, "Successful oidc-based user login");
 
             Ok(Redirect::to("/overview?oidc=success"))
         }
@@ -248,14 +269,17 @@ pub(crate) async fn create_user_certificate(
     _authentication: AuthenticatedPrivileged
 ) -> Result<Json<Certificate>, ApiError> {
     let settings = state.settings.lock().await;
-
     let db = state.db.lock().await;
+
+    debug!(cert_name=?payload.cert_name, "Creating certificate");
 
     let use_random_password = if settings.password_rule() == PasswordRule::System
         || (settings.password_rule() == PasswordRule::Required
             && payload.pkcs12_password.as_deref().unwrap_or("").trim().is_empty()) {
+        debug!(cert_name=?payload.cert_name, "Using system-supplied password");
         true
     } else {
+        debug!(cert_name=?payload.cert_name, "Using user-supplied password");
         payload.system_generated_password
     };
 
@@ -273,8 +297,10 @@ pub(crate) async fn create_user_certificate(
         }
     };
 
-
     db.insert_user_cert(&mut cert)?;
+
+    info!(cert=cert.name, "New certificate created.");
+    trace!("{:?}", cert);
 
     if Some(true) == payload.notify_user {
         let user = db.get_user(payload.user_id)?;
@@ -284,6 +310,8 @@ pub(crate) async fn create_user_certificate(
             username: user.name,
             certificate: cert.clone()
         };
+
+        debug!(mail=?mail, "Sending mail notification");
 
         let mailer = state.mailer.clone();
         tokio::spawn(async move {
@@ -382,8 +410,8 @@ pub(crate) async fn update_settings(
     }
 
     match oidc.is_some() {
-        true => println!("OIDC is active."),
-        false => println!("OIDC is inactive.")
+        true => info!("OIDC is active."),
+        false => info!("OIDC is inactive.")
     }
 
     let mut mailer = state.mailer.lock().await;
@@ -395,9 +423,11 @@ pub(crate) async fn update_settings(
     }
 
     match mailer.is_some() {
-        true => println!("Mail notifications are active."),
-        false => println!("Mail notifications are inactive.")
+        true => info!("Mail notifications are active."),
+        false => info!("Mail notifications are inactive.")
     }
+
+    info!("Settings updated.");
 
     Ok(())
 }
@@ -440,6 +470,9 @@ pub(crate) async fn create_user(
 
     db.add_user(&mut user)?;
 
+    info!(user=?user, "User created.");
+    trace!("{:?}", user);
+
     Ok(Json(user.id))
 }
 
@@ -465,7 +498,12 @@ pub(crate) async fn update_user(
         ..payload.into_inner()
     };
     let db = state.db.lock().await;
-    Ok(db.update_user(&user)?)
+    db.update_user(&user)?;
+
+    info!(user=?user, "User updated.");
+    trace!("{:?}", user);
+
+    Ok(())
 }
 
 #[openapi(tag = "Users")]
@@ -478,5 +516,8 @@ pub(crate) async fn delete_user(
 ) -> Result<(), ApiError> {
     let db = state.db.lock().await;
     db.delete_user(id)?;
+
+    info!(user=?id, "User deleted.");
+
     Ok(())
 }

@@ -10,7 +10,7 @@ use crate::db::VaulTLSDB;
 use crate::notification::Mailer;
 use crate::settings::Settings;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct AppState {
     pub(crate) db: Arc<Mutex<VaulTLSDB>>,
     pub(crate) settings: Arc<Mutex<Settings>>,

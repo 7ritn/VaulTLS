@@ -16,7 +16,7 @@ use crate::ApiError;
 use crate::helper::get_secret;
 
 /// Settings for the backend.
-#[derive(Serialize, Deserialize, JsonSchema, Clone, Default)]
+#[derive(Serialize, Deserialize, JsonSchema, Clone, Default, Debug)]
 pub(crate) struct Settings {
     #[serde(default)]
     mail: Mail,

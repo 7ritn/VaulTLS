@@ -37,6 +37,10 @@ podman run -d \
 ### Encrypting the Database
 By specifying the `VAULTLS_DB_SECRET` environmental variable, the database is encrypted. Data is retained. It is not possible to go back.
 
+### Specifying log level
+The default log level is moderate. If a different one is desired, please specify it using the `VAULTLS_LOG_LEVEL` environmental variable.
+For bug reports, a trace log report is desirable. Be aware that the trace does contain secrets.
+
 ### Setting up OIDC
 To set up OIDC you need to create a new client in your authentication provider. For Authelia a configuration could look like this
 ```yaml
@@ -151,4 +155,3 @@ abort @blocked
 - Allow user details to be updated
 - Generate new certificates automatically if the old one expires soon
 - Improve testing
-- Improve logging
