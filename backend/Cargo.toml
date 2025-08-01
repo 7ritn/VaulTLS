@@ -15,7 +15,7 @@ path = "src/lib.rs"
 rocket = { version = "0.5", features = ["json", "secrets"] }
 rocket_cors = "0.6"
 rocket_okapi = { version = "0.9", features = ["secrets", "rapidoc"] }
-schemars = { version = "0.8", features = ["derive"] }
+schemars = { version = "1.0", features = ["derive"] }
 serde = "1.0"
 serde_json = "1.0"
 serde_repr = "0.1"
