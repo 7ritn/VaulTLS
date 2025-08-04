@@ -1,4 +1,4 @@
-use crate::cert::Certificate;
+use crate::cert::{Certificate, CA};
 use crate::constants::{DB_FILE_PATH, TEMP_DB_FILE_PATH};
 use crate::data::enums::UserRole;
 use crate::data::objects::User;
@@ -119,30 +119,29 @@ impl VaulTLSDB {
     /// Adds id to the Certificate struct
     pub(crate) fn insert_ca(
         &self,
-        ca: &mut Certificate
+        ca: &mut CA
     ) -> Result<(), rusqlite::Error> {
         self.connection.execute(
             "INSERT INTO ca_certificates (created_on, valid_until, certificate, key) VALUES (?1, ?2, ?3, ?4)",
             params![ca.created_on, ca.valid_until, ca.cert, ca.key],
         )?;
         
-        ca.ca_id = self.connection.last_insert_rowid();
+        ca.id = self.connection.last_insert_rowid();
 
         Ok(())
     }
 
     /// Retrieve the most recent CA entry from the database
-    pub(crate) fn get_current_ca(&self) -> Result<Certificate, ApiError> {
+    pub(crate) fn get_current_ca(&self) -> Result<CA, ApiError> {
         let mut stmt = self.connection.prepare("SELECT * FROM ca_certificates ORDER BY id DESC LIMIT 1")?;
 
         stmt.query_row([], |row| {
-            Ok(Certificate{
+            Ok(CA{
                 id: row.get(0)?,
                 created_on: row.get(1)?,
                 valid_until: row.get(2)?,
                 cert: row.get(3)?,
-                key: row.get(4)?,
-                ..Default::default()
+                key: row.get(4)?
             })
         }).map_err(|_| ApiError::BadRequest("VaulTLS has not been set-up yet".to_string()))
     }
@@ -152,8 +151,8 @@ impl VaulTLSDB {
     /// If user_id is None, all certificates are returned
     pub(crate) fn get_all_user_cert(&self, user_id: Option<i64>) -> Result<Vec<Certificate>, rusqlite::Error>{
         let query = match user_id {
-            Some(_) => "SELECT id, name, created_on, valid_until, pkcs12, pkcs12_password, user_id, type FROM user_certificates WHERE user_id = ?1",
-            None => "SELECT id, name, created_on, valid_until, pkcs12, pkcs12_password, user_id, type FROM user_certificates"
+            Some(_) => "SELECT id, name, created_on, valid_until, pkcs12, pkcs12_password, user_id, type, renew_method FROM user_certificates WHERE user_id = ?1",
+            None => "SELECT id, name, created_on, valid_until, pkcs12, pkcs12_password, user_id, type, renew_method FROM user_certificates"
         };
         let mut stmt = self.connection.prepare(query)?;
         let rows = match user_id {
@@ -170,6 +169,7 @@ impl VaulTLSDB {
                     pkcs12_password: row.get(5).unwrap_or_default(),
                     user_id: row.get(6)?,
                     certificate_type: row.get(7)?,
+                    renew_method: row.get(8)?,
                     ..Default::default()
                 })
             })
@@ -202,8 +202,8 @@ impl VaulTLSDB {
     /// Adds id to Certificate struct
     pub(crate) fn insert_user_cert(&self, cert: &mut Certificate) -> Result<(), rusqlite::Error> {
         self.connection.execute(
-            "INSERT INTO user_certificates (name, created_on, valid_until, pkcs12, pkcs12_password, type, ca_id, user_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-            params![cert.name, cert.created_on, cert.valid_until, cert.pkcs12, cert.pkcs12_password, cert.certificate_type as u8, cert.ca_id, cert.user_id],
+            "INSERT INTO user_certificates (name, created_on, valid_until, pkcs12, pkcs12_password, type, renew_method, ca_id, user_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            params![cert.name, cert.created_on, cert.valid_until, cert.pkcs12, cert.pkcs12_password, cert.certificate_type as u8, cert.renew_method as u8, cert.ca_id, cert.user_id],
         )?;
         
         cert.id = self.connection.last_insert_rowid();

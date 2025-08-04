@@ -58,8 +58,7 @@ pub(crate) enum PasswordRule {
 pub enum CertificateType {
     #[default]
     Client = 0,
-    Server = 1,
-    CA = 2
+    Server = 1
 }
 
 impl FromSql for CertificateType {
@@ -68,6 +67,29 @@ impl FromSql for CertificateType {
             ValueRef::Integer(i) => {
                 let value = i as u8;
                 CertificateType::try_from(value)
+                    .map_err(|_| FromSqlError::InvalidType)
+            },
+            _ => Err(FromSqlError::InvalidType),
+        }
+    }
+}
+
+#[derive(Serialize_repr, Deserialize_repr, JsonSchema, TryFromPrimitive, Clone, Debug, Copy, PartialEq, Eq, Default)]
+#[repr(u8)]
+pub enum CertificateRenewMethod {
+    #[default]
+    None = 0,
+    Remind = 1,
+    Renew = 2,
+    RenewAndNotify = 3
+}
+
+impl FromSql for CertificateRenewMethod {
+    fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
+        match value {
+            ValueRef::Integer(i) => {
+                let value = i as u8;
+                CertificateRenewMethod::try_from(value)
                     .map_err(|_| FromSqlError::InvalidType)
             },
             _ => Err(FromSqlError::InvalidType),

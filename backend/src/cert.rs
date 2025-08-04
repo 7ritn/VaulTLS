@@ -1,6 +1,6 @@
 use std::fs;
 use std::time::{SystemTime, UNIX_EPOCH};
-
+use anyhow::anyhow;
 use openssl::asn1::{Asn1Integer, Asn1Time};
 use openssl::bn::BigNum;
 use openssl::ec::{EcGroup, EcKey};
@@ -17,14 +17,12 @@ use passwords::PasswordGenerator;
 use rocket_okapi::JsonSchema;
 use serde::{Deserialize, Serialize};
 use crate::constants::CA_FILE_PATH;
-use crate::data::enums::CertificateType;
-use crate::data::enums::CertificateType::{Client, Server, CA};
+use crate::data::enums::{CertificateRenewMethod, CertificateType};
+use crate::data::enums::CertificateType::{Client, Server};
 use crate::ApiError;
 
 #[derive(Default, Clone, Serialize, Deserialize, JsonSchema, Debug)]
 /// Certificate can be either CA or user certificate.
-/// Iff CA, cert and key must be set.
-/// Iff user cert, pkcs12 must be set.
 pub struct Certificate {
     pub id: i64,
     pub name: String,
@@ -32,220 +30,212 @@ pub struct Certificate {
     pub valid_until: i64,
     pub certificate_type: CertificateType,
     pub user_id: i64,
+    pub renew_method: CertificateRenewMethod,
     #[serde(skip)]
     pub pkcs12: Vec<u8>,
     #[serde(skip)]
     pub pkcs12_password: String,
     #[serde(skip)]
-    pub cert: Vec<u8>,
-    #[serde(skip)]
-    pub key: Vec<u8>,
-    #[serde(skip)]
     pub ca_id: i64,
 }
 
-/// Creates a new CA certificate.
-pub(crate) fn create_ca(
-    ca_name: &str,
-    ca_validity_in_years: u64
-) -> Result<Certificate, ErrorStack> {
-    let private_key = generate_private_key()?;
-    let subject_name = create_cn(ca_name)?;
-    let asn1_serial = generate_serial_number()?;
-
-    let (created_on_unix, created_on_openssl) = get_timestamp(0)?;
-    let (valid_until_unix, valid_until_openssl) = get_timestamp(ca_validity_in_years)?;
-
-    let basic_constraints = BasicConstraints::new().ca().build()?;
-
-    let key_usage = KeyUsage::new()
-        .key_cert_sign()
-        .crl_sign()
-        .build()?;
-
-    let mut ca_builder = X509Builder::new()?;
-    ca_builder.set_version(2)?; // X509 v3
-    ca_builder.set_subject_name(&subject_name)?;
-    ca_builder.set_issuer_name(&subject_name)?;
-    ca_builder.set_serial_number(&asn1_serial)?;
-    ca_builder.set_pubkey(&private_key)?;
-    ca_builder.set_not_before(&created_on_openssl)?;
-    ca_builder.set_not_after(&valid_until_openssl)?;
-    ca_builder.append_extension(basic_constraints)?;
-    ca_builder.append_extension(key_usage)?;
-
-    let subject_key_identifier = SubjectKeyIdentifier::new().build(&ca_builder.x509v3_context(None, None))?;
-    ca_builder.append_extension(subject_key_identifier)?;
-    let authority_key_identifier = AuthorityKeyIdentifier::new().keyid(true).build(&ca_builder.x509v3_context(None, None))?;
-    ca_builder.append_extension(authority_key_identifier)?;
-
-    ca_builder.sign(&private_key, MessageDigest::sha256())?;
-
-    let certificate = ca_builder.build();
-    
-    Ok(Certificate{
-        created_on: created_on_unix,
-        valid_until: valid_until_unix,
-        certificate_type: CA,
-        cert: certificate.to_der()?,
-        key: private_key.private_key_to_der()?,
-        ..Default::default()
-    })
+#[derive(Clone, Serialize, Deserialize, JsonSchema, Debug)]
+pub struct CA {
+    pub id: i64,
+    pub created_on: i64,
+    pub valid_until: i64,
+    #[serde(skip)]
+    pub cert: Vec<u8>,
+    #[serde(skip)]
+    pub key: Vec<u8>,
 }
 
-/// Creates a new user certificate.
-pub(crate) fn create_user_cert(
-    ca: &Certificate,
-    name: &str,
-    validity_in_years: u64,
-    user_id: i64,
-    user_email: &str,
-    system_generated_password: bool,
-    pkcs12_password: &Option<String>
-) -> Result<Certificate, ErrorStack> {
-    let ca_cert = X509::from_der(&ca.cert)?;
-    let ca_key = PKey::private_key_from_der(&ca.key)?;
-
-    let user_key = generate_private_key()?;
-    let subject_name = create_cn(name)?;
-
-    let key_usage = KeyUsage::new()
-        .digital_signature()
-        .key_encipherment()
-        .build()?;
-
-    let ext_key_usage = ExtendedKeyUsage::new()
-        .client_auth()
-        .build()?;
-
-    let basic_constraints = BasicConstraints::new().build()?;
-
-    let (created_on_unix, created_on_openssl) = get_timestamp(0)?;
-    let (valid_until_unix, valid_until_openssl) = get_timestamp(validity_in_years)?;
-
-    let serial = generate_serial_number()?;
-
-    let mut user_cert_builder = X509Builder::new()?;
-    user_cert_builder.set_version(2)?; // X509 v3
-    user_cert_builder.set_subject_name(&subject_name)?;
-    user_cert_builder.set_issuer_name(ca_cert.subject_name())?;
-    user_cert_builder.set_serial_number(&serial)?;
-    user_cert_builder.set_pubkey(&user_key)?;
-    user_cert_builder.set_not_before(created_on_openssl.as_ref())?;
-    user_cert_builder.set_not_after(valid_until_openssl.as_ref())?;
-    user_cert_builder.append_extension(key_usage)?;
-    user_cert_builder.append_extension(ext_key_usage)?;
-    user_cert_builder.append_extension(basic_constraints)?;
-
-    let san = SubjectAlternativeName::new()
-        .email(user_email)
-        .build(&user_cert_builder.x509v3_context(None, None))?;
-    user_cert_builder.append_extension(san)?;
-    
-    user_cert_builder.sign(&ca_key, MessageDigest::sha256())?;
-
-    let user_cert = user_cert_builder.build();
-
-    let mut ca_stack = Stack::new()?;
-    ca_stack.push(ca_cert.clone())?;
-    
-    let password = get_password(system_generated_password, pkcs12_password);
-
-    // Create the PKCS#12 structure
-    let pkcs12 = Pkcs12::builder()
-        .name(name)
-        .ca(ca_stack)
-        .cert(&user_cert)
-        .pkey(&user_key)
-        .build2(&password)?;
-
-    Ok(Certificate{
-        name: name.to_string(),
-        created_on: created_on_unix,
-        valid_until: valid_until_unix,
-        certificate_type: Client,
-        pkcs12: pkcs12.to_der()?,
-        pkcs12_password: password.to_string(),
-        ca_id: ca.id,
-        user_id,
-        ..Default::default()
-    })
+pub struct CertificateBuilder {
+    x509: X509Builder,
+    private_key: PKey<Private>,
+    created_on: i64,
+    valid_until: Option<i64>,
+    name: Option<String>,
+    pkcs12_password: String,
+    ca: Option<(i64, X509, PKey<Private>)>,
+    user_id: Option<i64>,
+    renew_method: CertificateRenewMethod
 }
+impl CertificateBuilder {
+    pub fn new() -> Result<Self, anyhow::Error> {
+        let private_key = generate_private_key()?;
+        let asn1_serial = generate_serial_number()?;
+        let (created_on_unix, created_on_openssl) = get_timestamp(0)?;
 
-/// Creates a new server certificate.
-pub(crate) fn create_server_cert(
-    ca: &Certificate,
-    common_name: &str,
-    dns_names: &Vec<String>,
-    validity_in_years: u64,
-    system_generated_password: bool,
-    pkcs12_password: &Option<String>,
-    user_id: i64
-) -> Result<Certificate, ErrorStack> {
-    let ca_cert = X509::from_der(&ca.cert)?;
-    let ca_key = PKey::private_key_from_der(&ca.key)?;
+        let mut x509 = X509Builder::new()?;
+        x509.set_version(2)?;
+        x509.set_serial_number(&asn1_serial)?;
+        x509.set_not_before(&created_on_openssl)?;
+        x509.set_pubkey(&private_key)?;
 
-    let server_key = generate_private_key()?;
-    let subject_name = create_cn(common_name)?;
-    let serial = generate_serial_number()?;
-    
-    let (created_on_unix, not_before) = get_timestamp(0)?;
-    let (valid_until_unix, not_after) = get_timestamp(validity_in_years)?;
-
-    let key_usage = KeyUsage::new()
-        .digital_signature()
-        .key_encipherment()
-        .build()?;
-
-    let ext_key_usage = ExtendedKeyUsage::new()
-        .server_auth()
-        .build()?;
-
-    let basic_constraints = BasicConstraints::new().critical().build()?;
-
-    let mut cert_builder = X509Builder::new()?;
-    cert_builder.set_version(2)?;
-    cert_builder.set_subject_name(&subject_name)?;
-    cert_builder.set_issuer_name(ca_cert.subject_name())?;
-    cert_builder.set_serial_number(&serial)?;
-    cert_builder.set_pubkey(&server_key)?;
-    cert_builder.set_not_before(not_before.as_ref())?;
-    cert_builder.set_not_after(not_after.as_ref())?;
-    cert_builder.append_extension(basic_constraints)?;
-    cert_builder.append_extension(key_usage)?;
-    cert_builder.append_extension(ext_key_usage)?;
-
-    let mut san_builder = SubjectAlternativeName::new();
-    for dns in dns_names {
-        san_builder.dns(dns);
+        Ok(Self {
+            x509,
+            private_key,
+            created_on: created_on_unix,
+            valid_until: None,
+            name: None,
+            pkcs12_password: String::new(),
+            ca: None,
+            user_id: None,
+            renew_method: Default::default()
+        })
     }
-    let san = san_builder.build(&cert_builder.x509v3_context(Some(&ca_cert), None))?;
-    cert_builder.append_extension(san)?;
 
-    cert_builder.sign(&ca_key, MessageDigest::sha256())?;
-    let server_cert = cert_builder.build();
+    pub fn set_name(mut self, name: &str) -> Result<Self, anyhow::Error> {
+        self.name = Some(name.to_string());
+        let common_name = create_cn(name)?;
+        self.x509.set_subject_name(&common_name)?;
+        Ok(self)
+    }
 
-    let mut ca_stack = Stack::new()?;
-    ca_stack.push(ca_cert.clone())?;
-    let password = get_password(system_generated_password, pkcs12_password);
-    let pkcs12 = Pkcs12::builder()
-        .name(common_name)
-        .ca(ca_stack)
-        .cert(&server_cert)
-        .pkey(&server_key)
-        .build2(password.as_ref())?;
+    pub fn set_valid_until(mut self, years: u64) -> Result<Self, anyhow::Error> {
+        let (valid_until_unix, valid_until_openssl) = get_timestamp(years)?;
+        self.valid_until = Some(valid_until_unix);
+        self.x509.set_not_after(&valid_until_openssl)?;
+        Ok(self)
+    }
 
-    Ok(Certificate {
-        name: common_name.to_string(),
-        created_on: created_on_unix,
-        valid_until: valid_until_unix,
-        certificate_type: Server,
-        pkcs12: pkcs12.to_der()?,
-        pkcs12_password: password.to_string(),
-        ca_id: ca.id,
-        user_id,
-        ..Default::default()
-    })
+    pub fn set_pkcs12_password(mut self, password: &str) -> Result<Self, anyhow::Error> {
+        self.pkcs12_password = password.to_string();
+        Ok(self)
+    }
+
+    pub fn set_dns_san(mut self, dns_names: &Vec<String>) -> Result<Self, anyhow::Error> {
+        let mut san_builder = SubjectAlternativeName::new();
+        for dns in dns_names {
+            san_builder.dns(dns);
+        }
+        let san = san_builder.build(&self.x509.x509v3_context(None, None))?;
+        self.x509.append_extension(san)?;
+
+        Ok(self)
+    }
+
+    pub fn set_email_san(mut self, email: &str) -> Result<Self, anyhow::Error> {
+        let san = SubjectAlternativeName::new()
+            .email(email)
+            .build(&self.x509.x509v3_context(None, None))?;
+        self.x509.append_extension(san)?;
+
+        Ok(self)
+    }
+
+    pub fn set_ca(mut self, ca: &CA) -> Result<Self, anyhow::Error> {
+        let ca_cert = X509::from_der(&ca.cert)?;
+        let ca_key = PKey::private_key_from_der(&ca.key)?;
+        self.ca = Some((ca.id, ca_cert, ca_key));
+        Ok(self)
+    }
+
+    pub fn set_user_id(mut self, user_id: i64) -> Result<Self, anyhow::Error> {
+        self.user_id = Some(user_id);
+        Ok(self)
+    }
+
+    pub fn set_renew_method(mut self, renew_method: CertificateRenewMethod) -> Result<Self, anyhow::Error> {
+        self.renew_method = renew_method;
+        Ok(self)
+    }
+
+    pub fn build_ca(mut self) -> Result<CA, anyhow::Error> {
+        let name = self.name.ok_or(anyhow!("X509: name not set"))?;
+        let valid_until = self.valid_until.ok_or(anyhow!("X509: valid_until not set"))?;
+
+        let cn = create_cn(&name)?;
+        self.x509.set_issuer_name(&cn)?;
+
+        let basic_constraints = BasicConstraints::new().ca().build()?;
+        self.x509.append_extension(basic_constraints)?;
+
+        let key_usage = KeyUsage::new()
+            .key_cert_sign()
+            .crl_sign()
+            .build()?;
+        self.x509.append_extension(key_usage)?;
+
+        let subject_key_identifier = SubjectKeyIdentifier::new().build(&self.x509.x509v3_context(None, None))?;
+        self.x509.append_extension(subject_key_identifier)?;
+        let authority_key_identifier = AuthorityKeyIdentifier::new().keyid(true).build(&self.x509.x509v3_context(None, None))?;
+        self.x509.append_extension(authority_key_identifier)?;
+
+        self.x509.sign(&self.private_key, MessageDigest::sha256())?;
+        let cert = self.x509.build();
+
+        Ok(CA{
+            id: -1,
+            created_on: self.created_on,
+            valid_until,
+            cert: cert.to_der()?,
+            key: self.private_key.private_key_to_der()?,
+        })
+    }
+
+    pub fn build_client(mut self) -> Result<Certificate, anyhow::Error> {
+        let ext_key_usage = ExtendedKeyUsage::new()
+            .client_auth()
+            .build()?;
+        self.x509.append_extension(ext_key_usage)?;
+
+        self.build_common(Client)
+    }
+
+    pub fn build_server(mut self) -> Result<Certificate, anyhow::Error> {
+        let ext_key_usage = ExtendedKeyUsage::new()
+            .server_auth()
+            .build()?;
+        self.x509.append_extension(ext_key_usage)?;
+
+        self.build_common(Server)
+    }
+
+    pub fn build_common(mut self, certificate_type: CertificateType) -> Result<Certificate, anyhow::Error> {
+        let name = self.name.ok_or(anyhow!("X509: name not set"))?;
+        let valid_until = self.valid_until.ok_or(anyhow!("X509: valid_until not set"))?;
+        let user_id = self.user_id.ok_or(anyhow!("X509: user_id not set"))?;
+        let (ca_id, ca_cert, ca_key) = self.ca.ok_or(anyhow!("X509: CA not set"))?;
+
+        let basic_constraints = BasicConstraints::new().build()?;
+        self.x509.append_extension(basic_constraints)?;
+
+        let key_usage = KeyUsage::new()
+            .digital_signature()
+            .key_encipherment()
+            .build()?;
+        self.x509.append_extension(key_usage)?;
+
+        self.x509.set_issuer_name(ca_cert.subject_name())?;
+
+        self.x509.sign(&ca_key, MessageDigest::sha256())?;
+        let cert = self.x509.build();
+
+        let mut ca_stack = Stack::new()?;
+        ca_stack.push(ca_cert.clone())?;
+
+        let pkcs12 = Pkcs12::builder()
+            .name(&name)
+            .ca(ca_stack)
+            .cert(&cert)
+            .pkey(&self.private_key)
+            .build2(&self.pkcs12_password)?;
+
+        Ok(Certificate{
+            id: -1,
+            name,
+            created_on: self.created_on,
+            valid_until,
+            certificate_type,
+            pkcs12: pkcs12.to_der()?,
+            pkcs12_password: self.pkcs12_password,
+            ca_id,
+            user_id,
+            renew_method: self.renew_method
+        })
+    }
 }
 
 /// Generates a new private key.
@@ -264,7 +254,7 @@ fn create_cn(ca_name: &str) -> Result<X509Name, ErrorStack> {
 }
 
 /// Returns the password for the PKCS#12.
-fn get_password(system_generated_password: bool, pkcs12_password: &Option<String>) -> String {
+pub(crate) fn get_password(system_generated_password: bool, pkcs12_password: &Option<String>) -> String {
     if system_generated_password {
         // Create password for the PKCS#12
         let pg = PasswordGenerator {
@@ -304,14 +294,21 @@ fn get_timestamp(from_now_in_years: u64) -> Result<(i64, Asn1Time), ErrorStack> 
 }
 
 /// Convert a CA certificate to PEM format.
-pub(crate) fn get_pem(ca: &Certificate) -> Result<Vec<u8>, ErrorStack> {
+pub(crate) fn get_pem(ca: &CA) -> Result<Vec<u8>, ErrorStack> {
     let cert = X509::from_der(&ca.cert)?;
     cert.to_pem()
 }
 
 /// Saves the CA certificate to a file for filesystem access.
-pub(crate) fn save_ca(ca: &Certificate) -> Result<(), ApiError> {
+pub(crate) fn save_ca(ca: &CA) -> Result<(), ApiError> {
     let pem = get_pem(ca)?;
     fs::write(CA_FILE_PATH, pem).map_err(|e| ApiError::Other(e.to_string()))?;
     Ok(())
+}
+
+pub(crate) fn get_dns_names(cert: &Certificate) -> Result<Vec<String>, anyhow::Error> {
+    let encrypted_p12 = Pkcs12::from_der(&cert.pkcs12)?;
+    let Some(cert) = encrypted_p12.parse2(&cert.pkcs12_password)?.cert else { return Err(anyhow::anyhow!("No certificate found in PKCS#12"))};
+    let Some(san) = cert.subject_alt_names() else { return Err(anyhow::anyhow!("No certificate found in PKCS#12"))};
+    Ok(san.iter().filter_map(|name| name.dnsname().map(|s| s.to_string())).collect())
 }

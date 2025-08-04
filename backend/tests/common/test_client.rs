@@ -90,6 +90,7 @@ impl VaulTLSClient {
             pkcs12_password: password,
             cert_type: None,
             dns_names: None,
+            renew_method: None,
         };
 
         let request = self
@@ -125,6 +126,7 @@ impl VaulTLSClient {
             pkcs12_password: Some(TEST_PASSWORD.to_string()),
             cert_type: Some(CertificateType::Server),
             dns_names: Some(vec![TEST_SERVER_CERT_DNS_NAME.to_string()]),
+            renew_method: None,
         };
 
         let request = self

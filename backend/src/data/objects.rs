@@ -7,7 +7,7 @@ use crate::auth::oidc_auth::OidcAuth;
 use crate::auth::password_auth::Password;
 use crate::data::enums::UserRole;
 use crate::db::VaulTLSDB;
-use crate::notification::Mailer;
+use crate::notification::mail::Mailer;
 use crate::settings::Settings;
 
 #[derive(Clone, Debug)]

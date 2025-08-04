@@ -7,14 +7,13 @@ use tracing::{trace, debug, info, warn};
 use crate::auth::oidc_auth::OidcAuth;
 use crate::auth::password_auth::Password;
 use crate::auth::session_auth::{generate_token, Authenticated, AuthenticatedPrivileged};
-use crate::cert;
-use crate::cert::{create_ca, get_pem, save_ca, Certificate};
+use crate::cert::{get_password, get_pem, save_ca, Certificate, CertificateBuilder};
 use crate::constants::VAULTLS_VERSION;
 use crate::data::api::{CallbackQuery, ChangePasswordRequest, CreateUserCertificateRequest, CreateUserRequest, DownloadResponse, IsSetupResponse, LoginRequest, SetupRequest};
 use crate::data::enums::{CertificateType, PasswordRule, UserRole};
 use crate::data::error::ApiError;
 use crate::data::objects::{AppState, User};
-use crate::notification::{MailMessage, Mailer};
+use crate::notification::mail::{MailMessage, Mailer};
 use crate::settings::{FrontendSettings, Settings};
 
 #[openapi(tag = "Setup")]
@@ -78,7 +77,10 @@ pub(crate) async fn setup(
 
     db.add_user(&mut user)?;
 
-    let mut ca = create_ca(&setup_req.ca_name, setup_req.ca_validity_in_years)?;
+    let mut ca = CertificateBuilder::new()?
+        .set_name(&setup_req.ca_name)?
+        .set_valid_until(setup_req.ca_validity_in_years)?
+        .build_ca()?;
     save_ca(&ca)?;
     db.insert_ca(&mut ca)?;
 
@@ -284,16 +286,26 @@ pub(crate) async fn create_user_certificate(
     };
 
     let ca = db.get_current_ca()?;
+    let pkcs12_password = get_password(use_random_password, &payload.pkcs12_password);
+    let cert_builder = CertificateBuilder::new()?
+        .set_name(&payload.cert_name)?
+        .set_valid_until(payload.validity_in_years.unwrap_or(1))?
+        .set_renew_method(payload.renew_method.unwrap_or_default())?
+        .set_pkcs12_password(&pkcs12_password)?
+        .set_ca(&ca)?
+        .set_user_id(payload.user_id)?;
     let mut cert = match payload.cert_type.unwrap_or_default() {
         CertificateType::Client => {
             let user = db.get_user(payload.user_id)?;
-            cert::create_user_cert(&ca, &payload.cert_name, payload.validity_in_years.unwrap_or(1), payload.user_id, &user.email, use_random_password, &payload.pkcs12_password)?
+            cert_builder
+                .set_email_san(&user.email)?
+                .build_client()?
         }
         CertificateType::Server => {
-            cert::create_server_cert(&ca, &payload.cert_name, &payload.dns_names.clone().unwrap_or_default(), payload.validity_in_years.unwrap_or(1), use_random_password, &payload.pkcs12_password, payload.user_id)?
-        }
-        CertificateType::CA => {
-            return Err(ApiError::BadRequest("Cannot create CA certificate".to_string()))
+            let dns = payload.dns_names.clone().unwrap_or_default();
+            cert_builder
+                .set_dns_san(&dns)?
+                .build_server()?
         }
     };
 
@@ -316,7 +328,7 @@ pub(crate) async fn create_user_certificate(
         let mailer = state.mailer.clone();
         tokio::spawn(async move {
             if let Some(mailer) = &mut *mailer.lock().await {
-                let _ = mailer.send_email(mail).await;
+                let _ = mailer.notify_new_certificate(mail).await;
             }
         });
     }

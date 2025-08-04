@@ -18,18 +18,18 @@ use crate::constants::{API_PORT, DB_FILE_PATH, VAULTLS_VERSION};
 use crate::data::objects::AppState;
 use crate::db::VaulTLSDB;
 use crate::helper::get_secret;
-use crate::notification::Mailer;
+use notification::mail::Mailer;
 use crate::settings::Settings;
 
 mod db;
 pub mod cert;
 mod settings;
-mod notification;
 pub mod data;
 mod helper;
 mod auth;
 pub mod constants;
 mod api;
+mod notification;
 
 type ApiError = data::error::ApiError;
 
