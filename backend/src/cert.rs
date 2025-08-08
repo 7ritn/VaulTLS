@@ -1,6 +1,7 @@
 use std::fs;
 use std::time::{SystemTime, UNIX_EPOCH};
 use anyhow::anyhow;
+use anyhow::Result;
 use openssl::asn1::{Asn1Integer, Asn1Time};
 use openssl::bn::BigNum;
 use openssl::ec::{EcGroup, EcKey};
@@ -62,7 +63,7 @@ pub struct CertificateBuilder {
     renew_method: CertificateRenewMethod
 }
 impl CertificateBuilder {
-    pub fn new() -> Result<Self, anyhow::Error> {
+    pub fn new() -> Result<Self> {
         let private_key = generate_private_key()?;
         let asn1_serial = generate_serial_number()?;
         let (created_on_unix, created_on_openssl) = get_timestamp(0)?;
@@ -84,6 +85,25 @@ impl CertificateBuilder {
             user_id: None,
             renew_method: Default::default()
         })
+    }
+
+    /// Copy information over from an existing certificate
+    /// Fields set are:\
+    ///     - Name\
+    ///     - Validity\
+    ///     - PKCS#12 Password\
+    ///     - Renew Method\
+    ///     - User ID\
+    pub fn try_from(old_cert: &Certificate) -> Result<Self> {
+        let validity_in_years = (old_cert.valid_until - old_cert.created_on) / 1000 / 60 / 60 / 24 / 365;
+
+        Self::new()?
+            .set_name(&old_cert.name)?
+            .set_valid_until(validity_in_years as u64)?
+            .set_pkcs12_password(&old_cert.pkcs12_password)?
+            .set_renew_method(old_cert.renew_method)?
+            .set_user_id(old_cert.user_id)
+
     }
 
     pub fn set_name(mut self, name: &str) -> Result<Self, anyhow::Error> {
