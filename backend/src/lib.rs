@@ -70,8 +70,9 @@ pub async fn create_rocket() -> Rocket<Build> {
 
     let db_path = Path::new(DB_FILE_PATH);
     let db_initialized = db_path.exists();
-    let db = VaulTLSDB::new(settings.get_db_encrypted(), false).expect("Failed opening SQLite database");
-    if !settings.get_db_encrypted() && env::var("VAULTLS_DB_SECRET").is_ok() {
+    let encrypted = settings.get_db_encrypted();
+    let db = VaulTLSDB::new(encrypted, false).expect("Failed opening SQLite database");
+    if !encrypted && env::var("VAULTLS_DB_SECRET").is_ok() {
         settings.set_db_encrypted().await.unwrap()
     }
     if !db_initialized {
@@ -113,12 +114,14 @@ pub async fn create_rocket() -> Rocket<Build> {
 
     let rocket_secret = get_secret("VAULTLS_API_SECRET").expect("Failed to get VAULTLS_API_SECRET");
     trace!("Rocket secret: {}", rocket_secret);
+    
+    let mailer = Arc::new(Mutex::new(mailer));
 
     let app_state = AppState {
-        db: Arc::new(Mutex::new(db)),
+        db: db.clone(),
         settings: Arc::new(Mutex::new(settings)),
         oidc: Arc::new(Mutex::new(oidc)),
-        mailer: Arc::new(Mutex::new(mailer))
+        mailer: mailer.clone()
     };
 
     trace!("App State: {:?}", app_state);

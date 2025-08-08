@@ -30,8 +30,7 @@ pub(crate) async fn is_setup(
     state: &State<AppState>
 ) -> Result<Json<IsSetupResponse>, ApiError> {
     let settings = state.settings.lock().await;
-    let db = state.db.lock().await;
-    let is_setup = db.is_setup();
+    let is_setup = state.db.is_setup().await.is_ok();
     let has_password = settings.password_enabled();
     let oidc_url = settings.get_oidc().auth_url.clone();
     Ok(Json(IsSetupResponse {
@@ -49,9 +48,8 @@ pub(crate) async fn setup(
     setup_req: Json<SetupRequest>
 ) -> Result<(), ApiError> {
     let mut settings = state.settings.lock().await;
-    let db = state.db.lock().await;
 
-    if db.is_setup() {
+    if state.db.is_setup().await.is_ok() {
         warn!("Server is already setup.");
         return Err(ApiError::Unauthorized(None))
     }
@@ -66,7 +64,7 @@ pub(crate) async fn setup(
         password_hash = Some(Password::new_server_hash(password)?);
     }
 
-    let mut user = User{
+    let user = User{
         id: -1,
         name: setup_req.name.clone(),
         email: setup_req.email.clone(),
@@ -75,14 +73,14 @@ pub(crate) async fn setup(
         role: UserRole::Admin,
     };
 
-    db.add_user(&mut user)?;
+    state.db.insert_user(user).await?;
 
-    let mut ca = CertificateBuilder::new()?
+    let ca = CertificateBuilder::new()?
         .set_name(&setup_req.ca_name)?
         .set_valid_until(setup_req.ca_validity_in_years)?
         .build_ca()?;
     save_ca(&ca)?;
-    db.insert_ca(&mut ca)?;
+    state.db.insert_ca(ca).await?;
 
     info!("VaulTLS was successfully set up.");
 
@@ -98,9 +96,8 @@ pub(crate) async fn login(
     login_req_opt: Json<LoginRequest>
 ) -> Result<(), ApiError> {
     let settings = state.settings.lock().await;
-    let db = state.db.lock().await;
 
-    let user: User = db.get_user_by_email(&login_req_opt.email).map_err(|_| {
+    let user: User = state.db.get_user_by_email(login_req_opt.email.clone()).await.map_err(|_| {
         warn!(user=login_req_opt.email, "Invalid email");
         ApiError::Unauthorized(Some("Invalid credentials".to_string()))
     })?;
@@ -119,7 +116,7 @@ pub(crate) async fn login(
             if let Password::V1(_) = password_hash {
                 info!(user=user.name, "Migrating a user' password to V2.");
                 let migration_password = Password::new_double_hash(&login_req_opt.password)?;
-                db.set_user_password(user.id, &migration_password)?;
+                state.db.set_user_password(user.id, migration_password).await?;
             }
 
             return Ok(());
@@ -141,10 +138,8 @@ pub(crate) async fn change_password(
     change_pass_req: Json<ChangePasswordRequest>,
     authentication: Authenticated
 ) -> Result<(), ApiError> {
-    let db = state.db.lock().await;
-
     let user_id = authentication.claims.id;
-    let user = db.get_user(user_id)?;
+    let user = state.db.get_user(user_id).await?;
     let password_hash = user.password_hash;
 
     if let Some(password_hash) = password_hash {
@@ -160,7 +155,7 @@ pub(crate) async fn change_password(
     }
 
     let password_hash = Password::new_server_hash(&change_pass_req.new_password)?;
-    db.set_user_password(user_id, &password_hash)?;
+    state.db.set_user_password(user_id, password_hash).await?;
 
     info!(user=user.name, "Password Change: Success");
 
@@ -209,14 +204,13 @@ pub(crate) async fn oidc_callback(
 ) -> Result<Redirect, ApiError> {
     let mut oidc_option = state.oidc.lock().await;
     let settings = state.settings.lock().await;
-    let db = state.db.lock().await;
 
     match &mut *oidc_option {
         Some(oidc) => {
             trace!("Verifying OIDC authentication code.");
             let mut user = oidc.verify_auth_code(response.code.to_string(), response.state.to_string()).await?;
 
-            db.register_oidc_user(&mut user)?;
+            user = state.db.register_oidc_user(user).await?;
 
             let jwt_key = settings.get_jwt_key()?;
             let token = generate_token(&jwt_key, user.id, user.role)?;
@@ -241,8 +235,7 @@ pub(crate) async fn get_current_user(
     state: &State<AppState>,
     authentication: Authenticated
 ) -> Result<Json<User>, ApiError> {
-    let db = state.db.lock().await;
-    let user = db.get_user(authentication.claims.id)?;
+    let user = state.db.get_user(authentication.claims.id).await?;
     Ok(Json(user))
 }
 
@@ -253,12 +246,11 @@ pub(crate) async fn get_certificates(
     state: &State<AppState>,
     authentication: Authenticated
 ) -> Result<Json<Vec<Certificate>>, ApiError> {
-    let db = state.db.lock().await;
     let user_id = match authentication.claims.role {
         UserRole::User => Some(authentication.claims.id),
         UserRole::Admin => None
     };
-    let certificates = db.get_all_user_cert(user_id)?;
+    let certificates = state.db.get_all_user_cert(user_id).await?;
     Ok(Json(certificates))
 }
 
@@ -271,7 +263,6 @@ pub(crate) async fn create_user_certificate(
     _authentication: AuthenticatedPrivileged
 ) -> Result<Json<Certificate>, ApiError> {
     let settings = state.settings.lock().await;
-    let db = state.db.lock().await;
 
     debug!(cert_name=?payload.cert_name, "Creating certificate");
 
@@ -285,7 +276,7 @@ pub(crate) async fn create_user_certificate(
         payload.system_generated_password
     };
 
-    let ca = db.get_current_ca()?;
+    let ca = state.db.get_current_ca().await?;
     let pkcs12_password = get_password(use_random_password, &payload.pkcs12_password);
     let cert_builder = CertificateBuilder::new()?
         .set_name(&payload.cert_name)?
@@ -296,7 +287,7 @@ pub(crate) async fn create_user_certificate(
         .set_user_id(payload.user_id)?;
     let mut cert = match payload.cert_type.unwrap_or_default() {
         CertificateType::Client => {
-            let user = db.get_user(payload.user_id)?;
+            let user = state.db.get_user(payload.user_id).await?;
             cert_builder
                 .set_email_san(&user.email)?
                 .build_client()?
@@ -309,16 +300,15 @@ pub(crate) async fn create_user_certificate(
         }
     };
 
-    db.insert_user_cert(&mut cert)?;
+    cert = state.db.insert_user_cert(cert).await?;
 
     info!(cert=cert.name, "New certificate created.");
     trace!("{:?}", cert);
 
     if Some(true) == payload.notify_user {
-        let user = db.get_user(payload.user_id)?;
+        let user = state.db.get_user(payload.user_id).await?;
         let mail = MailMessage{
             to: format!("{} <{}>", user.name, user.email),
-            subject: "VaulTLS: A new certificate is available".to_string(),
             username: user.name,
             certificate: cert.clone()
         };
@@ -342,8 +332,7 @@ pub(crate) async fn create_user_certificate(
 pub(crate) async fn download_ca(
     state: &State<AppState>
 ) -> Result<DownloadResponse, ApiError> {
-    let db = state.db.lock().await;
-    let ca = db.get_current_ca()?;
+    let ca = state.db.get_current_ca().await?;
     let pem = get_pem(&ca)?;
     Ok(DownloadResponse::new(pem, "ca_certificate.pem"))
 }
@@ -356,8 +345,7 @@ pub(crate) async fn download_certificate(
     id: i64,
     authentication: Authenticated
 ) -> Result<DownloadResponse, ApiError> {
-    let db = state.db.lock().await;
-    let (user_id, name, pkcs12) = db.get_user_cert_pkcs12(id)?;
+    let (user_id, name, pkcs12) = state.db.get_user_cert_pkcs12(id).await?;
     if user_id != authentication.claims.id && authentication.claims.role != UserRole::Admin { return Err(ApiError::Forbidden(None)) }
     Ok(DownloadResponse::new(pkcs12, &format!("{name}.p12")))
 }
@@ -370,8 +358,7 @@ pub(crate) async fn fetch_certificate_password(
     id: i64,
     authentication: Authenticated
 ) -> Result<Json<String>, ApiError> {
-    let db = state.db.lock().await;
-    let (user_id, pkcs12_password) = db.get_user_cert_pkcs12_password(id)?;
+    let (user_id, pkcs12_password) = state.db.get_user_cert_pkcs12_password(id).await?;
     if user_id != authentication.claims.id && authentication.claims.role != UserRole::Admin { return Err(ApiError::Forbidden(None)) }
     Ok(Json(pkcs12_password))
 }
@@ -384,8 +371,7 @@ pub(crate) async fn delete_user_cert(
     id: i64,
     _authentication: AuthenticatedPrivileged
 ) -> Result<(), ApiError> {
-    let db = state.db.lock().await;
-    db.delete_user_cert(id)?;
+    state.db.delete_user_cert(id).await?;
     Ok(())
 }
 
@@ -451,8 +437,7 @@ pub(crate) async fn get_users(
     state: &State<AppState>,
     _authentication: AuthenticatedPrivileged
 ) -> Result<Json<Vec<User>>, ApiError> {
-    let db = state.db.lock().await;
-    let users = db.get_all_user()?;
+    let users = state.db.get_all_user().await?;
     Ok(Json(users))
 }
 
@@ -464,8 +449,6 @@ pub(crate) async fn create_user(
     payload: Json<CreateUserRequest>,
     _authentication: AuthenticatedPrivileged
 ) -> Result<Json<i64>, ApiError> {
-    let db = state.db.lock().await;
-
     let password_hash = match payload.password {
         Some(ref p) => Some(Password::new_server_hash(p)?),
         None => None,
@@ -480,7 +463,7 @@ pub(crate) async fn create_user(
         role: payload.role
     };
 
-    db.add_user(&mut user)?;
+    user = state.db.insert_user(user).await?;
 
     info!(user=?user, "User created.");
     trace!("{:?}", user);
@@ -509,8 +492,7 @@ pub(crate) async fn update_user(
         id,
         ..payload.into_inner()
     };
-    let db = state.db.lock().await;
-    db.update_user(&user)?;
+    state.db.update_user(user.clone()).await?;
 
     info!(user=?user, "User updated.");
     trace!("{:?}", user);
@@ -526,8 +508,7 @@ pub(crate) async fn delete_user(
     id: i64,
     _authentication: AuthenticatedPrivileged
 ) -> Result<(), ApiError> {
-    let db = state.db.lock().await;
-    db.delete_user(id)?;
+    state.db.delete_user(id).await?;
 
     info!(user=?id, "User deleted.");
 

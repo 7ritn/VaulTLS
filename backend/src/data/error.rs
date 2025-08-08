@@ -1,3 +1,4 @@
+use std::error::Error;
 use std::fmt::Display;
 use rocket::http::Status;
 use rocket::Request;
@@ -17,7 +18,6 @@ pub struct ErrorResponse {
 
 #[derive(Debug)]
 pub enum ApiError {
-    Database(rusqlite::Error),
     OpenSsl(openssl::error::ErrorStack),
     Unauthorized(Option<String>),
     BadRequest(String),
@@ -30,7 +30,6 @@ pub enum ApiError {
 impl<'r> Responder<'r, 'static> for ApiError {
     fn respond_to(self, req: &'r Request<'_>) -> rocket::response::Result<'static> {
         let (status, message) = match self {
-            ApiError::Database(e) => (Status::InternalServerError, e.to_string()),
             ApiError::OpenSsl(e) => (Status::InternalServerError, e.to_string()),
             ApiError::Unauthorized(e) => (Status::Unauthorized, e.unwrap_or_default()),
             ApiError::BadRequest(e) => (Status::BadRequest, e),
@@ -121,3 +120,5 @@ impl From<anyhow::Error> for ApiError {
         ApiError::Other(error.to_string())
     }
 }
+
+impl Error for ApiError {}

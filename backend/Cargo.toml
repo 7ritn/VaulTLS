@@ -19,7 +19,9 @@ schemars = { version = "0.8", features = ["derive"] }
 serde = "1.0"
 serde_json = "1.0"
 serde_repr = "0.1"
-rusqlite = { version = "0.37", features = ["bundled-sqlcipher", "trace"] }
+rusqlite = { version = "0.37", features = ["bundled-sqlcipher"] }
+r2d2 = "0.8"
+r2d2_sqlite = { version = "0.31", features = ["bundled-sqlcipher"] }
 openssl = "0.10"
 argon2 = "0.5"
 jsonwebtoken = "9"
