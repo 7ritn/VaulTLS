@@ -79,7 +79,7 @@ impl FromSql for CertificateType {
 pub enum CertificateRenewMethod {
     #[default]
     None = 0,
-    Remind = 1,
+    Notify = 1,
     Renew = 2,
     RenewAndNotify = 3
 }

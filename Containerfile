@@ -13,6 +13,7 @@ RUN npm run build
 # Stage 2: Build the Rust backend binary
 FROM rust:1.87 AS backend-builder
 
+ARG RUN_TESTS=false
 WORKDIR /app/backend
 COPY backend/ ./
 
@@ -20,7 +21,12 @@ RUN --mount=type=cache,target=/app/backend/target \
     --mount=type=cache,target=/usr/local/cargo/git/db \
     --mount=type=cache,target=/usr/local/cargo/registry/ \
     cargo build --release \
-    && cp target/release/backend backend
+    && cp target/release/backend backend \
+    && if [ "$RUN_TESTS" = "true" ]; then \
+         cargo test; \
+       else \
+         echo "Skipping tests"; \
+       fi
 
 # Stage 3 Final container with Nginx and backend binary
 FROM nginx:stable

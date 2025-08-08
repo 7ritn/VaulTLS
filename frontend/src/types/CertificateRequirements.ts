@@ -1,4 +1,4 @@
-import type {CertificateType} from "@/types/Certificate.ts";
+import {CertificateRenewMethod, type CertificateType} from "@/types/Certificate.ts";
 
 export interface CertificateRequirements {
     cert_name: string;
@@ -9,4 +9,5 @@ export interface CertificateRequirements {
     notify_user: boolean;
     cert_type: CertificateType;
     dns_names: string[];
+    renew_method: CertificateRenewMethod;
 }

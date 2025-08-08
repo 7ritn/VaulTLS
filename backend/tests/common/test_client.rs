@@ -1,5 +1,4 @@
 use crate::common::constants::*;
-use crate::common::helper::get_timestamp;
 use anyhow::Result;
 use openssl::pkcs12::Pkcs12;
 use rocket::http::{ContentType, Status};
@@ -9,7 +8,7 @@ use serde_json::Value;
 use vaultls::cert::Certificate;
 use vaultls::create_test_rocket;
 use vaultls::data::api::{CreateUserCertificateRequest, CreateUserRequest, LoginRequest, SetupRequest};
-use vaultls::data::enums::{CertificateType, UserRole};
+use vaultls::data::enums::{CertificateRenewMethod, CertificateType, UserRole};
 use x509_parser::pem::Pem;
 use vaultls::data::objects::User;
 
@@ -80,7 +79,7 @@ impl VaulTLSClient {
         client
     }
 
-    pub(crate) async fn create_client_cert(&self, user_id: Option<i64>, password: Option<String>) -> Result<()> {
+    pub(crate) async fn create_client_cert(&self, user_id: Option<i64>, password: Option<String>) -> Result<Certificate> {
         let cert_req = CreateUserCertificateRequest {
             cert_name: TEST_CLIENT_CERT_NAME.to_string(),
             validity_in_years: Some(1),
@@ -90,7 +89,7 @@ impl VaulTLSClient {
             pkcs12_password: password,
             cert_type: None,
             dns_names: None,
-            renew_method: None,
+            renew_method: Some(CertificateRenewMethod::Renew),
         };
 
         let request = self
@@ -101,19 +100,7 @@ impl VaulTLSClient {
         assert_eq!(response.status(), Status::Ok);
         assert_eq!(response.content_type(), Some(ContentType::JSON));
 
-        let cert: Certificate = serde_json::from_str(&response.into_string().await.unwrap())?;
-
-        let now = get_timestamp(0);
-        let valid_until = get_timestamp(1);
-
-        assert_eq!(cert.id, 1);
-        assert_eq!(cert.name, TEST_CLIENT_CERT_NAME);
-        assert!(now > cert.created_on && cert.created_on > now - 10000 /* 10 seconds */);
-        assert!(valid_until > cert.valid_until && cert.valid_until > valid_until - 10000 /* 10 seconds */);
-        assert_eq!(cert.certificate_type, CertificateType::Client);
-        assert_eq!(cert.user_id, user_id.unwrap_or(1));
-
-        Ok(())
+        Ok(serde_json::from_str(&response.into_string().await.unwrap())?)
     }
 
     pub(crate) async fn create_server_cert(&self) -> Result<()> {

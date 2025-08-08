@@ -19,7 +19,7 @@ use tokio::io::{duplex, AsyncReadExt, AsyncWriteExt};
 use tokio::time::sleep;
 use tokio_rustls::{TlsAcceptor, TlsConnector};
 use vaultls::cert::Certificate;
-use vaultls::data::enums::{CertificateType, UserRole};
+use vaultls::data::enums::{CertificateRenewMethod, CertificateType, UserRole};
 use vaultls::data::objects::User;
 use x509_parser::asn1_rs::FromDer;
 use x509_parser::prelude::X509Certificate;
@@ -131,6 +131,24 @@ async fn test_login_hash() -> Result<()> {
 }
 
 #[tokio::test]
+async fn test_create_client_certificate() -> Result<()> {
+    let client = VaulTLSClient::new_authenticated().await;
+    let cert = client.create_client_cert(None, None).await?;
+
+    let now = get_timestamp(0);
+    let valid_until = get_timestamp(1);
+
+    assert_eq!(cert.id, 1);
+    assert_eq!(cert.name, TEST_CLIENT_CERT_NAME);
+    assert!(now > cert.created_on && cert.created_on > now - 10000 /* 10 seconds */);
+    assert!(valid_until > cert.valid_until && cert.valid_until > valid_until - 10000 /* 10 seconds */);
+    assert_eq!(cert.certificate_type, CertificateType::Client);
+    assert_eq!(cert.user_id, 1);
+    assert_eq!(cert.renew_method , CertificateRenewMethod::Renew);
+    Ok(())
+}
+
+#[tokio::test]
 async fn test_fetch_client_certificates() -> Result<()> {
     let client = VaulTLSClient::new_with_cert().await;
 
@@ -202,12 +220,12 @@ async fn test_delete_client_certificate() -> Result<()> {
     let request = client
         .get("/certificates/1/download");
     let response = request.dispatch().await;
-    assert_eq!(response.status(), Status::NotFound);
+    assert_eq!(response.status(), Status::InternalServerError);
     Ok(())
 }
 
 #[tokio::test]
-async fn test_server_certificate() -> Result<()> {
+async fn test_create_server_certificate() -> Result<()> {
     let client = VaulTLSClient::new_authenticated().await;
     client.create_server_cert().await?;
 

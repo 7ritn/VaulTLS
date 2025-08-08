@@ -18,7 +18,8 @@ use crate::constants::{API_PORT, DB_FILE_PATH, VAULTLS_VERSION};
 use crate::data::objects::AppState;
 use crate::db::VaulTLSDB;
 use crate::helper::get_secret;
-use notification::mail::Mailer;
+use crate::notification::mail::Mailer;
+use crate::notification::notifier::watch_expiry;
 use crate::settings::Settings;
 
 mod db;
@@ -124,6 +125,10 @@ pub async fn create_rocket() -> Rocket<Build> {
         mailer: mailer.clone()
     };
 
+    tokio::spawn(async move {
+        watch_expiry(db.clone(), mailer.clone()).await;
+    });
+
     trace!("App State: {:?}", app_state);
 
     let cors = CorsOptions::default()
@@ -214,7 +219,7 @@ pub async fn create_test_rocket() -> Rocket<Build> {
     };
 
     let app_state = AppState {
-        db: Arc::new(Mutex::new(db)),
+        db,
         settings: Arc::new(Mutex::new(settings)),
         oidc: Arc::new(Mutex::new(oidc)),
         mailer: Arc::new(Mutex::new(mailer))

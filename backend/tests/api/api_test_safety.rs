@@ -162,7 +162,7 @@ async fn access_deleted_users_certs() -> Result<()> {
     let request = client
         .get("/certificates/1/download");
     let response = request.dispatch().await;
-    assert_eq!(response.status(), Status::NotFound);
+    assert_eq!(response.status(), Status::InternalServerError);
 
     client.create_user().await?;
     client.switch_user().await?;

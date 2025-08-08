@@ -12,6 +12,7 @@
             <th class="d-none d-sm-table-cell">Created on</th>
             <th>Valid until</th>
             <th>Password</th>
+            <th class="d-none d-sm-table-cell">Renew Method</th>
             <th>Actions</th>
           </tr>
         </thead>
@@ -47,6 +48,7 @@
                 />
               </div>
             </td>
+            <td :id="'RenewMethod-' + cert.id" class="d-none d-sm-table-cell">{{ CertificateRenewMethod[cert.renew_method] }}</td>
             <td>
               <div class="d-flex flex-sm-row flex-column gap-1">
                 <button
@@ -201,6 +203,20 @@
                   placeholder="Enter password"
               />
             </div>
+            <div class="mb-3">
+              <label for="renewMethod" class="form-label">Certificate Renew Method</label>
+              <select
+                  class="form-select"
+                  id="renewMethod"
+                  v-model="certReq.renew_method"
+                  required
+              >
+                <option :value="CertificateRenewMethod.None">None</option>
+                <option :value="CertificateRenewMethod.Notify">Remind</option>
+                <option :value="CertificateRenewMethod.Renew">Renew</option>
+                <option :value="CertificateRenewMethod.RenewAndNotify">Renew and Notify</option>
+              </select>
+            </div>
             <div v-if="isMailValid" class="mb-3 form-check form-switch">
               <input
                   type="checkbox"
@@ -273,7 +289,7 @@
 <script setup lang="ts">
 import {computed, onMounted, reactive, ref, watch} from 'vue';
 import {useCertificateStore} from '@/stores/certificates';
-import {type Certificate, CertificateType} from "@/types/Certificate";
+import {type Certificate, CertificateRenewMethod, CertificateType} from "@/types/Certificate";
 import type {CertificateRequirements} from "@/types/CertificateRequirements";
 import {useAuthStore} from "@/stores/auth.ts";
 import {useUserStore} from "@/stores/users.ts";
@@ -311,7 +327,8 @@ const certReq = reactive<CertificateRequirements>({
   pkcs12_password: '',
   notify_user: false,
   cert_type: CertificateType.Client,
-  dns_names: ['']
+  dns_names: [''],
+  renew_method: CertificateRenewMethod.None,
 });
 
 const isMailValid = computed(() => {
