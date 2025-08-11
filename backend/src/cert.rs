@@ -114,7 +114,11 @@ impl CertificateBuilder {
     }
 
     pub fn set_valid_until(mut self, years: u64) -> Result<Self, anyhow::Error> {
-        let (valid_until_unix, valid_until_openssl) = get_timestamp(years)?;
+        let (valid_until_unix, valid_until_openssl) = if years != 0 {
+            get_timestamp(years)?
+        } else {
+            get_short_lifetime()?
+        };
         self.valid_until = Some(valid_until_unix);
         self.x509.set_not_after(&valid_until_openssl)?;
         Ok(self)
@@ -309,6 +313,15 @@ fn get_timestamp(from_now_in_years: u64) -> Result<(i64, Asn1Time), ErrorStack> 
     let time = SystemTime::now() + std::time::Duration::from_secs(60 * 60 * 24 * 365 * from_now_in_years);
     let time_unix = time.duration_since(UNIX_EPOCH).unwrap().as_millis() as i64;
     let time_openssl = Asn1Time::days_from_now(365 * from_now_in_years as u32)?;
+
+    Ok((time_unix, time_openssl))
+}
+
+/// For E2E testing generate a short lifetime certificate.
+fn get_short_lifetime() -> Result<(i64, Asn1Time), ErrorStack> {
+    let time = SystemTime::now() + std::time::Duration::from_secs(60 * 60 * 24);
+    let time_unix = time.duration_since(UNIX_EPOCH).unwrap().as_millis() as i64;
+    let time_openssl = Asn1Time::days_from_now(1)?;
 
     Ok((time_unix, time_openssl))
 }

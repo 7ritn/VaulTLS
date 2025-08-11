@@ -13,7 +13,7 @@ use crate::settings::Settings;
 #[derive(Clone, Debug)]
 pub(crate) struct AppState {
     pub(crate) db: VaulTLSDB,
-    pub(crate) settings: Arc<Mutex<Settings>>,
+    pub(crate) settings: Settings,
     pub(crate) oidc: Arc<Mutex<Option<OidcAuth>>>,
     pub(crate) mailer: Arc<Mutex<Option<Mailer>>>
 }

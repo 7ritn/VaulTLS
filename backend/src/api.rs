@@ -14,7 +14,7 @@ use crate::data::enums::{CertificateType, PasswordRule, UserRole};
 use crate::data::error::ApiError;
 use crate::data::objects::{AppState, User};
 use crate::notification::mail::{MailMessage, Mailer};
-use crate::settings::{FrontendSettings, Settings};
+    use crate::settings::{FrontendSettings, InnerSettings};
 
 #[openapi(tag = "Setup")]
 #[get("/server/version")]
@@ -29,10 +29,9 @@ pub(crate) fn version() -> &'static str {
 pub(crate) async fn is_setup(
     state: &State<AppState>
 ) -> Result<Json<IsSetupResponse>, ApiError> {
-    let settings = state.settings.lock().await;
     let is_setup = state.db.is_setup().await.is_ok();
-    let has_password = settings.password_enabled();
-    let oidc_url = settings.get_oidc().auth_url.clone();
+    let has_password = state.settings.get_password_enabled();
+    let oidc_url = state.settings.get_oidc().auth_url.clone();
     Ok(Json(IsSetupResponse {
         setup: is_setup,
         password: has_password,
@@ -47,20 +46,18 @@ pub(crate) async fn setup(
     state: &State<AppState>,
     setup_req: Json<SetupRequest>
 ) -> Result<(), ApiError> {
-    let mut settings = state.settings.lock().await;
-
     if state.db.is_setup().await.is_ok() {
         warn!("Server is already setup.");
         return Err(ApiError::Unauthorized(None))
     }
 
-    if setup_req.password.is_none() && settings.get_oidc().auth_url.is_empty() {
+    if setup_req.password.is_none() && state.settings.get_oidc().auth_url.is_empty() {
         return Err(ApiError::Other("Password is required".to_string()))
     }
 
     let mut password_hash = None;
     if let Some(ref password) = setup_req.password {
-        settings.set_password_enabled(true).await?;
+        state.settings.set_password_enabled(true)?;
         password_hash = Some(Password::new_server_hash(password)?);
     }
 
@@ -95,15 +92,13 @@ pub(crate) async fn login(
     jar: &CookieJar<'_>,
     login_req_opt: Json<LoginRequest>
 ) -> Result<(), ApiError> {
-    let settings = state.settings.lock().await;
-
     let user: User = state.db.get_user_by_email(login_req_opt.email.clone()).await.map_err(|_| {
         warn!(user=login_req_opt.email, "Invalid email");
         ApiError::Unauthorized(Some("Invalid credentials".to_string()))
     })?;
     if let Some(password_hash) = user.password_hash {
         if password_hash.verify(&login_req_opt.password) {
-            let jwt_key = settings.get_jwt_key()?;
+            let jwt_key = state.settings.get_jwt_key()?;
             let token = generate_token(&jwt_key, user.id, user.role)?;
 
             let cookie = Cookie::build(("auth_token", token.clone()))
@@ -203,7 +198,6 @@ pub(crate) async fn oidc_callback(
     response: CallbackQuery
 ) -> Result<Redirect, ApiError> {
     let mut oidc_option = state.oidc.lock().await;
-    let settings = state.settings.lock().await;
 
     match &mut *oidc_option {
         Some(oidc) => {
@@ -212,7 +206,7 @@ pub(crate) async fn oidc_callback(
 
             user = state.db.register_oidc_user(user).await?;
 
-            let jwt_key = settings.get_jwt_key()?;
+            let jwt_key = state.settings.get_jwt_key()?;
             let token = generate_token(&jwt_key, user.id, user.role)?;
 
             let auth_cookie = Cookie::build(("auth_token", token))
@@ -262,12 +256,11 @@ pub(crate) async fn create_user_certificate(
     payload: Json<CreateUserCertificateRequest>,
     _authentication: AuthenticatedPrivileged
 ) -> Result<Json<Certificate>, ApiError> {
-    let settings = state.settings.lock().await;
-
     debug!(cert_name=?payload.cert_name, "Creating certificate");
 
-    let use_random_password = if settings.password_rule() == PasswordRule::System
-        || (settings.password_rule() == PasswordRule::Required
+    let password_rule = state.settings.get_password_rule();
+    let use_random_password = if password_rule == PasswordRule::System
+        || (password_rule == PasswordRule::Required
             && payload.pkcs12_password.as_deref().unwrap_or("").trim().is_empty()) {
         debug!(cert_name=?payload.cert_name, "Using system-supplied password");
         true
@@ -382,8 +375,7 @@ pub(crate) async fn fetch_settings(
     state: &State<AppState>,
     _authentication: AuthenticatedPrivileged
 ) -> Result<Json<FrontendSettings>, ApiError> {
-    let settings = state.settings.lock().await;
-    let frontend_settings = FrontendSettings(settings.clone());
+    let frontend_settings = FrontendSettings(state.settings.clone());
     Ok(Json(frontend_settings))
 }
 
@@ -392,17 +384,16 @@ pub(crate) async fn fetch_settings(
 /// Update application settings. Requires admin role.
 pub(crate) async fn update_settings(
     state: &State<AppState>,
-    payload: Json<Settings>,
+    payload: Json<InnerSettings>,
     _authentication: AuthenticatedPrivileged
 ) -> Result<(), ApiError> {
-    let mut settings = state.settings.lock().await;
     let mut oidc = state.oidc.lock().await;
 
-    settings.set_settings(&payload).await?;
+    state.settings.set_settings(&payload)?;
 
-    let oidc_settings = settings.get_oidc();
+    let oidc_settings = state.settings.get_oidc();
     if oidc_settings.is_valid() {
-        *oidc = OidcAuth::new(oidc_settings).await.ok()
+        *oidc = OidcAuth::new(&oidc_settings).await.ok()
     } else {
         *oidc = None;
     }
@@ -413,9 +404,9 @@ pub(crate) async fn update_settings(
     }
 
     let mut mailer = state.mailer.lock().await;
-    let mail_settings = settings.get_mail();
+    let mail_settings = state.settings.get_mail();
     if mail_settings.is_valid() {
-        *mailer = Mailer::new(mail_settings, settings.get_vaultls_url()).await.ok()
+        *mailer = Mailer::new(&mail_settings, &state.settings.get_vaultls_url()).await.ok()
     } else {
         *mailer = None;
     }

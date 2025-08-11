@@ -66,7 +66,7 @@ pub async fn create_rocket() -> Rocket<Build> {
     info!("Version {VAULTLS_VERSION}");
 
     info!("Loading settings from file");
-    let mut settings = Settings::load_from_file(None).await.expect("Failed loading settings");
+    let settings = Settings::load_from_file(None).expect("Failed loading settings");
     trace!("Settings loaded: {:?}", settings);
 
     let db_path = Path::new(DB_FILE_PATH);
@@ -74,7 +74,7 @@ pub async fn create_rocket() -> Rocket<Build> {
     let encrypted = settings.get_db_encrypted();
     let db = VaulTLSDB::new(encrypted, false).expect("Failed opening SQLite database");
     if !encrypted && env::var("VAULTLS_DB_SECRET").is_ok() {
-        settings.set_db_encrypted().await.unwrap()
+        settings.set_db_encrypted().unwrap()
     }
     if !db_initialized {
         info!("New database. Set initial database file permissions to 0600");
@@ -90,7 +90,7 @@ pub async fn create_rocket() -> Rocket<Build> {
         true => None,
         false => {
             debug!("OIDC enabled. Trying to connect to {}.", oidc_settings.auth_url);
-            OidcAuth::new(settings.get_oidc()).await.ok()
+            OidcAuth::new(&settings.get_oidc()).await.ok()
         }
     };
 
@@ -103,7 +103,7 @@ pub async fn create_rocket() -> Rocket<Build> {
     let mailer = match mail_settings.is_valid() {
         true => {
             debug!("Mail enabled. Trying to connect to {}.", mail_settings.smtp_host);
-            Mailer::new(mail_settings, settings.get_vaultls_url()).await.ok()
+            Mailer::new(&mail_settings, &settings.get_vaultls_url()).await.ok()
         },
         false => None
     };
@@ -120,7 +120,7 @@ pub async fn create_rocket() -> Rocket<Build> {
 
     let app_state = AppState {
         db: db.clone(),
-        settings: Arc::new(Mutex::new(settings)),
+        settings,
         oidc: Arc::new(Mutex::new(oidc)),
         mailer: mailer.clone()
     };
@@ -213,14 +213,14 @@ pub async fn create_test_rocket() -> Rocket<Build> {
     let mail_settings = settings.get_mail();
     let mailer = match mail_settings.is_valid() {
         true => {
-            Mailer::new(mail_settings, settings.get_vaultls_url()).await.ok()
+            Mailer::new(&mail_settings, &settings.get_vaultls_url()).await.ok()
         },
         false => None
     };
 
     let app_state = AppState {
         db,
-        settings: Arc::new(Mutex::new(settings)),
+        settings,
         oidc: Arc::new(Mutex::new(oidc)),
         mailer: Arc::new(Mutex::new(mailer))
     };

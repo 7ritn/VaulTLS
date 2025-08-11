@@ -66,7 +66,7 @@ impl<'r> FromRequest<'r> for Authenticated {
     type Error = ();
 
     async fn from_request(request: &'r Request<'_>) -> Outcome<Self, Self::Error> {
-        match authenticate_auth_token(request).await {
+        match authenticate_auth_token(request) {
             Some(claims) => Outcome::Success(Authenticated { claims }),
             None => Outcome::Error((Status::Unauthorized, ()))
         }
@@ -82,7 +82,7 @@ impl<'r> FromRequest<'r> for AuthenticatedPrivileged {
     type Error = ();
 
     async fn from_request(request: &'r Request<'_>) -> Outcome<Self, Self::Error> {
-        let Some(claims) =  authenticate_auth_token(request).await else { return Outcome::Error((Status::Unauthorized, ())) };
+        let Some(claims) =  authenticate_auth_token(request) else { return Outcome::Error((Status::Unauthorized, ())) };
         if claims.role == UserRole::Admin {
             Outcome::Success(AuthenticatedPrivileged { _claims: claims })
         } else {
@@ -93,12 +93,11 @@ impl<'r> FromRequest<'r> for AuthenticatedPrivileged {
 
 impl_openapi_auth!(AuthenticatedPrivileged, "UserRole::Admin");
 
-pub(crate) async fn authenticate_auth_token(request: &Request<'_>) -> Option<Claims> {
+pub(crate) fn authenticate_auth_token(request: &Request<'_>) -> Option<Claims> {
     let token = request.cookies().get_private("auth_token")?.value().to_string();
     let config = request.rocket().state::<AppState>()?;
 
-    let settings = config.settings.lock().await;
-    let jwt_key = settings.get_jwt_key().ok()?;
+    let jwt_key = config.settings.get_jwt_key().ok()?;
     let decoding_key = DecodingKey::from_secret(&jwt_key);
     let validation = Validation::default();
 

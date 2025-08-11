@@ -39,7 +39,8 @@ const_format = "0.2"
 once_cell = "1.21"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-log = "0.4.25"
+derive_deref = "1.1"
+parking_lot = "0.12"
 
 [dev-dependencies]
 x509-parser = "0.17"
