@@ -182,7 +182,7 @@ impl Mailer {
         let email = build_email_message!(
             self.from.clone(),
             message.to,
-            "VaulTLS: A certificate is about to expire",
+            "VaulTLS: A certificate was renewed",
             plain_content,
             html_content
         );

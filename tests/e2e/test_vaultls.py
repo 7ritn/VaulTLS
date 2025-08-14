@@ -22,6 +22,11 @@ def wait_for_email(subject_keyword, timeout=10):
 def delete_all_emails():
     requests.delete(MAILHOG_API_URL + "/api/v1/messages")
 
+def count_table_data_rows(page, table_selector="table"):
+    # Count only tbody tr elements (excludes header rows in thead)
+    rows = page.locator(f"{table_selector} tbody tr")
+    return rows.count()
+
 
 @pytest.fixture(scope="session")
 def context():
@@ -52,6 +57,7 @@ def context():
 
 @pytest.fixture
 def page(context):
+    context.clear_cookies()
     page = context.new_page()
     page.goto("http://vaultls/login")
     page.wait_for_url("**/login")
@@ -77,9 +83,46 @@ def test_certificates(page):
     page.click("button:has-text('Create Certificate')")
     page.click("#PasswordButton-1")
     assert "password" in page.locator("#PasswordInput-1").input_value()
+    assert count_table_data_rows(page) == 1
 
     time.sleep(1)
-    wait_for_email("VaulTLS")
+    wait_for_email("VaulTLS: A new certificate is available")
+
+def test_renewal_remind(page):
+    delete_all_emails()
+
+    page.goto("http://vaultls/overview")
+    page.wait_for_url("**/overview")
+    page.click("button:has-text('Create New Certificate')")
+    page.fill("#certName", "test_cert_remind")
+    page.select_option("#userId", "1")
+    page.fill("#certPassword", "password")
+    page.fill("#validity", "0")
+    page.select_option("#renewMethod", "1")
+    page.click("button:has-text('Create Certificate')")
+
+    time.sleep(5)
+    wait_for_email("VaulTLS: A certificate is about to expire")
+    assert count_table_data_rows(page) == 2
+
+def test_renewal_renew_notify(page):
+    delete_all_emails()
+
+    page.goto("http://vaultls/overview")
+    page.wait_for_url("**/overview")
+    page.click("button:has-text('Create New Certificate')")
+    page.fill("#certName", "test_cert_renew")
+    page.select_option("#userId", "1")
+    page.fill("#certPassword", "password")
+    page.fill("#validity", "0")
+    page.select_option("#renewMethod", "3")
+    page.click("button:has-text('Create Certificate')")
+
+    time.sleep(5)
+
+    wait_for_email("VaulTLS: A certificate was renewed")
+    page.reload()
+    assert count_table_data_rows(page) == 4
 
 def test_users(page):
     page.goto("http://vaultls/users")

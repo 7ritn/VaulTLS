@@ -95,7 +95,7 @@ impl CertificateBuilder {
     ///     - Renew Method\
     ///     - User ID\
     pub fn try_from(old_cert: &Certificate) -> Result<Self> {
-        let validity_in_years = (old_cert.valid_until - old_cert.created_on) / 1000 / 60 / 60 / 24 / 365;
+        let validity_in_years = ((old_cert.valid_until - old_cert.created_on) / 1000 / 60 / 60 / 24 / 365).max(1);
 
         Self::new()?
             .set_name(&old_cert.name)?

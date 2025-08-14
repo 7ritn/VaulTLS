@@ -1,29 +1,30 @@
-FROM python:3.11-slim
+# Stage 1: Build dependencies
+FROM python:3.11-slim-bookworm AS builder
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install dependencies for Playwright and browsers
+# Install OS dependencies for Playwright (build stage only)
 RUN apt-get update && apt-get install -y \
-    curl \
-    wget \
-    unzip \
-    gnupg \
-    libglib2.0-0 \
-    libnss3 \
-    libgconf-2-4 \
-    libfontconfig1 \
-    libxss1 \
-    libasound2 \
-    libxtst6 \
-    libgtk-3-0 \
+    curl wget unzip gnupg \
+    libglib2.0-0 libnss3 libgconf-2-4 \
+    libfontconfig1 libxss1 libasound2 \
+    libxtst6 libgtk-3-0 \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Playwright and Python dependencies
 WORKDIR /app
-COPY requirements.txt .
-RUN pip install -r requirements.txt && \
-    python -m playwright install --with-deps
 
+# Install Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+RUN python -m playwright install --with-deps
+
+# Stage 2: Final runtime image
+FROM builder
+
+WORKDIR /app
+
+# Copy only app code
 COPY . .
 
 CMD ["pytest"]

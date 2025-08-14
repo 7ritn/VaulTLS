@@ -29,6 +29,7 @@ services:
       - "VAULTLS_MAIL_HOST=mailhog"
       - "VAULTLS_MAIL_PORT=1025"
       - "VAULTLS_MAIL_FROM=test@vaultls.dev"
+      - "VAULTLS_CHECK_EXPIRY_INTERVAL=1"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost/"]
       interval: 30s
