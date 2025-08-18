@@ -174,5 +174,31 @@ async fn access_deleted_users_certs() -> Result<()> {
     assert_eq!(response.into_string().await.unwrap(), "[]");
 
     Ok(())
+}
 
+#[tokio::test]
+async fn password_disabled_login() -> Result<()> {
+    let client = VaulTLSClient::new_authenticated().await;
+
+    let mut settings = client.get_settings().await?;
+
+    settings["common"]["password_enabled"] = Value::Bool(false);
+
+    client.put_settings(settings).await?;
+
+    client.logout().await?;
+
+    let login_data = LoginRequest{
+        email: TEST_USER_EMAIL.to_string(),
+        password: TEST_PASSWORD.to_string()
+    };
+
+    let request = client
+        .post("/auth/login")
+        .header(ContentType::JSON)
+        .body(serde_json::to_string(&login_data)?);
+    let response = request.dispatch().await;
+    assert_ne!(response.status(), Status::Ok);
+
+    Ok(())
 }

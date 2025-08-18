@@ -144,6 +144,24 @@ impl VaulTLSDB {
         Ok(())
     }
 
+    pub(crate) async fn fix_password(&self) -> Result<()> {
+        let users = self.get_all_user().await?;
+
+        trace!("Checking for users with empty passwords");
+
+        for id in users.iter().map(|user| user.id) {
+            let user = self.get_user(id).await?;
+            if let Some(stored_password) = user.password_hash {
+                if stored_password.verify("") {
+                    // Password stored is empty
+                    info!("Password for user {} is empty, disabling password", user.name);
+                    self.unset_user_password(user.id).await?;
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// Insert a new CA certificate into the database
     /// Adds id to the Certificate struct
     pub(crate) async fn insert_ca(
@@ -371,6 +389,15 @@ impl VaulTLSDB {
             Ok(conn.execute(
                 "UPDATE users SET password_hash = ?1 WHERE id=?2",
                 params![password_hash.to_string(), id]
+            ).map(|_| ())?)
+        })
+    }
+
+    pub(crate) async fn unset_user_password(&self, id: i64) -> Result<()> {
+        db_do!(self.pool, |conn: &Connection| {
+            Ok(conn.execute(
+                "UPDATE users SET password_hash = NULL WHERE id=?1",
+                params![id]
             ).map(|_| ())?)
         })
     }

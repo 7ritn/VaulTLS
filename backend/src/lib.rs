@@ -73,6 +73,7 @@ pub async fn create_rocket() -> Rocket<Build> {
     let db_initialized = db_path.exists();
     let encrypted = settings.get_db_encrypted();
     let db = VaulTLSDB::new(encrypted, false).expect("Failed opening SQLite database");
+    db.fix_password().await.expect("Failed fixing passwords");
     if !encrypted && env::var("VAULTLS_DB_SECRET").is_ok() {
         settings.set_db_encrypted().unwrap()
     }

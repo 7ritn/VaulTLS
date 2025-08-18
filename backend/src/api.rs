@@ -55,8 +55,15 @@ pub(crate) async fn setup(
         return Err(ApiError::Other("Password is required".to_string()))
     }
 
+    let trim_password = setup_req.password.as_deref().unwrap_or("").trim();
+
+    let password = match trim_password {
+        "" => None,
+        _ => Some(trim_password)
+    };
+
     let mut password_hash = None;
-    if let Some(ref password) = setup_req.password {
+    if let Some(password) = password {
         state.settings.set_password_enabled(true)?;
         password_hash = Some(Password::new_server_hash(password)?);
     }
@@ -92,6 +99,10 @@ pub(crate) async fn login(
     jar: &CookieJar<'_>,
     login_req_opt: Json<LoginRequest>
 ) -> Result<(), ApiError> {
+    if !state.settings.get_password_enabled() {
+        warn!("Password login is disabled.");
+        return Err(ApiError::Unauthorized(Some("Password login is disabled".to_string())))
+    }
     let user: User = state.db.get_user_by_email(login_req_opt.email.clone()).await.map_err(|_| {
         warn!(user=login_req_opt.email, "Invalid email");
         ApiError::Unauthorized(Some("Invalid credentials".to_string()))
@@ -151,6 +162,7 @@ pub(crate) async fn change_password(
 
     let password_hash = Password::new_server_hash(&change_pass_req.new_password)?;
     state.db.set_user_password(user_id, password_hash).await?;
+    // todo unset
 
     info!(user=user.name, "Password Change: Success");
 
@@ -440,8 +452,15 @@ pub(crate) async fn create_user(
     payload: Json<CreateUserRequest>,
     _authentication: AuthenticatedPrivileged
 ) -> Result<Json<i64>, ApiError> {
-    let password_hash = match payload.password {
-        Some(ref p) => Some(Password::new_server_hash(p)?),
+    let trim_password = payload.password.as_deref().unwrap_or("").trim();
+
+    let password = match trim_password {
+        "" => None,
+        _ => Some(trim_password)
+    };
+
+    let password_hash = match password {
+        Some(p) => Some(Password::new_server_hash(p)?),
         None => None,
     };
 
