@@ -59,7 +59,7 @@ def context():
 def page(context):
     context.clear_cookies()
     page = context.new_page()
-    page.goto("http://vaultls/login")
+    page.goto("http://127.0.0.1/login")
     page.wait_for_url("**/login")
 
     # Perform login
@@ -72,7 +72,7 @@ def page(context):
 def test_certificates(page):
     delete_all_emails()
 
-    page.goto("http://vaultls/overview")
+    page.goto("http://127.0.0.1/overview")
     page.wait_for_url("**/overview")
     assert "Certificates" in page.locator("h1").inner_text()
     page.click("button:has-text('Create New Certificate')")
@@ -91,7 +91,7 @@ def test_certificates(page):
 def test_renewal_remind(page):
     delete_all_emails()
 
-    page.goto("http://vaultls/overview")
+    page.goto("http://127.0.0.1/overview")
     page.wait_for_url("**/overview")
     page.click("button:has-text('Create New Certificate')")
     page.fill("#certName", "test_cert_remind")
@@ -108,7 +108,7 @@ def test_renewal_remind(page):
 def test_renewal_renew_notify(page):
     delete_all_emails()
 
-    page.goto("http://vaultls/overview")
+    page.goto("http://127.0.0.1/overview")
     page.wait_for_url("**/overview")
     page.click("button:has-text('Create New Certificate')")
     page.fill("#certName", "test_cert_renew")
@@ -125,7 +125,7 @@ def test_renewal_renew_notify(page):
     assert count_table_data_rows(page) == 4
 
 def test_users(page):
-    page.goto("http://vaultls/users")
+    page.goto("http://127.0.0.1/users")
     page.wait_for_url("**/users")
     assert "Users" in page.locator("h1").inner_text()
     page.click("button:has-text('Create New User')")
@@ -134,3 +134,16 @@ def test_users(page):
     page.fill("#password", "password")
     page.click("button:has-text('Create User')")
     assert "test2" in page.locator("#UserName-2").inner_text()
+
+def test_oidc(context):
+    context.clear_cookies()
+    page = context.new_page()
+
+    page.goto("http://127.0.0.1/api/auth/oidc/login")
+    page.fill("#username-textfield", "test")
+    page.fill("#password-textfield", "password")
+    page.click("#sign-in-button")
+
+    page.click("#openid-consent-accept")
+    page.wait_for_url("**/overview**")
+    assert "Certificates" in page.locator("h1").inner_text()

@@ -1,6 +1,13 @@
 version: '3.8'
 
 services:
+  authelia:
+    container_name: authelia
+    image: authelia/authelia:latest
+    volumes:
+      - ./authelia/:/config
+    ports:
+      - "9091:9091"
   mailhog:
     container_name: mailhog
     image: mailhog/mailhog:latest
@@ -21,15 +28,23 @@ services:
     depends_on:
       mailhog:
         condition: service_started
+      authelia:
+        condition: service_started
+    network_mode: "service:authelia"
     volumes:
       - /app/data
     environment:
+      - "VAULTLS_LOG_LEVEL=trace"
       - "VAULTLS_API_SECRET=cpCeMZga+H72Ux99y3v+Ht2IDH2NEClh40UTT4Mrxm4="
       - "VAULTLS_URL=http://localhost:5173/"
       - "VAULTLS_MAIL_HOST=mailhog"
       - "VAULTLS_MAIL_PORT=1025"
       - "VAULTLS_MAIL_FROM=test@vaultls.dev"
       - "VAULTLS_CHECK_EXPIRY_INTERVAL=1"
+      - "VAULTLS_OIDC_ID=4lMLB1v61sUInLBCjpUvjnmIgXexYKdgfolAahzI0BGYdHxYIsmz4AcdVmsKF4Zk"
+      - "VAULTLS_OIDC_SECRET=MSO5oNjfuf0t7Kl4JMoDYNsFaMkw1fiGtpzEO34yqjrJ2usrTyyO8AaK9uqUmpJb"
+      - "VAULTLS_OIDC_AUTH_URL=http://127.0.0.1:9091"
+      - "VAULTLS_OIDC_CALLBACK_URL=http://127.0.0.1:80/api/auth/oidc/callback"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost/"]
       interval: 30s
@@ -44,6 +59,7 @@ services:
     depends_on:
       vaultls:
         condition: service_healthy
+    network_mode: "service:authelia"
     environment:
-      - "VAULTLS_URL=http://vaultls/"
+      - "VAULTLS_URL=http://127.0.0.1/"
     entrypoint: ["pytest", "/app/test_vaultls.py"]

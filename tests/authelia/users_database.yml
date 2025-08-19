@@ -1,0 +1,5 @@
+users:
+  test:
+    displayname: "Test User"
+    email: test@example.com
+    password: "$argon2id$v=19$m=65536,t=3,p=4$TTwISJ722u+gGS5ZNtGhtQ$prUkeRHvt20icEW16325uA3FHofnK50kDojHu8mV5kg"

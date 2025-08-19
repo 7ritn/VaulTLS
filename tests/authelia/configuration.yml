@@ -1,0 +1,86 @@
+server:
+  address: tcp://:9091
+
+authentication_backend:
+  password_reset:
+    disable: true
+  file:
+    path: /config/users_database.yml
+    password:
+      algorithm: argon2id
+      iterations: 1
+      salt_length: 16
+      parallelism: 8
+      memory: 128
+
+identity_providers:
+  oidc:
+    jwks:
+      - key: |
+          -----BEGIN PRIVATE KEY-----
+          MIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQCw7Gm85qgfjIJg
+          +hco3y83E1avT1FOqZaC1CrPqEyMtZddbga4duVADwhXU+asxH8D2X02TDa779v8
+          cAoeX+4pRMAezcXNw0vNKNSnH5o0Xlo/O4o7Oq5R097ReRbkuT2tA3Dd/QhkJWu2
+          YvbVQQXHDaRoH5Sdpmw1q4ZpS3p7m4OxQYOqpLIwLsvrdZ5GSnStc8d3pkGmKCK9
+          uflqsdUfE0gL8RmW3QCeLbCfTBTV8T5e0q9f0qv5moH1yVlkkiyKv2Zyn11icUAJ
+          +4l7fk7ryULminVkf+O+7NoOC5AvsymREboA5Gqdv+U4o7L3mEfBeAR0VhwFf4YO
+          qyT/yJAlAgMBAAECggEAEGyiFEtFaEhfAim1ZLHzbCV7cqLmZWsQ8exIXSa+lIF3
+          H9FLBmzjM2Mx3wmG7JsBP5Y9LYE9w4ys2257Qf6d2W7sdu+bYVK0AsO7mhgw9JOd
+          xSj92CnGbQpCMSgQnAMmWp1rKPCIiuN+cFwXlgyHQMdfb9serNP6T7EwtS2wnTDX
+          BrjEMX3Bsx5Mp2YsZteTNpWZqPEDO4NSUyu6VlyjdOzytxSvXZJugrAAzaZo8YAi
+          1h9RDtU7DqytAcswNvDCFhUxr78yXBBagusmC9QmelCXU7HGjM/37nGS60vxhLB1
+          yA7Lczly0q3WYJiYoNLNslqXMC1WqfmXE9pqoYU4gQKBgQDpQ6grIJStm0m4jUxn
+          mEer6G4v9mOwAldxPwTqYZF7FyqH803JA4X3F2jIKx+wfycojE95SHpRfc4/9NsD
+          w/iWnYLw27kcG5e+v3OkcCYPOUUloijMhcHm+XHuXIl2mBUfBLkHxQY5ohIRURyZ
+          vrcUGQsFRJ88QVw2m/M99IoimQKBgQDCKvTzy3QHPN5aUsPmL0YwsczcZ7uTozPr
+          SfCTvpuliVKh96yjHvZBW76InZxgo9SBnTxjG5/5X11az0VvSgwpalIuWsaGJZQN
+          hjYOJ7JduJ1Ksuo7sjPF+BQGlh8ZZbbY3/jyx7ItG0snSK+cG54btYq5DYZzEQuI
+          x/0kT8CdbQKBgFCq3RVNBx2ifjQcaTfKKb8BelmL052isaqwKHsFktIGiObK9TN2
+          zHVO2yWeBC99SYV0QGeo8OQNpa3od3Ut6GHtxsKUucdGo4uLmepb/k11eLwy//j6
+          qLu/t+6+gatJnMRFVdeiAy0bJzRl4IYqthV1M6J2wLqNv94CwHPEhaDBAoGAeqXR
+          xrGMIApF1b4T+jGAX7/fzJVFujNL12MEMP8kqAK/DIo7JWqoWI6QIxGTtsOltx3Q
+          CDZp7YZcnMDydiLK3dpIAPncDt5rz8MoH/bZRzQXPxkWthCRfYp/c82d5VgHkKSh
+          RxH3LWDhLvZN3wje7VfWQaAWflaU95iEAUzTOV0CgYA4Yk2Nf4l/OVYENQ/VRSz/
+          /lfJf0c9XDL0Ubk+Wgv6uO6d4V3VvEQkh0zRXn/ltc8o8cbaCQrpzspObYyq2Hb0
+          SP+3lzx8yTePIZ6R/reRSFPkBaUlmzDWbSEpMNdzNHVooVO81iAIowkuwFY80yKo
+          PNIRHR3+xzAzA+b5uRFwBQ==
+          -----END PRIVATE KEY-----
+
+    clients:
+      - client_id: "4lMLB1v61sUInLBCjpUvjnmIgXexYKdgfolAahzI0BGYdHxYIsmz4AcdVmsKF4Zk"
+        client_name: "vautls"
+        client_secret: "$argon2id$v=19$m=65536,t=3,p=4$oCS0JqgHQ5TEQrVVXqMvdg$c6TV9ZESvIHyiMolzktoQBbFhhHVmg+As1TPFNL77Ig"
+        public: false
+        authorization_policy: "one_factor"
+        pkce_challenge_method: "S256"
+        redirect_uris:
+          - "http://127.0.0.1:80/api/auth/oidc/callback"
+        scopes:
+          - "openid"
+          - "profile"
+          - "email"
+        userinfo_signed_response_alg: "none"
+
+session:
+  name: authelia_session
+  secret: another_very_important_secret
+  expiration: 1h
+  inactivity: 5m
+  domain: 127.0.0.1
+  
+access_control:
+  default_policy: one_factor
+
+regulation:
+  max_retries: 3
+  find_time: 120
+  ban_time: 300
+
+storage:
+  encryption_key: a_very_important_secret_wow_wow
+  local:
+    path: /config/db.sqlite3
+
+notifier:
+  filesystem:
+    filename: /config/notifications.txt
