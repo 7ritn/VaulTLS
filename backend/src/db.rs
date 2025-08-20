@@ -56,6 +56,7 @@ impl VaulTLSDB {
         };
 
         let pool = Pool::builder()
+            .max_lifetime(Some(std::time::Duration::from_secs(300)))
             .max_size(1)
             .build(manager)?;
         let mut connection = pool.get()?;
@@ -101,6 +102,7 @@ impl VaulTLSDB {
                     });
 
                 let pool = Pool::builder()
+                    .max_lifetime(Some(std::time::Duration::from_secs(300)))
                     .max_size(1)
                     .build(manager)?;
 
