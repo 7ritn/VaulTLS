@@ -37,7 +37,7 @@ async fn test_version() -> Result<()>{
 
     assert_eq!(response.status(), Status::Ok);
     assert_eq!(response.content_type(), Some(ContentType::Plain));
-    assert_eq!(response.into_string().await, Some("v0.9.1".into()));
+    assert_eq!(response.into_string().await, Some("v0.9.2".into()));
 
     Ok(())
 }
