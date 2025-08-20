@@ -8,18 +8,24 @@ services:
       - ./authelia/:/config
     ports:
       - "9091:9091"
+    healthcheck:
+      test: [ "CMD", "wget", "--spider", "-q", "http://127.0.0.1:9091/" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
   mailhog:
     container_name: mailhog
     image: mailhog/mailhog:latest
     healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:8025/api/v2/messages" ]
+      test: [ "CMD", "wget", "--spider", "-q", "http://127.0.0.1:8025/api/v2/messages" ]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 5s
 
   vaultls:
-    image: vaultls:test
+    image: vaultls:dev
     build:
       context: ../
       dockerfile: Containerfile
@@ -27,9 +33,9 @@ services:
         RUN_TESTS: "true"
     depends_on:
       mailhog:
-        condition: service_started
+        condition: service_healthy
       authelia:
-        condition: service_started
+        condition: service_healthy
     network_mode: "service:authelia"
     volumes:
       - /app/data
