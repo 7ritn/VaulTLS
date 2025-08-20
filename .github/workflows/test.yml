@@ -15,6 +15,7 @@ jobs:
 
     permissions:
       contents: read
+      packages: write
 
     steps:
       - name: Checkout code
@@ -38,13 +39,17 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Extract repo name
+        run: |
+          echo "REPO_LOWER=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+
       - name: Build Docker image with cache
         uses: docker/build-push-action@v5
         with:
           context: .
           file: Containerfile
           push: true
-          tags: ghcr.io/7ritn/vaultls:dev
+          tags: ghcr.io/${{ env.REPO_LOWER }}:dev
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
           load: true  # Needed so the image is available to docker-compose locally
