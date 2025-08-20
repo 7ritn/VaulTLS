@@ -48,11 +48,31 @@ impl VaulTLSDB {
             false
         };
 
-        let manager = if !mem {
+        let mut manager = if !mem {
             SqliteConnectionManager::file(DB_FILE_PATH)
         } else {
             debug!("Opening in-memory database");
             SqliteConnectionManager::memory()
+        };
+
+        let db_secret_result = get_secret("VAULTLS_DB_SECRET");
+        manager = if db_encrypted {
+            debug!("Using encrypted database");
+            if let Ok(ref db_secret_result) = db_secret_result {
+                let db_secret = db_secret_result.clone();
+                manager.with_init(move |conn| {
+                    conn.pragma_update(None, "key", db_secret.clone())?;
+                    conn.pragma_update(None, "foreign_keys", "ON")?;
+                    Ok(())
+                })
+            } else {
+                return Err(anyhow!("VAULTLS_DB_SECRET missing".to_string()));
+            }
+        } else {
+            manager.with_init(|connection| {
+                connection.pragma_update(None, "foreign_keys", "ON")?;
+                Ok(())
+            })
         };
 
         let pool = Pool::builder()
@@ -61,17 +81,6 @@ impl VaulTLSDB {
             .build(manager)?;
         let mut connection = pool.get()?;
 
-        let db_secret = get_secret("VAULTLS_DB_SECRET");
-        if db_encrypted {
-            debug!("Using encrypted database");
-            if let Ok(ref db_secret) = db_secret {
-                connection.pragma_update(None, "key", db_secret)?;
-            } else {
-                return Err(anyhow!("VAULTLS_DB_SECRET missing".to_string()));
-            }
-
-        }
-        connection.pragma_update(None, "foreign_keys", "ON")?;
         // This if statement can be removed in a future version
         if db_initialized {
             debug!("Correcting user_version of database");
@@ -88,12 +97,12 @@ impl VaulTLSDB {
 
         // ToDo fix when to migrate
         if !db_encrypted {
-            if let Ok(db_secret) = db_secret {
+            if let Ok(ref db_secret_result) = db_secret_result {
+                let db_secret = db_secret_result.clone();
                 Self::create_encrypt_db(&connection, &db_secret)?;
                 drop(connection);
                 Self::migrate_to_encrypted_db()?;
                 info!("Migrated to encrypted database");
-
                 let manager = SqliteConnectionManager::file(DB_FILE_PATH)
                     .with_init(move |conn| {
                         conn.pragma_update(None, "key", db_secret.clone())?;
