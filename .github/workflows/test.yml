@@ -44,7 +44,7 @@ jobs:
           context: .
           file: Containerfile
           push: true
-          tags: ghcr.io/vaultls:dev
+          tags: ghcr.io/7ritn/vaultls:dev
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
           load: true  # Needed so the image is available to docker-compose locally
