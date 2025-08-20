@@ -25,7 +25,7 @@ services:
       start_period: 5s
 
   vaultls:
-    image: vaultls:dev
+    image: ghcr.io/7ritn/vaultls:dev
     build:
       context: ../
       dockerfile: Containerfile
