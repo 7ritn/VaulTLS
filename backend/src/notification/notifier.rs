@@ -4,28 +4,38 @@ use crate::data::enums::CertificateType::Client;
 use crate::db::VaulTLSDB;
 use crate::notification::mail::{MailMessage, Mailer};
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::Mutex;
-use tokio::time::sleep;
+use tokio::time::{interval  , MissedTickBehavior};
 use tracing::{info, trace};
 
 pub(crate) async fn watch_expiry(db: VaulTLSDB, mailer_mutex: Arc<Mutex<Option<Mailer>>>) {
     info!("Starting certificate expiry watcher.");
-    let interval = match std::env::var("VAULTLS_CHECK_EXPIRY_INTERVAL") {
-        Ok(val) => val.parse().unwrap_or(300),
-        Err(_) => 300,
-    };
+    let interval_secs = std::env::var("VAULTLS_CHECK_EXPIRY_INTERVAL")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .filter(|&s| s > 0)
+        .unwrap_or(300);
+
+    let mut ticker = interval(Duration::from_secs(interval_secs));
+    ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
+
+
     loop {
         trace!("Checking for certificates that are about to expire.");
-        let Ok(certs) = db.get_all_user_cert(None).await else { continue };
 
-        let in_a_week = chrono::Utc::now().timestamp_millis() + 1000 * 60 * 60 * 24 * 7;
-        for cert in certs.iter().filter(|a| a.renew_method != CertificateRenewMethod::None && a.valid_until < in_a_week) {
-            if handle_expiry(cert, &db, mailer_mutex.clone()).await.is_ok() {
-                let _ = db.update_cert_renew_method(cert.id, CertificateRenewMethod::None).await;
+        if let Ok(certs) = db.get_all_user_cert(None).await {
+            let in_a_week = chrono::Utc::now().timestamp_millis() + 1000 * 60 * 60 * 24 * 7;
+            for cert in certs.iter().filter(|a| a.renew_method != CertificateRenewMethod::None && a.valid_until < in_a_week) {
+                if handle_expiry(cert, &db, mailer_mutex.clone()).await.is_ok() {
+                    let _ = db.update_cert_renew_method(cert.id, CertificateRenewMethod::None).await;
+                }
             }
+        } else {
+            info!("Failed to get certificates from database.");
         }
 
-        sleep(std::time::Duration::from_secs(interval)).await;
+        ticker.tick().await;
     }
 }
 
