@@ -12,8 +12,9 @@ use crate::constants::VAULTLS_VERSION;
 use crate::data::api::{CallbackQuery, ChangePasswordRequest, CreateUserCertificateRequest, CreateUserRequest, DownloadResponse, IsSetupResponse, LoginRequest, SetupRequest};
 use crate::data::crl::{CertificateStatusRequest, CertificateStatusResponse, CrlFormat, CrlInfo, RevocationStatistics, RevokeCertificateRequest, RevokeCertificateResponse};
 use crate::data::token::{ApiToken, CreateTokenRequest, TokenResponse, UpdateTokenRequest, RotateTokenRequest, RotateTokenResponse};
+use crate::cert::{CreateCaRequest, UpdateCaRequest, CaResponse, CaListResponse, KeyAlgorithm, CA};
 use crate::crl::CrlManager;
-use crate::auth::token_auth::{TokenAuthService, BearerAuthenticated, BearerTokenAdmin};
+use crate::auth::token_auth::{TokenAuthService, BearerAuthenticated, BearerTokenAdmin, BearerCaRead, BearerCaWrite};
 use crate::data::enums::{CertificateType, PasswordRule, UserRole};
 use crate::data::error::ApiError;
 use crate::data::objects::{AppState, User};
@@ -998,6 +999,286 @@ pub(crate) async fn delete_api_token(
         Some(&authentication.auth.token.tenant_id),
         Some(&token.id),
         Some(&format!("Deleted API token: {}", token.description)),
+    ).await;
+
+    Ok(())
+}
+
+// ===== CA MANAGEMENT ENDPOINTS =====
+
+#[openapi(tag = "Certificate Authorities")]
+#[post("/cas", format = "json", data = "<payload>")]
+/// Create a new Certificate Authority. Requires ca.write scope.
+pub(crate) async fn create_ca(
+    state: &State<AppState>,
+    payload: Json<CreateCaRequest>,
+    authentication: BearerCaWrite
+) -> Result<Json<CaResponse>, ApiError> {
+    let request = payload.into_inner();
+
+    // Validate request
+    if request.name.trim().is_empty() {
+        return Err(ApiError::BadRequest("CA name cannot be empty".to_string()));
+    }
+
+    // Check if parent CA exists (for intermediate CAs)
+    if let Some(parent_ca_id) = request.parent_ca_id {
+        let parent_ca = state.db.get_ca_by_id(parent_ca_id).await?;
+        if parent_ca.tenant_id != authentication.auth.token.tenant_id {
+            return Err(ApiError::Forbidden);
+        }
+    }
+
+    // Determine key algorithm
+    let key_algorithm = request.key_algorithm.unwrap_or_default();
+
+    // Create CA certificate using CertificateBuilder
+    let ca_builder = crate::cert::CertificateBuilder::new_with_key_algorithm(key_algorithm.clone())?;
+    let mut ca = ca_builder
+        .set_name(&request.name)?
+        .set_valid_until(request.validity_years.unwrap_or(10))?
+        .build_ca()?;
+
+    // Set CA properties
+    ca.tenant_id = authentication.auth.token.tenant_id.clone();
+    ca.name = Some(request.name.clone());
+    ca.description = request.description;
+    ca.key_algorithm = key_algorithm.as_str().to_string();
+    ca.key_size = Some(key_algorithm.key_size());
+    ca.is_root_ca = request.is_root_ca.unwrap_or(true);
+    ca.parent_ca_id = request.parent_ca_id;
+    ca.path_len = request.path_len;
+    ca.created_by_user_id = authentication.auth.token.created_by_user_id;
+
+    // Set extensions as JSON
+    if let Some(key_usage) = request.key_usage {
+        ca.key_usage = Some(serde_json::to_string(&key_usage)?);
+    }
+    if let Some(eku) = request.extended_key_usage {
+        ca.extended_key_usage = Some(serde_json::to_string(&eku)?);
+    }
+    if let Some(policies) = request.certificate_policies {
+        ca.certificate_policies = Some(serde_json::to_string(&policies)?);
+    }
+    if let Some(name_constraints) = request.name_constraints {
+        ca.name_constraints = Some(serde_json::to_string(&name_constraints)?);
+    }
+    if let Some(crl_dps) = request.crl_distribution_points {
+        ca.crl_distribution_points = Some(serde_json::to_string(&crl_dps)?);
+    }
+    if let Some(aia) = request.authority_info_access {
+        ca.authority_info_access = Some(serde_json::to_string(&aia)?);
+    }
+
+    // Insert into database
+    let ca_id = state.db.insert_ca(ca.clone()).await?;
+    ca.id = ca_id;
+
+    // Log audit event
+    let _ = state.db.log_audit_event(
+        "ca.create",
+        Some(authentication.auth.token.created_by_user_id),
+        Some(&authentication.auth.token.tenant_id),
+        Some(&ca_id.to_string()),
+        Some(&format!("Created CA: {}", request.name)),
+    ).await;
+
+    Ok(Json(CaResponse::from(ca)))
+}
+
+#[openapi(tag = "Certificate Authorities")]
+#[get("/cas?<page>&<per_page>&<active_only>")]
+/// List Certificate Authorities for the current tenant. Requires ca.read scope.
+pub(crate) async fn list_cas(
+    state: &State<AppState>,
+    page: Option<i32>,
+    per_page: Option<i32>,
+    active_only: Option<bool>,
+    authentication: BearerCaRead
+) -> Result<Json<CaListResponse>, ApiError> {
+    let page = page.unwrap_or(1).max(1);
+    let per_page = per_page.unwrap_or(20).min(100).max(1);
+    let active_only = active_only.unwrap_or(false);
+
+    // Get CAs for tenant
+    let mut cas = state.db.get_cas_for_tenant(&authentication.auth.token.tenant_id).await?;
+
+    // Filter by active status if requested
+    if active_only {
+        cas.retain(|ca| ca.is_active);
+    }
+
+    // Apply pagination
+    let total = cas.len() as i64;
+    let start = ((page - 1) * per_page) as usize;
+    let end = (start + per_page as usize).min(cas.len());
+    let paginated_cas = cas[start..end].to_vec();
+
+    // Convert to response format
+    let mut ca_responses = Vec::new();
+    for ca in paginated_cas {
+        let mut ca_response = CaResponse::from(ca.clone());
+
+        // Add certificate count
+        ca_response.certificate_count = Some(
+            state.db.get_certificate_count_for_ca(ca.id).await.unwrap_or(0)
+        );
+
+        // Add last CRL update
+        ca_response.last_crl_update = state.db.get_last_crl_update(ca.id).await.ok();
+
+        ca_responses.push(ca_response);
+    }
+
+    let response = CaListResponse {
+        cas: ca_responses,
+        total,
+        page,
+        per_page,
+        has_more: end < cas.len(),
+    };
+
+    Ok(Json(response))
+}
+
+#[openapi(tag = "Certificate Authorities")]
+#[get("/cas/<ca_id>")]
+/// Get Certificate Authority details. Requires ca.read scope.
+pub(crate) async fn get_ca(
+    state: &State<AppState>,
+    ca_id: i64,
+    authentication: BearerCaRead
+) -> Result<Json<CaResponse>, ApiError> {
+    // Get CA
+    let ca = state.db.get_ca_by_id(ca_id).await?;
+
+    // Check tenant access
+    if ca.tenant_id != authentication.auth.token.tenant_id {
+        return Err(ApiError::Forbidden);
+    }
+
+    // Convert to response format with additional data
+    let mut ca_response = CaResponse::from(ca.clone());
+
+    // Add certificate count
+    ca_response.certificate_count = Some(
+        state.db.get_certificate_count_for_ca(ca.id).await.unwrap_or(0)
+    );
+
+    // Add last CRL update
+    ca_response.last_crl_update = state.db.get_last_crl_update(ca.id).await.ok();
+
+    Ok(Json(ca_response))
+}
+
+#[openapi(tag = "Certificate Authorities")]
+#[patch("/cas/<ca_id>", format = "json", data = "<payload>")]
+/// Update Certificate Authority. Requires ca.write scope.
+pub(crate) async fn update_ca(
+    state: &State<AppState>,
+    ca_id: i64,
+    payload: Json<UpdateCaRequest>,
+    authentication: BearerCaWrite
+) -> Result<Json<CaResponse>, ApiError> {
+    let request = payload.into_inner();
+
+    // Get existing CA
+    let mut ca = state.db.get_ca_by_id(ca_id).await?;
+
+    // Check tenant access
+    if ca.tenant_id != authentication.auth.token.tenant_id {
+        return Err(ApiError::Forbidden);
+    }
+
+    // Update fields
+    if let Some(name) = request.name {
+        if name.trim().is_empty() {
+            return Err(ApiError::BadRequest("CA name cannot be empty".to_string()));
+        }
+        ca.name = Some(name);
+    }
+
+    if let Some(description) = request.description {
+        ca.description = Some(description);
+    }
+
+    if let Some(is_active) = request.is_active {
+        ca.is_active = is_active;
+    }
+
+    if let Some(crl_dps) = request.crl_distribution_points {
+        ca.crl_distribution_points = Some(serde_json::to_string(&crl_dps)?);
+    }
+
+    if let Some(aia) = request.authority_info_access {
+        ca.authority_info_access = Some(serde_json::to_string(&aia)?);
+    }
+
+    // Update in database
+    state.db.update_ca(&ca).await?;
+
+    // Log audit event
+    let _ = state.db.log_audit_event(
+        "ca.update",
+        Some(authentication.auth.token.created_by_user_id),
+        Some(&authentication.auth.token.tenant_id),
+        Some(&ca_id.to_string()),
+        Some(&format!("Updated CA: {}", ca.name.as_deref().unwrap_or("Unknown"))),
+    ).await;
+
+    Ok(Json(CaResponse::from(ca)))
+}
+
+#[openapi(tag = "Certificate Authorities")]
+#[delete("/cas/<ca_id>")]
+/// Delete Certificate Authority. Requires ca.write scope.
+/// Note: This will also revoke all certificates issued by this CA.
+pub(crate) async fn delete_ca(
+    state: &State<AppState>,
+    ca_id: i64,
+    authentication: BearerCaWrite
+) -> Result<(), ApiError> {
+    // Get CA to check ownership
+    let ca = state.db.get_ca_by_id(ca_id).await?;
+
+    // Check tenant access
+    if ca.tenant_id != authentication.auth.token.tenant_id {
+        return Err(ApiError::Forbidden);
+    }
+
+    // Check if CA has child CAs
+    let child_cas = state.db.get_child_cas(ca_id).await?;
+    if !child_cas.is_empty() {
+        return Err(ApiError::BadRequest(
+            "Cannot delete CA with child CAs. Delete child CAs first.".to_string()
+        ));
+    }
+
+    // Revoke all certificates issued by this CA
+    let certificates = state.db.get_certificates_by_ca(ca_id).await?;
+    for cert in certificates {
+        if cert.status != "revoked" {
+            let _ = state.db.revoke_certificate(
+                cert.id,
+                authentication.auth.token.created_by_user_id,
+                Some(6), // cessationOfOperation
+                Some("CA deletion".to_string())
+            ).await;
+        }
+    }
+
+    // Mark CA as inactive instead of deleting (for audit trail)
+    let mut ca_mut = ca.clone();
+    ca_mut.is_active = false;
+    state.db.update_ca(&ca_mut).await?;
+
+    // Log audit event
+    let _ = state.db.log_audit_event(
+        "ca.delete",
+        Some(authentication.auth.token.created_by_user_id),
+        Some(&authentication.auth.token.tenant_id),
+        Some(&ca_id.to_string()),
+        Some(&format!("Deleted CA: {}", ca.name.as_deref().unwrap_or("Unknown"))),
     ).await;
 
     Ok(())

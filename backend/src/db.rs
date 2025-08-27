@@ -1600,4 +1600,150 @@ impl VaulTLSDB {
             ).map(|_| ())?)
         })
     }
+
+    // ===== CA MANAGEMENT OPERATIONS =====
+
+    /// Update CA
+    pub(crate) async fn update_ca(&self, ca: &CA) -> Result<()> {
+        db_do!(self.pool, |conn: &Connection| {
+            Ok(conn.execute(
+                "UPDATE ca_certificates SET name = ?1, description = ?2, is_active = ?3, crl_distribution_points = ?4, authority_info_access = ?5, key_usage = ?6, extended_key_usage = ?7, certificate_policies = ?8, policy_constraints = ?9, name_constraints = ?10, metadata = ?11 WHERE id = ?12",
+                params![
+                    ca.name, ca.description, ca.is_active, ca.crl_distribution_points,
+                    ca.authority_info_access, ca.key_usage, ca.extended_key_usage,
+                    ca.certificate_policies, ca.policy_constraints, ca.name_constraints,
+                    ca.metadata, ca.id
+                ]
+            ).map(|_| ())?)
+        })
+    }
+
+    /// Get certificate count for a CA
+    pub(crate) async fn get_certificate_count_for_ca(&self, ca_id: i64) -> Result<i64> {
+        db_do!(self.pool, |conn: &Connection| {
+            Ok(conn.query_row(
+                "SELECT COUNT(*) FROM user_certificates WHERE ca_id = ?1",
+                params![ca_id],
+                |row| row.get(0)
+            )?)
+        })
+    }
+
+    /// Get last CRL update timestamp for a CA
+    pub(crate) async fn get_last_crl_update(&self, ca_id: i64) -> Result<i64> {
+        db_do!(self.pool, |conn: &Connection| {
+            Ok(conn.query_row(
+                "SELECT MAX(created_at) FROM crl_metadata WHERE ca_id = ?1",
+                params![ca_id],
+                |row| row.get(0)
+            )?)
+        })
+    }
+
+    /// Get child CAs for a parent CA
+    pub(crate) async fn get_child_cas(&self, parent_ca_id: i64) -> Result<Vec<CA>> {
+        db_do!(self.pool, |conn: &Connection| {
+            let mut stmt = conn.prepare(
+                "SELECT * FROM ca_certificates WHERE parent_ca_id = ?1"
+            )?;
+
+            let rows = stmt.query_map(params![parent_ca_id], |row| {
+                Ok(CA{
+                    id: row.get(0)?,
+                    created_on: row.get(1)?,
+                    valid_until: row.get(2)?,
+                    cert: row.get(3)?,
+                    key: row.get(4)?,
+                    tenant_id: row.get(5)?,
+                    name: row.get(6)?,
+                    description: row.get(13)?,
+                    key_algorithm: row.get(7)?,
+                    key_size: row.get(14)?,
+                    path_len: row.get(8)?,
+                    basic_constraints: row.get(9)?,
+                    crl_distribution_points: row.get(10)?,
+                    authority_info_access: row.get(11)?,
+                    is_active: row.get(12)?,
+                    is_root_ca: row.get(15)?,
+                    parent_ca_id: row.get(16)?,
+                    serial_number: row.get(17)?,
+                    issuer: row.get(18)?,
+                    subject: row.get(19)?,
+                    key_usage: row.get(20)?,
+                    extended_key_usage: row.get(21)?,
+                    certificate_policies: row.get(22)?,
+                    policy_constraints: row.get(23)?,
+                    name_constraints: row.get(24)?,
+                    created_by_user_id: row.get(25)?,
+                    metadata: row.get(26)?,
+                })
+            })?;
+
+            let mut cas = Vec::new();
+            for ca in rows {
+                cas.push(ca?);
+            }
+            Ok(cas)
+        })
+    }
+
+    /// Get certificates issued by a CA
+    pub(crate) async fn get_certificates_by_ca(&self, ca_id: i64) -> Result<Vec<Certificate>> {
+        db_do!(self.pool, |conn: &Connection| {
+            let mut stmt = conn.prepare(
+                "SELECT id, name, created_on, valid_until, type, user_id, renew_method, tenant_id, profile_id, serial_number, issuer, subject, algorithm, key_size, sans, metadata, status, ca_id, revoked_at, revoked_by_user_id, revocation_reason FROM user_certificates WHERE ca_id = ?1"
+            )?;
+
+            let rows = stmt.query_map(params![ca_id], |row| {
+                Ok(Certificate {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    created_on: row.get(2)?,
+                    valid_until: row.get(3)?,
+                    certificate_type: row.get(4)?,
+                    user_id: row.get(5)?,
+                    renew_method: row.get(6)?,
+                    tenant_id: row.get(7)?,
+                    profile_id: row.get(8)?,
+                    serial_number: row.get(9)?,
+                    issuer: row.get(10)?,
+                    subject: row.get(11)?,
+                    algorithm: row.get(12)?,
+                    key_size: row.get(13)?,
+                    sans: row.get(14)?,
+                    metadata: row.get(15)?,
+                    status: row.get(16)?,
+                    ca_id: row.get(17)?,
+                    revoked_at: row.get(18)?,
+                    revoked_by_user_id: row.get(19)?,
+                    revocation_reason: row.get(20)?,
+                    pkcs12: Vec::new(),
+                    pkcs12_password: String::new(),
+                })
+            })?;
+
+            let mut certificates = Vec::new();
+            for cert in rows {
+                certificates.push(cert?);
+            }
+            Ok(certificates)
+        })
+    }
+
+    /// Revoke a certificate
+    pub(crate) async fn revoke_certificate(
+        &self,
+        certificate_id: i64,
+        revoked_by_user_id: i64,
+        revocation_reason: Option<i32>,
+        revocation_note: Option<String>,
+    ) -> Result<()> {
+        let revoked_at = chrono::Utc::now().timestamp();
+        db_do!(self.pool, |conn: &Connection| {
+            Ok(conn.execute(
+                "UPDATE user_certificates SET status = 'revoked', revoked_at = ?1, revoked_by_user_id = ?2, revocation_reason = ?3 WHERE id = ?4",
+                params![revoked_at, revoked_by_user_id, revocation_reason, certificate_id]
+            ).map(|_| ())?)
+        })
+    }
 }

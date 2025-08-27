@@ -195,7 +195,12 @@ pub async fn create_rocket() -> Rocket<Build> {
                 update_api_token,
                 rotate_api_token,
                 revoke_api_token,
-                delete_api_token
+                delete_api_token,
+                create_ca,
+                list_cas,
+                get_ca,
+                update_ca,
+                delete_ca
             ],
         )
         .mount(
@@ -293,7 +298,12 @@ pub async fn create_test_rocket() -> Rocket<Build> {
                 update_api_token,
                 rotate_api_token,
                 revoke_api_token,
-                delete_api_token
+                delete_api_token,
+                create_ca,
+                list_cas,
+                get_ca,
+                update_ca,
+                delete_ca
             ],
         )
 }
