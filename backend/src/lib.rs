@@ -210,7 +210,14 @@ pub async fn create_rocket() -> Rocket<Build> {
                 list_profiles,
                 get_profile,
                 update_profile,
-                delete_profile
+                delete_profile,
+                search_certificates,
+                batch_certificate_operation,
+                get_certificate_chain,
+                validate_certificate_chain,
+                get_expiring_certificates,
+                get_certificate_statistics,
+                bulk_download_certificates
             ],
         )
         .mount(
@@ -323,7 +330,14 @@ pub async fn create_test_rocket() -> Rocket<Build> {
                 list_profiles,
                 get_profile,
                 update_profile,
-                delete_profile
+                delete_profile,
+                search_certificates,
+                batch_certificate_operation,
+                get_certificate_chain,
+                validate_certificate_chain,
+                get_expiring_certificates,
+                get_certificate_statistics,
+                bulk_download_certificates
             ],
         )
 }

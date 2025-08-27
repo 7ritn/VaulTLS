@@ -364,6 +364,353 @@ pub enum CaSelection {
     Auto,
 }
 
+// ===== ENHANCED CERTIFICATE SEARCH =====
+
+/// Advanced certificate search request
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct CertificateSearchRequest {
+    /// Search filters
+    pub filters: Option<Vec<SearchFilter>>,
+    /// Sorting options
+    pub sort: Option<Vec<SortOption>>,
+    /// Pagination
+    pub page: Option<i32>,
+    pub per_page: Option<i32>,
+    /// Include revoked certificates
+    pub include_revoked: Option<bool>,
+    /// Include expired certificates
+    pub include_expired: Option<bool>,
+}
+
+/// Search filter for certificate queries
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct SearchFilter {
+    /// Field to filter on
+    pub field: SearchField,
+    /// Operator to use
+    pub operator: SearchOperator,
+    /// Value to compare against
+    pub value: SearchValue,
+}
+
+/// Fields that can be searched
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum SearchField {
+    Name,
+    CommonName,
+    SerialNumber,
+    Issuer,
+    Subject,
+    Status,
+    CertificateType,
+    Algorithm,
+    KeySize,
+    CreatedAt,
+    ValidUntil,
+    RevokedAt,
+    Sans,
+    ProfileId,
+    CaId,
+    UserId,
+    Metadata,
+}
+
+/// Search operators
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum SearchOperator {
+    /// Equals
+    Eq,
+    /// Not equals
+    Ne,
+    /// Less than
+    Lt,
+    /// Less than or equal
+    Lte,
+    /// Greater than
+    Gt,
+    /// Greater than or equal
+    Gte,
+    /// Like (SQL LIKE with wildcards)
+    Like,
+    /// In (value in list)
+    In,
+    /// Not in (value not in list)
+    Nin,
+    /// Between (for ranges)
+    Between,
+    /// Contains (for JSON fields)
+    Contains,
+    /// Starts with
+    StartsWith,
+    /// Ends with
+    EndsWith,
+}
+
+/// Search value (can be different types)
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(untagged)]
+pub enum SearchValue {
+    String(String),
+    Number(i64),
+    Float(f64),
+    Boolean(bool),
+    Array(Vec<String>),
+    Range { start: i64, end: i64 },
+}
+
+/// Sort option for search results
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct SortOption {
+    pub field: SearchField,
+    pub direction: SortDirection,
+}
+
+/// Sort direction
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum SortDirection {
+    Asc,
+    Desc,
+}
+
+/// Certificate search response
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct CertificateSearchResponse {
+    pub certificates: Vec<Certificate>,
+    pub total: i64,
+    pub page: i32,
+    pub per_page: i32,
+    pub has_more: bool,
+    pub filters_applied: Vec<SearchFilter>,
+    pub sort_applied: Vec<SortOption>,
+}
+
+// ===== BATCH OPERATIONS =====
+
+/// Batch operation request
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct BatchOperationRequest {
+    /// Certificate IDs to operate on
+    pub certificate_ids: Vec<i64>,
+    /// Operation to perform
+    pub operation: BatchOperation,
+    /// Operation-specific parameters
+    pub parameters: Option<BatchOperationParameters>,
+}
+
+/// Batch operations
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum BatchOperation {
+    /// Revoke certificates
+    Revoke,
+    /// Restore certificates
+    Restore,
+    /// Delete certificates
+    Delete,
+    /// Download certificates
+    Download,
+    /// Renew certificates
+    Renew,
+    /// Update metadata
+    UpdateMetadata,
+}
+
+/// Parameters for batch operations
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct BatchOperationParameters {
+    /// For revoke operation
+    pub revocation_reason: Option<i32>,
+    pub revocation_note: Option<String>,
+    /// For download operation
+    pub format: Option<String>,
+    pub include_chain: Option<bool>,
+    /// For renew operation
+    pub validity_years: Option<i32>,
+    /// For metadata update
+    pub metadata: Option<serde_json::Value>,
+}
+
+/// Batch operation response
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct BatchOperationResponse {
+    pub operation: BatchOperation,
+    pub total_requested: i32,
+    pub successful: i32,
+    pub failed: i32,
+    pub results: Vec<BatchOperationResult>,
+    pub download_url: Option<String>, // For download operations
+}
+
+/// Individual result in batch operation
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct BatchOperationResult {
+    pub certificate_id: i64,
+    pub success: bool,
+    pub error: Option<String>,
+    pub details: Option<String>,
+}
+
+// ===== CERTIFICATE CHAIN MANAGEMENT =====
+
+/// Certificate chain information
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct CertificateChain {
+    pub certificate: Certificate,
+    pub issuer_chain: Vec<Certificate>,
+    pub root_ca: Option<Certificate>,
+    pub chain_valid: bool,
+    pub validation_errors: Vec<String>,
+}
+
+/// Chain validation request
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct ChainValidationRequest {
+    pub certificate_id: i64,
+    pub validate_expiry: Option<bool>,
+    pub validate_revocation: Option<bool>,
+}
+
+/// Chain validation response
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct ChainValidationResponse {
+    pub certificate_id: i64,
+    pub chain_valid: bool,
+    pub validation_results: Vec<ValidationResult>,
+    pub chain_length: i32,
+    pub expires_at: i64,
+}
+
+/// Individual validation result
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct ValidationResult {
+    pub check_type: String,
+    pub passed: bool,
+    pub message: String,
+    pub details: Option<String>,
+}
+
+// ===== CERTIFICATE STATISTICS =====
+
+/// Certificate statistics for a tenant
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct CertificateStatistics {
+    pub total_certificates: i64,
+    pub active_certificates: i64,
+    pub revoked_certificates: i64,
+    pub expired_certificates: i64,
+    pub expiring_soon: i64, // Within 30 days
+    pub by_type: CertificateTypeStats,
+    pub by_algorithm: Vec<AlgorithmStats>,
+    pub by_ca: Vec<CaStats>,
+    pub by_profile: Vec<ProfileStats>,
+    pub recent_activity: RecentActivity,
+}
+
+/// Certificate statistics by type
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct CertificateTypeStats {
+    pub server: i64,
+    pub client: i64,
+}
+
+/// Algorithm usage statistics
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct AlgorithmStats {
+    pub algorithm: String,
+    pub count: i64,
+    pub percentage: f64,
+}
+
+/// CA usage statistics
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct CaStats {
+    pub ca_id: i64,
+    pub ca_name: String,
+    pub count: i64,
+    pub percentage: f64,
+}
+
+/// Profile usage statistics
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct ProfileStats {
+    pub profile_id: String,
+    pub profile_name: String,
+    pub count: i64,
+    pub percentage: f64,
+}
+
+/// Recent activity statistics
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct RecentActivity {
+    pub certificates_issued_last_7_days: i64,
+    pub certificates_issued_last_30_days: i64,
+    pub certificates_revoked_last_7_days: i64,
+    pub certificates_revoked_last_30_days: i64,
+}
+
+// ===== BULK DOWNLOAD =====
+
+/// Bulk download request
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct BulkDownloadRequest {
+    pub certificate_ids: Vec<i64>,
+    pub format: Option<String>, // pem, der, p12, etc.
+    pub include_chain: Option<bool>,
+    pub include_private_key: Option<bool>,
+    pub password: Option<String>, // For P12 format
+}
+
+// ===== CERTIFICATE RENEWAL =====
+
+/// Certificate renewal request
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct CertificateRenewalRequest {
+    pub certificate_id: i64,
+    pub validity_years: Option<i32>,
+    pub use_same_key: Option<bool>,
+    pub update_sans: Option<Vec<String>>,
+}
+
+/// Certificate renewal response
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct CertificateRenewalResponse {
+    pub old_certificate_id: i64,
+    pub new_certificate_id: i64,
+    pub new_certificate: Certificate,
+    pub renewal_timestamp: i64,
+}
+
+// ===== CERTIFICATE TEMPLATES =====
+
+/// Certificate template for quick issuance
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct CertificateTemplate {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub certificate_type: CertificateType,
+    pub profile_id: String,
+    pub default_validity_years: i32,
+    pub default_key_algorithm: String,
+    pub san_template: Option<String>, // Template with placeholders
+    pub metadata_template: Option<serde_json::Value>,
+    pub tenant_id: String,
+    pub created_at: i64,
+}
+
+/// Template-based certificate creation request
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct CreateCertificateFromTemplateRequest {
+    pub template_id: String,
+    pub name: String,
+    pub user_id: i64,
+    pub template_variables: Option<serde_json::Value>, // For SAN template substitution
+    pub validity_years: Option<i32>, // Override template default
+}
+
 pub struct CertificateBuilder {
     x509: X509Builder,
     private_key: PKey<Private>,

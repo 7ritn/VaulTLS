@@ -12,11 +12,11 @@ use crate::constants::VAULTLS_VERSION;
 use crate::data::api::{CallbackQuery, ChangePasswordRequest, CreateUserCertificateRequest, CreateUserRequest, DownloadResponse, IsSetupResponse, LoginRequest, SetupRequest};
 use crate::data::crl::{CertificateStatusRequest, CertificateStatusResponse, CrlFormat, CrlInfo, RevocationStatistics, RevokeCertificateRequest, RevokeCertificateResponse};
 use crate::data::token::{ApiToken, CreateTokenRequest, TokenResponse, UpdateTokenRequest, RotateTokenRequest, RotateTokenResponse};
-use crate::cert::{CreateCaRequest, UpdateCaRequest, CaResponse, CaListResponse, KeyAlgorithm, CA, RotateCaRequest, CaRotationResponse, CertificateAction, CreateCertificateWithCaRequest, CaSelection, CertificateBuilder};
+use crate::cert::{CreateCaRequest, UpdateCaRequest, CaResponse, CaListResponse, KeyAlgorithm, CA, RotateCaRequest, CaRotationResponse, CertificateAction, CreateCertificateWithCaRequest, CaSelection, CertificateBuilder, CertificateSearchRequest, CertificateSearchResponse, BatchOperationRequest, BatchOperationResponse, ChainValidationRequest, ChainValidationResponse, CertificateStatistics, BulkDownloadRequest};
 use crate::data::enums::CertificateType;
 use crate::data::profile::{Profile, CreateProfileRequest, UpdateProfileRequest, ProfileListResponse};
 use crate::crl::CrlManager;
-use crate::auth::token_auth::{TokenAuthService, BearerAuthenticated, BearerTokenAdmin, BearerCaRead, BearerCaWrite, BearerCaKeyop, BearerCertWrite, BearerProfileRead, BearerProfileWrite};
+use crate::auth::token_auth::{TokenAuthService, BearerAuthenticated, BearerTokenAdmin, BearerCaRead, BearerCaWrite, BearerCaKeyop, BearerCertWrite, BearerProfileRead, BearerProfileWrite, BearerCertRead};
 use openssl::x509::X509;
 use crate::data::enums::{CertificateType, PasswordRule, UserRole};
 use crate::data::error::ApiError;
@@ -2007,4 +2007,207 @@ pub(crate) async fn delete_profile(
     ).await;
 
     Ok(())
+}
+
+// ===== ENHANCED CERTIFICATE MANAGEMENT ENDPOINTS =====
+
+#[openapi(tag = "Certificates")]
+#[post("/certificates/search", format = "json", data = "<payload>")]
+/// Advanced certificate search with filters and operators. Requires cert.read scope.
+pub(crate) async fn search_certificates(
+    state: &State<AppState>,
+    payload: Json<CertificateSearchRequest>,
+    authentication: BearerCertRead
+) -> Result<Json<CertificateSearchResponse>, ApiError> {
+    let request = payload.into_inner();
+
+    // Build search query
+    let search_result = state.db.search_certificates(
+        &authentication.auth.token.tenant_id,
+        &request
+    ).await?;
+
+    // Log audit event for search
+    let _ = state.db.log_audit_event(
+        "certificate.search",
+        Some(authentication.auth.token.created_by_user_id),
+        Some(&authentication.auth.token.tenant_id),
+        None,
+        Some(&format!("Certificate search with {} filters",
+            request.filters.as_ref().map(|f| f.len()).unwrap_or(0))),
+    ).await;
+
+    Ok(Json(search_result))
+}
+
+#[openapi(tag = "Certificates")]
+#[post("/certificates/batch", format = "json", data = "<payload>")]
+/// Perform batch operations on certificates. Requires cert.write scope.
+pub(crate) async fn batch_certificate_operation(
+    state: &State<AppState>,
+    payload: Json<BatchOperationRequest>,
+    authentication: BearerCertWrite
+) -> Result<Json<BatchOperationResponse>, ApiError> {
+    let request = payload.into_inner();
+
+    // Validate certificate IDs belong to tenant
+    for cert_id in &request.certificate_ids {
+        let cert = state.db.get_certificate(*cert_id).await?;
+        if cert.tenant_id != authentication.auth.token.tenant_id {
+            return Err(ApiError::tenant_access_denied());
+        }
+    }
+
+    // Perform batch operation
+    let result = state.db.execute_batch_operation(
+        &request,
+        authentication.auth.token.created_by_user_id,
+        &authentication.auth.token.tenant_id
+    ).await?;
+
+    // Log audit event
+    let _ = state.db.log_audit_event(
+        "certificate.batch_operation",
+        Some(authentication.auth.token.created_by_user_id),
+        Some(&authentication.auth.token.tenant_id),
+        None,
+        Some(&format!("Batch {:?} operation on {} certificates",
+            request.operation, request.certificate_ids.len())),
+    ).await;
+
+    Ok(Json(result))
+}
+
+#[openapi(tag = "Certificates")]
+#[get("/certificates/<cert_id>/chain")]
+/// Get certificate chain information. Requires cert.read scope.
+pub(crate) async fn get_certificate_chain(
+    state: &State<AppState>,
+    cert_id: i64,
+    authentication: BearerCertRead
+) -> Result<Json<crate::cert::CertificateChain>, ApiError> {
+    // Get certificate and verify tenant access
+    let cert = state.db.get_certificate(cert_id).await?;
+    if cert.tenant_id != authentication.auth.token.tenant_id {
+        return Err(ApiError::tenant_access_denied());
+    }
+
+    // Build certificate chain
+    let chain = state.db.build_certificate_chain(cert_id).await?;
+
+    Ok(Json(chain))
+}
+
+#[openapi(tag = "Certificates")]
+#[post("/certificates/<cert_id>/validate-chain", format = "json", data = "<payload>")]
+/// Validate certificate chain. Requires cert.read scope.
+pub(crate) async fn validate_certificate_chain(
+    state: &State<AppState>,
+    cert_id: i64,
+    payload: Json<ChainValidationRequest>,
+    authentication: BearerCertRead
+) -> Result<Json<ChainValidationResponse>, ApiError> {
+    let request = payload.into_inner();
+
+    // Get certificate and verify tenant access
+    let cert = state.db.get_certificate(cert_id).await?;
+    if cert.tenant_id != authentication.auth.token.tenant_id {
+        return Err(ApiError::tenant_access_denied());
+    }
+
+    // Validate chain
+    let validation_result = state.db.validate_certificate_chain(cert_id, &request).await?;
+
+    // Log audit event
+    let _ = state.db.log_audit_event(
+        "certificate.validate_chain",
+        Some(authentication.auth.token.created_by_user_id),
+        Some(&authentication.auth.token.tenant_id),
+        Some(&cert_id.to_string()),
+        Some(&format!("Validated certificate chain for {}", cert.name)),
+    ).await;
+
+    Ok(Json(validation_result))
+}
+
+#[openapi(tag = "Certificates")]
+#[get("/certificates/expiring?<days_ahead>&<page>&<per_page>")]
+/// Get certificates expiring within specified days. Requires cert.read scope.
+pub(crate) async fn get_expiring_certificates(
+    state: &State<AppState>,
+    days_ahead: Option<i32>,
+    page: Option<i32>,
+    per_page: Option<i32>,
+    authentication: BearerCertRead
+) -> Result<Json<CertificateSearchResponse>, ApiError> {
+    let days_ahead = days_ahead.unwrap_or(30);
+    let page = page.unwrap_or(1).max(1);
+    let per_page = per_page.unwrap_or(20).min(100).max(1);
+
+    // Calculate expiry threshold
+    let threshold = chrono::Utc::now().timestamp() + (days_ahead as i64 * 24 * 60 * 60);
+
+    // Get expiring certificates
+    let result = state.db.get_expiring_certificates(
+        &authentication.auth.token.tenant_id,
+        threshold,
+        page,
+        per_page
+    ).await?;
+
+    Ok(Json(result))
+}
+
+#[openapi(tag = "Certificates")]
+#[get("/certificates/statistics")]
+/// Get certificate statistics for the tenant. Requires cert.read scope.
+pub(crate) async fn get_certificate_statistics(
+    state: &State<AppState>,
+    authentication: BearerCertRead
+) -> Result<Json<CertificateStatistics>, ApiError> {
+    let stats = state.db.get_certificate_statistics(&authentication.auth.token.tenant_id).await?;
+    Ok(Json(stats))
+}
+
+#[openapi(tag = "Certificates")]
+#[post("/certificates/bulk-download", format = "json", data = "<payload>")]
+/// Download multiple certificates as ZIP archive. Requires cert.read scope.
+pub(crate) async fn bulk_download_certificates(
+    state: &State<AppState>,
+    payload: Json<BulkDownloadRequest>,
+    authentication: BearerCertRead
+) -> Result<DownloadResponse, ApiError> {
+    let request = payload.into_inner();
+
+    // Validate certificate IDs belong to tenant
+    for cert_id in &request.certificate_ids {
+        let cert = state.db.get_certificate(*cert_id).await?;
+        if cert.tenant_id != authentication.auth.token.tenant_id {
+            return Err(ApiError::tenant_access_denied());
+        }
+    }
+
+    // Create ZIP archive
+    let zip_data = state.db.create_certificate_zip_archive(
+        &request.certificate_ids,
+        &request.format.unwrap_or_else(|| "pem".to_string()),
+        request.include_chain.unwrap_or(false)
+    ).await?;
+
+    // Log audit event
+    let _ = state.db.log_audit_event(
+        "certificate.bulk_download",
+        Some(authentication.auth.token.created_by_user_id),
+        Some(&authentication.auth.token.tenant_id),
+        None,
+        Some(&format!("Bulk download of {} certificates", request.certificate_ids.len())),
+    ).await;
+
+    let filename = format!("certificates_{}.zip", chrono::Utc::now().format("%Y%m%d_%H%M%S"));
+
+    Ok(DownloadResponse {
+        content_type: "application/zip".to_string(),
+        filename,
+        body: zip_data,
+    })
 }
