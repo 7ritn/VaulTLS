@@ -1,4 +1,6 @@
 use crate::data::token::{ApiToken, Scope};
+use crate::data::objects::AppState;
+use crate::auth::permissions::PermissionSystem;
 use crate::ApiError;
 use anyhow::{anyhow, Result};
 use hmac::{Hmac, Mac};
@@ -6,6 +8,8 @@ use sha2::Sha256;
 use rand::{thread_rng, Rng};
 use base64::{Engine as _, engine::general_purpose};
 use std::time::SystemTime;
+use rocket::{Request, State, http::Status, request::{FromRequest, Outcome}};
+use tracing::{debug, warn};
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -232,3 +236,191 @@ mod tests {
         assert!(!token_utils::validate_token_format("vlt_abc_short"));
     }
 }
+
+// ===== ROCKET REQUEST GUARDS =====
+
+/// Bearer token authentication request guard
+#[derive(Debug, Clone)]
+pub struct BearerAuthenticated {
+    pub auth: BearerAuth,
+}
+
+/// Bearer token authentication with specific scope requirements
+#[derive(Debug, Clone)]
+pub struct BearerAuthenticatedWithScopes {
+    pub auth: BearerAuth,
+    pub required_scopes: Vec<Scope>,
+}
+
+impl BearerAuthenticated {
+    /// Extract and validate bearer token from request
+    async fn authenticate_bearer_token(request: &Request<'_>) -> Option<BearerAuth> {
+        // Get Authorization header
+        let auth_header = request.headers().get_one("Authorization")?;
+        let token_str = token_utils::extract_bearer_token(auth_header)?;
+
+        // Validate token format
+        if !token_utils::validate_token_format(token_str) {
+            debug!("Invalid token format: {}", token_str);
+            return None;
+        }
+
+        // Parse token
+        let (prefix, token_value) = token_utils::parse_full_token(token_str)?;
+
+        // Get app state
+        let state = request.guard::<&State<AppState>>().await.succeeded()?;
+
+        // Look up token in database
+        let token = match state.db.get_api_token_by_prefix(&prefix).await {
+            Ok(token) => token,
+            Err(e) => {
+                debug!("Token lookup failed for prefix {}: {}", prefix, e);
+                return None;
+            }
+        };
+
+        // Verify token hash
+        let hasher = match TokenHasher::new(&state.settings.get_secret().into_bytes()) {
+            Ok(hasher) => hasher,
+            Err(e) => {
+                warn!("Failed to create token hasher: {}", e);
+                return None;
+            }
+        };
+
+        let salt_bytes = match hex::decode(&token.salt) {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                warn!("Invalid salt format for token {}: {}", prefix, e);
+                return None;
+            }
+        };
+
+        if !hasher.verify_token(&token_value, &salt_bytes, &token.hash) {
+            debug!("Token verification failed for prefix: {}", prefix);
+            return None;
+        }
+
+        // Check token constraints
+        if !token.is_usable() {
+            debug!("Token {} is not usable (disabled, expired, or revoked)", prefix);
+            return None;
+        }
+
+        // Update last used timestamp (async operation, don't wait)
+        let _ = state.db.update_token_last_used(&token.id).await;
+
+        // Create bearer auth context
+        match BearerAuth::new(token, None) {
+            Ok(auth) => Some(auth),
+            Err(e) => {
+                warn!("Failed to create bearer auth context: {}", e);
+                None
+            }
+        }
+    }
+}
+
+#[rocket::async_trait]
+impl<'r> FromRequest<'r> for BearerAuthenticated {
+    type Error = ApiError;
+
+    async fn from_request(request: &'r Request<'_>) -> Outcome<Self, Self::Error> {
+        match Self::authenticate_bearer_token(request).await {
+            Some(auth) => Outcome::Success(BearerAuthenticated { auth }),
+            None => Outcome::Error((Status::Unauthorized, ApiError::Unauthorized)),
+        }
+    }
+}
+
+/// Bearer authentication with automatic scope checking
+pub struct BearerAuthenticatedWithEndpointScopes {
+    pub auth: BearerAuth,
+}
+
+#[rocket::async_trait]
+impl<'r> FromRequest<'r> for BearerAuthenticatedWithEndpointScopes {
+    type Error = ApiError;
+
+    async fn from_request(request: &'r Request<'_>) -> Outcome<Self, Self::Error> {
+        // First authenticate the token
+        let auth = match BearerAuthenticated::authenticate_bearer_token(request).await {
+            Some(auth) => auth,
+            None => return Outcome::Error((Status::Unauthorized, ApiError::Unauthorized)),
+        };
+
+        // Get app state for permission checking
+        let state = match request.guard::<&State<AppState>>().await {
+            Outcome::Success(state) => state,
+            _ => return Outcome::Error((Status::InternalServerError, ApiError::InternalServerError)),
+        };
+
+        // Create permission system
+        let mut permission_system = PermissionSystem::new(state.db.clone());
+
+        // Get endpoint and method
+        let endpoint = request.uri().path().as_str();
+        let method = request.method().as_str();
+
+        // Check if token has required scopes for this endpoint
+        match permission_system.check_token_access(&auth.token.scopes, endpoint, method).await {
+            Ok(true) => Outcome::Success(BearerAuthenticatedWithEndpointScopes { auth }),
+            Ok(false) => {
+                debug!("Token {} lacks required scopes for {} {}", auth.token.prefix, method, endpoint);
+                Outcome::Error((Status::Forbidden, ApiError::Forbidden))
+            },
+            Err(e) => {
+                warn!("Permission check failed: {}", e);
+                Outcome::Error((Status::InternalServerError, ApiError::InternalServerError))
+            }
+        }
+    }
+}
+
+/// Macro to create scope-specific authentication guards
+macro_rules! bearer_auth_with_scopes {
+    ($name:ident, $($scope:expr),+) => {
+        pub struct $name {
+            pub auth: BearerAuth,
+        }
+
+        #[rocket::async_trait]
+        impl<'r> FromRequest<'r> for $name {
+            type Error = ApiError;
+
+            async fn from_request(request: &'r Request<'_>) -> Outcome<Self, Self::Error> {
+                let required_scopes = vec![$($scope),+];
+
+                match BearerAuthenticated::authenticate_bearer_token(request).await {
+                    Some(auth) => {
+                        // Check if token has all required scopes
+                        let has_scopes = required_scopes.iter().all(|scope| auth.has_scope(scope));
+
+                        if has_scopes {
+                            Outcome::Success($name { auth })
+                        } else {
+                            debug!("Token {} missing required scopes", auth.token.prefix);
+                            Outcome::Error((Status::Forbidden, ApiError::Forbidden))
+                        }
+                    },
+                    None => Outcome::Error((Status::Unauthorized, ApiError::Unauthorized)),
+                }
+            }
+        }
+    };
+}
+
+// Create specific authentication guards for common scope combinations
+bearer_auth_with_scopes!(BearerCertRead, &Scope::CertRead);
+bearer_auth_with_scopes!(BearerCertWrite, &Scope::CertWrite);
+bearer_auth_with_scopes!(BearerCertRevoke, &Scope::CertRevoke);
+bearer_auth_with_scopes!(BearerCaRead, &Scope::CaRead);
+bearer_auth_with_scopes!(BearerCaWrite, &Scope::CaWrite);
+bearer_auth_with_scopes!(BearerCaKeyop, &Scope::CaKeyop);
+bearer_auth_with_scopes!(BearerTokenAdmin, &Scope::TokenAdmin);
+bearer_auth_with_scopes!(BearerAdminTenant, &Scope::AdminTenant);
+
+// Combined scope guards
+bearer_auth_with_scopes!(BearerCertReadWrite, &Scope::CertRead, &Scope::CertWrite);
+bearer_auth_with_scopes!(BearerCaReadWrite, &Scope::CaRead, &Scope::CaWrite);

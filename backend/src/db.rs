@@ -1183,4 +1183,318 @@ impl VaulTLSDB {
             )?)
         })
     }
+
+    // ===== PERMISSION SYSTEM OPERATIONS =====
+
+    /// Insert role-scope mapping
+    pub(crate) async fn insert_role_scope_mapping(
+        &self,
+        role: UserRole,
+        scope: &str,
+        tenant_id: Option<String>,
+    ) -> Result<()> {
+        let scope = scope.to_string();
+        db_do!(self.pool, |conn: &Connection| {
+            // Check if mapping already exists
+            let exists: bool = conn.query_row(
+                "SELECT 1 FROM role_scope_map WHERE role = ?1 AND scope = ?2 AND (tenant_id = ?3 OR (tenant_id IS NULL AND ?3 IS NULL))",
+                params![role as u8, scope, tenant_id],
+                |_| Ok(true)
+            ).unwrap_or(false);
+
+            if !exists {
+                conn.execute(
+                    "INSERT INTO role_scope_map (role, scope, tenant_id) VALUES (?1, ?2, ?3)",
+                    params![role as u8, scope, tenant_id]
+                )?;
+            }
+            Ok(())
+        })
+    }
+
+    /// Insert endpoint-scope mapping
+    pub(crate) async fn insert_endpoint_scope_mapping(
+        &self,
+        endpoint_pattern: String,
+        method: String,
+        required_scopes: Vec<String>,
+        description: Option<String>,
+    ) -> Result<()> {
+        let scopes_json = serde_json::to_string(&required_scopes)?;
+        db_do!(self.pool, |conn: &Connection| {
+            // Check if mapping already exists
+            let exists: bool = conn.query_row(
+                "SELECT 1 FROM endpoint_scope_map WHERE endpoint_pattern = ?1 AND method = ?2",
+                params![endpoint_pattern, method],
+                |_| Ok(true)
+            ).unwrap_or(false);
+
+            if !exists {
+                conn.execute(
+                    "INSERT INTO endpoint_scope_map (endpoint_pattern, method, required_scopes, description) VALUES (?1, ?2, ?3, ?4)",
+                    params![endpoint_pattern, method, scopes_json, description]
+                )?;
+            }
+            Ok(())
+        })
+    }
+
+    /// Get scopes for a role
+    pub(crate) async fn get_scopes_for_role(
+        &self,
+        role: UserRole,
+        tenant_id: Option<&str>,
+    ) -> Result<Vec<String>> {
+        db_do!(self.pool, |conn: &Connection| {
+            let mut stmt = conn.prepare(
+                "SELECT scope FROM role_scope_map WHERE role = ?1 AND (tenant_id = ?2 OR tenant_id IS NULL)"
+            )?;
+
+            let rows = stmt.query_map(params![role as u8, tenant_id], |row| {
+                Ok(row.get::<_, String>(0)?)
+            })?;
+
+            let mut scopes = Vec::new();
+            for scope in rows {
+                scopes.push(scope?);
+            }
+            Ok(scopes)
+        })
+    }
+
+    /// Get required scopes for an endpoint
+    pub(crate) async fn get_required_scopes_for_endpoint(
+        &self,
+        endpoint_pattern: &str,
+        method: &str,
+    ) -> Result<Vec<String>> {
+        let endpoint_pattern = endpoint_pattern.to_string();
+        let method = method.to_string();
+        db_do!(self.pool, |conn: &Connection| {
+            let scopes_json: String = conn.query_row(
+                "SELECT required_scopes FROM endpoint_scope_map WHERE endpoint_pattern = ?1 AND method = ?2",
+                params![endpoint_pattern, method],
+                |row| row.get(0)
+            )?;
+
+            let scopes: Vec<String> = serde_json::from_str(&scopes_json)
+                .map_err(|e| anyhow!("Failed to parse scopes JSON: {}", e))?;
+            Ok(scopes)
+        })
+    }
+
+    /// Get all endpoint patterns for pattern matching
+    pub(crate) async fn get_all_endpoint_patterns(&self) -> Result<Vec<crate::auth::permissions::EndpointScopeMapping>> {
+        db_do!(self.pool, |conn: &Connection| {
+            let mut stmt = conn.prepare(
+                "SELECT id, endpoint_pattern, method, required_scopes, description FROM endpoint_scope_map"
+            )?;
+
+            let rows = stmt.query_map([], |row| {
+                let scopes_json: String = row.get(3)?;
+                let required_scopes: Vec<String> = serde_json::from_str(&scopes_json)
+                    .map_err(|e| rusqlite::Error::InvalidColumnType(3, "JSON".to_string(), rusqlite::types::Type::Text))?;
+
+                Ok(crate::auth::permissions::EndpointScopeMapping {
+                    id: row.get(0)?,
+                    endpoint_pattern: row.get(1)?,
+                    method: row.get(2)?,
+                    required_scopes,
+                    description: row.get(4)?,
+                })
+            })?;
+
+            let mut mappings = Vec::new();
+            for mapping in rows {
+                mappings.push(mapping?);
+            }
+            Ok(mappings)
+        })
+    }
+
+    // ===== API TOKEN OPERATIONS =====
+
+    /// Get API token by ID
+    pub(crate) async fn get_api_token_by_id(&self, token_id: &str) -> Result<ApiToken> {
+        let token_id = token_id.to_string();
+        db_do!(self.pool, |conn: &Connection| {
+            Ok(conn.query_row(
+                "SELECT id, prefix, hash, salt, scopes, description, is_enabled, revoked_at, last_used_at, expires_at, created_at, created_by_user_id, tenant_id, rate_limit_per_minute FROM api_tokens WHERE id = ?1",
+                params![token_id],
+                |row| {
+                    let scopes_json: String = row.get(4)?;
+                    let scopes: Vec<String> = serde_json::from_str(&scopes_json)
+                        .map_err(|_| rusqlite::Error::InvalidColumnType(4, "JSON".to_string(), rusqlite::types::Type::Text))?;
+
+                    Ok(ApiToken {
+                        id: row.get(0)?,
+                        prefix: row.get(1)?,
+                        hash: row.get(2)?,
+                        salt: row.get(3)?,
+                        scopes,
+                        description: row.get(5)?,
+                        is_enabled: row.get(6)?,
+                        revoked_at: row.get(7)?,
+                        last_used_at: row.get(8)?,
+                        expires_at: row.get(9)?,
+                        created_at: row.get(10)?,
+                        created_by_user_id: row.get(11)?,
+                        tenant_id: row.get(12)?,
+                        rate_limit_per_minute: row.get(13)?,
+                    })
+                }
+            )?)
+        })
+    }
+
+    /// Get API token by prefix
+    pub(crate) async fn get_api_token_by_prefix(&self, prefix: &str) -> Result<ApiToken> {
+        let prefix = prefix.to_string();
+        db_do!(self.pool, |conn: &Connection| {
+            Ok(conn.query_row(
+                "SELECT id, prefix, hash, salt, scopes, description, is_enabled, revoked_at, last_used_at, expires_at, created_at, created_by_user_id, tenant_id, rate_limit_per_minute FROM api_tokens WHERE prefix = ?1",
+                params![prefix],
+                |row| {
+                    let scopes_json: String = row.get(4)?;
+                    let scopes: Vec<String> = serde_json::from_str(&scopes_json)
+                        .map_err(|_| rusqlite::Error::InvalidColumnType(4, "JSON".to_string(), rusqlite::types::Type::Text))?;
+
+                    Ok(ApiToken {
+                        id: row.get(0)?,
+                        prefix: row.get(1)?,
+                        hash: row.get(2)?,
+                        salt: row.get(3)?,
+                        scopes,
+                        description: row.get(5)?,
+                        is_enabled: row.get(6)?,
+                        revoked_at: row.get(7)?,
+                        last_used_at: row.get(8)?,
+                        expires_at: row.get(9)?,
+                        created_at: row.get(10)?,
+                        created_by_user_id: row.get(11)?,
+                        tenant_id: row.get(12)?,
+                        rate_limit_per_minute: row.get(13)?,
+                    })
+                }
+            )?)
+        })
+    }
+
+    /// Update token last used timestamp
+    pub(crate) async fn update_token_last_used(&self, token_id: &str) -> Result<()> {
+        let token_id = token_id.to_string();
+        let now = chrono::Utc::now().timestamp();
+        db_do!(self.pool, |conn: &Connection| {
+            Ok(conn.execute(
+                "UPDATE api_tokens SET last_used_at = ?1 WHERE id = ?2",
+                params![now, token_id]
+            ).map(|_| ())?)
+        })
+    }
+
+    /// Insert API token
+    pub(crate) async fn insert_api_token(&self, token: &ApiToken) -> Result<()> {
+        let scopes_json = serde_json::to_string(&token.scopes)?;
+        db_do!(self.pool, |conn: &Connection| {
+            Ok(conn.execute(
+                "INSERT INTO api_tokens (id, prefix, hash, salt, scopes, description, is_enabled, revoked_at, last_used_at, expires_at, created_at, created_by_user_id, tenant_id, rate_limit_per_minute) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+                params![
+                    token.id, token.prefix, token.hash, token.salt, scopes_json,
+                    token.description, token.is_enabled, token.revoked_at, token.last_used_at,
+                    token.expires_at, token.created_at, token.created_by_user_id,
+                    token.tenant_id, token.rate_limit_per_minute
+                ]
+            ).map(|_| ())?)
+        })
+    }
+
+    /// Get API tokens for a user
+    pub(crate) async fn get_api_tokens_for_user(&self, user_id: i64, tenant_id: &str) -> Result<Vec<ApiToken>> {
+        let tenant_id = tenant_id.to_string();
+        db_do!(self.pool, |conn: &Connection| {
+            let mut stmt = conn.prepare(
+                "SELECT id, prefix, hash, salt, scopes, description, is_enabled, revoked_at, last_used_at, expires_at, created_at, created_by_user_id, tenant_id, rate_limit_per_minute FROM api_tokens WHERE created_by_user_id = ?1 AND tenant_id = ?2 ORDER BY created_at DESC"
+            )?;
+
+            let rows = stmt.query_map(params![user_id, tenant_id], |row| {
+                let scopes_json: String = row.get(4)?;
+                let scopes: Vec<String> = serde_json::from_str(&scopes_json)
+                    .map_err(|_| rusqlite::Error::InvalidColumnType(4, "JSON".to_string(), rusqlite::types::Type::Text))?;
+
+                Ok(ApiToken {
+                    id: row.get(0)?,
+                    prefix: row.get(1)?,
+                    hash: row.get(2)?,
+                    salt: row.get(3)?,
+                    scopes,
+                    description: row.get(5)?,
+                    is_enabled: row.get(6)?,
+                    revoked_at: row.get(7)?,
+                    last_used_at: row.get(8)?,
+                    expires_at: row.get(9)?,
+                    created_at: row.get(10)?,
+                    created_by_user_id: row.get(11)?,
+                    tenant_id: row.get(12)?,
+                    rate_limit_per_minute: row.get(13)?,
+                })
+            })?;
+
+            let mut tokens = Vec::new();
+            for token in rows {
+                tokens.push(token?);
+            }
+            Ok(tokens)
+        })
+    }
+
+    /// Update API token
+    pub(crate) async fn update_api_token(&self, token: &ApiToken) -> Result<()> {
+        let scopes_json = serde_json::to_string(&token.scopes)?;
+        db_do!(self.pool, |conn: &Connection| {
+            Ok(conn.execute(
+                "UPDATE api_tokens SET hash = ?1, salt = ?2, scopes = ?3, description = ?4, is_enabled = ?5, revoked_at = ?6, expires_at = ?7, rate_limit_per_minute = ?8 WHERE id = ?9",
+                params![
+                    token.hash, token.salt, scopes_json, token.description,
+                    token.is_enabled, token.revoked_at, token.expires_at,
+                    token.rate_limit_per_minute, token.id
+                ]
+            ).map(|_| ())?)
+        })
+    }
+
+    /// Delete API token
+    pub(crate) async fn delete_api_token(&self, token_id: &str) -> Result<()> {
+        let token_id = token_id.to_string();
+        db_do!(self.pool, |conn: &Connection| {
+            Ok(conn.execute(
+                "DELETE FROM api_tokens WHERE id = ?1",
+                params![token_id]
+            ).map(|_| ())?)
+        })
+    }
+
+    // ===== AUDIT LOGGING OPERATIONS =====
+
+    /// Log an audit event
+    pub(crate) async fn log_audit_event(
+        &self,
+        action: &str,
+        user_id: Option<i64>,
+        tenant_id: Option<&str>,
+        resource_id: Option<&str>,
+        details: Option<&str>,
+    ) -> Result<()> {
+        let action = action.to_string();
+        let tenant_id = tenant_id.map(|s| s.to_string());
+        let resource_id = resource_id.map(|s| s.to_string());
+        let details = details.map(|s| s.to_string());
+        let timestamp = chrono::Utc::now().timestamp();
+
+        db_do!(self.pool, |conn: &Connection| {
+            Ok(conn.execute(
+                "INSERT INTO audit_events (action, user_id, tenant_id, resource_id, details, timestamp) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![action, user_id, tenant_id, resource_id, details, timestamp]
+            ).map(|_| ())?)
+        })
+    }
 }

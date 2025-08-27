@@ -188,7 +188,14 @@ pub async fn create_rocket() -> Rocket<Build> {
                 get_crl_info,
                 check_certificate_status,
                 get_revocation_statistics,
-                generate_crl
+                generate_crl,
+                create_api_token,
+                list_api_tokens,
+                get_api_token,
+                update_api_token,
+                rotate_api_token,
+                revoke_api_token,
+                delete_api_token
             ],
         )
         .mount(
@@ -279,7 +286,14 @@ pub async fn create_test_rocket() -> Rocket<Build> {
                 get_crl_info,
                 check_certificate_status,
                 get_revocation_statistics,
-                generate_crl
+                generate_crl,
+                create_api_token,
+                list_api_tokens,
+                get_api_token,
+                update_api_token,
+                rotate_api_token,
+                revoke_api_token,
+                delete_api_token
             ],
         )
 }

@@ -11,7 +11,9 @@ use crate::cert::{get_password, get_pem, save_ca, Certificate, CertificateBuilde
 use crate::constants::VAULTLS_VERSION;
 use crate::data::api::{CallbackQuery, ChangePasswordRequest, CreateUserCertificateRequest, CreateUserRequest, DownloadResponse, IsSetupResponse, LoginRequest, SetupRequest};
 use crate::data::crl::{CertificateStatusRequest, CertificateStatusResponse, CrlFormat, CrlInfo, RevocationStatistics, RevokeCertificateRequest, RevokeCertificateResponse};
+use crate::data::token::{ApiToken, CreateTokenRequest, TokenResponse, UpdateTokenRequest, RotateTokenRequest, RotateTokenResponse};
 use crate::crl::CrlManager;
+use crate::auth::token_auth::{TokenAuthService, BearerAuthenticated, BearerTokenAdmin};
 use crate::data::enums::{CertificateType, PasswordRule, UserRole};
 use crate::data::error::ApiError;
 use crate::data::objects::{AppState, User};
@@ -721,4 +723,282 @@ pub(crate) async fn generate_crl(
     // Return updated info
     let info = crl_manager.get_crl_info(ca_id, tenant_id).await?;
     Ok(Json(info))
+}
+
+// ===== API TOKEN ENDPOINTS =====
+
+#[openapi(tag = "API Tokens")]
+#[post("/tokens", format = "json", data = "<payload>")]
+/// Create a new API token. Requires token.write scope or admin role.
+pub(crate) async fn create_api_token(
+    state: &State<AppState>,
+    payload: Json<CreateTokenRequest>,
+    authentication: BearerTokenAdmin
+) -> Result<Json<CreateTokenResponse>, ApiError> {
+    let request = payload.into_inner();
+
+    // Create token service
+    let token_service = TokenAuthService::new()?;
+
+    // Generate token value and prefix
+    let (token_value, prefix) = crate::auth::token_auth::token_utils::generate_token()?;
+
+    // Create API token
+    let mut api_token = ApiToken::new(
+        request.description,
+        request.scopes,
+        authentication.auth.token.created_by_user_id,
+        authentication.auth.token.tenant_id.clone(),
+        request.expires_at,
+        request.rate_limit_per_minute,
+    );
+
+    // Hash the token
+    let api_token = token_service.create_token(api_token, &token_value)?;
+
+    // Store in database
+    state.db.insert_api_token(&api_token).await?;
+
+    // Log audit event
+    let _ = state.db.log_audit_event(
+        "token.create",
+        Some(authentication.auth.token.created_by_user_id),
+        Some(&authentication.auth.token.tenant_id),
+        Some(&api_token.id),
+        Some(&format!("Created API token: {}", api_token.description)),
+    ).await;
+
+    let response = CreateTokenResponse {
+        token: format!("vlt_{}_{}", prefix, token_value),
+        token_info: TokenResponse::from(api_token),
+    };
+
+    Ok(Json(response))
+}
+
+#[openapi(tag = "API Tokens")]
+#[get("/tokens?<page>&<per_page>")]
+/// List API tokens for the current user/tenant. Requires token.read scope.
+pub(crate) async fn list_api_tokens(
+    state: &State<AppState>,
+    page: Option<i32>,
+    per_page: Option<i32>,
+    authentication: BearerAuthenticated
+) -> Result<Json<TokenListResponse>, ApiError> {
+    let page = page.unwrap_or(1).max(1);
+    let per_page = per_page.unwrap_or(20).min(100).max(1);
+
+    // Get tokens for user
+    let tokens = state.db.get_api_tokens_for_user(
+        authentication.auth.token.created_by_user_id,
+        &authentication.auth.token.tenant_id
+    ).await?;
+
+    // Apply pagination
+    let total = tokens.len() as i64;
+    let start = ((page - 1) * per_page) as usize;
+    let end = (start + per_page as usize).min(tokens.len());
+    let paginated_tokens = tokens[start..end].to_vec();
+
+    let response = TokenListResponse {
+        tokens: paginated_tokens.into_iter().map(TokenResponse::from).collect(),
+        total,
+        page,
+        per_page,
+        has_more: end < tokens.len(),
+    };
+
+    Ok(Json(response))
+}
+
+#[openapi(tag = "API Tokens")]
+#[get("/tokens/<token_id>")]
+/// Get API token details. Requires token.read scope.
+pub(crate) async fn get_api_token(
+    state: &State<AppState>,
+    token_id: String,
+    authentication: BearerAuthenticated
+) -> Result<Json<TokenResponse>, ApiError> {
+    // Get token by ID (this would need a new DB method)
+    let token = state.db.get_api_token_by_id(&token_id).await?;
+
+    // Check if user owns this token or has admin scope
+    if token.created_by_user_id != authentication.auth.token.created_by_user_id
+        && !authentication.auth.has_scope(&Scope::AdminTenant) {
+        return Err(ApiError::Forbidden);
+    }
+
+    Ok(Json(TokenResponse::from(token)))
+}
+
+#[openapi(tag = "API Tokens")]
+#[patch("/tokens/<token_id>", format = "json", data = "<payload>")]
+/// Update API token. Requires token.write scope.
+pub(crate) async fn update_api_token(
+    state: &State<AppState>,
+    token_id: String,
+    payload: Json<UpdateTokenRequest>,
+    authentication: BearerTokenAdmin
+) -> Result<Json<TokenResponse>, ApiError> {
+    let request = payload.into_inner();
+
+    // Get existing token
+    let mut token = state.db.get_api_token_by_id(&token_id).await?;
+
+    // Check ownership
+    if token.created_by_user_id != authentication.auth.token.created_by_user_id
+        && !authentication.auth.has_scope(&Scope::AdminTenant) {
+        return Err(ApiError::Forbidden);
+    }
+
+    // Update fields
+    if let Some(description) = request.description {
+        token.description = description;
+    }
+    if let Some(scopes) = request.scopes {
+        token.scopes = scopes;
+    }
+    if let Some(is_enabled) = request.is_enabled {
+        token.is_enabled = is_enabled;
+    }
+    if let Some(expires_at) = request.expires_at {
+        token.expires_at = Some(expires_at);
+    }
+    if let Some(rate_limit) = request.rate_limit_per_minute {
+        token.rate_limit_per_minute = Some(rate_limit);
+    }
+
+    // Update in database
+    state.db.update_api_token(&token).await?;
+
+    // Log audit event
+    let _ = state.db.log_audit_event(
+        "token.update",
+        Some(authentication.auth.token.created_by_user_id),
+        Some(&authentication.auth.token.tenant_id),
+        Some(&token.id),
+        Some(&format!("Updated API token: {}", token.description)),
+    ).await;
+
+    Ok(Json(TokenResponse::from(token)))
+}
+
+#[openapi(tag = "API Tokens")]
+#[post("/tokens/<token_id>:rotate", format = "json", data = "<payload>")]
+/// Rotate API token (generate new token value). Requires token.write scope.
+pub(crate) async fn rotate_api_token(
+    state: &State<AppState>,
+    token_id: String,
+    payload: Json<RotateTokenRequest>,
+    authentication: BearerTokenAdmin
+) -> Result<Json<RotateTokenResponse>, ApiError> {
+    let request = payload.into_inner();
+
+    // Get existing token
+    let mut token = state.db.get_api_token_by_id(&token_id).await?;
+
+    // Check ownership
+    if token.created_by_user_id != authentication.auth.token.created_by_user_id
+        && !authentication.auth.has_scope(&Scope::AdminTenant) {
+        return Err(ApiError::Forbidden);
+    }
+
+    // Generate new token value
+    let (new_token_value, new_prefix) = crate::auth::token_auth::token_utils::generate_token()?;
+
+    // Create token service and rotate
+    let token_service = TokenAuthService::new()?;
+    token = token_service.rotate_token(token, &new_token_value)?;
+    token.prefix = new_prefix;
+
+    // Update description if provided
+    if let Some(description) = request.description {
+        token.description = description;
+    }
+
+    // Update in database
+    state.db.update_api_token(&token).await?;
+
+    // Log audit event
+    let _ = state.db.log_audit_event(
+        "token.rotate",
+        Some(authentication.auth.token.created_by_user_id),
+        Some(&authentication.auth.token.tenant_id),
+        Some(&token.id),
+        Some(&format!("Rotated API token: {}", token.description)),
+    ).await;
+
+    let response = RotateTokenResponse {
+        token_plaintext_once: format!("vlt_{}_{}", token.prefix, new_token_value),
+    };
+
+    Ok(Json(response))
+}
+
+#[openapi(tag = "API Tokens")]
+#[post("/tokens/<token_id>:revoke")]
+/// Revoke API token. Requires token.write scope.
+pub(crate) async fn revoke_api_token(
+    state: &State<AppState>,
+    token_id: String,
+    authentication: BearerTokenAdmin
+) -> Result<Json<TokenResponse>, ApiError> {
+    // Get existing token
+    let mut token = state.db.get_api_token_by_id(&token_id).await?;
+
+    // Check ownership
+    if token.created_by_user_id != authentication.auth.token.created_by_user_id
+        && !authentication.auth.has_scope(&Scope::AdminTenant) {
+        return Err(ApiError::Forbidden);
+    }
+
+    // Revoke token
+    token.revoked_at = Some(chrono::Utc::now().timestamp());
+    token.is_enabled = false;
+
+    // Update in database
+    state.db.update_api_token(&token).await?;
+
+    // Log audit event
+    let _ = state.db.log_audit_event(
+        "token.revoke",
+        Some(authentication.auth.token.created_by_user_id),
+        Some(&authentication.auth.token.tenant_id),
+        Some(&token.id),
+        Some(&format!("Revoked API token: {}", token.description)),
+    ).await;
+
+    Ok(Json(TokenResponse::from(token)))
+}
+
+#[openapi(tag = "API Tokens")]
+#[delete("/tokens/<token_id>")]
+/// Delete API token. Requires token.write scope.
+pub(crate) async fn delete_api_token(
+    state: &State<AppState>,
+    token_id: String,
+    authentication: BearerTokenAdmin
+) -> Result<(), ApiError> {
+    // Get existing token to check ownership
+    let token = state.db.get_api_token_by_id(&token_id).await?;
+
+    // Check ownership
+    if token.created_by_user_id != authentication.auth.token.created_by_user_id
+        && !authentication.auth.has_scope(&Scope::AdminTenant) {
+        return Err(ApiError::Forbidden);
+    }
+
+    // Delete from database
+    state.db.delete_api_token(&token_id).await?;
+
+    // Log audit event
+    let _ = state.db.log_audit_event(
+        "token.delete",
+        Some(authentication.auth.token.created_by_user_id),
+        Some(&authentication.auth.token.tenant_id),
+        Some(&token.id),
+        Some(&format!("Deleted API token: {}", token.description)),
+    ).await;
+
+    Ok(())
 }

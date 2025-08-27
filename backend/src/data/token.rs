@@ -232,3 +232,61 @@ pub struct UpdateTokenRequest {
 pub struct RotateTokenResponse {
     pub token_plaintext_once: String,  // New token value, shown only once
 }
+
+/// Token information response (without sensitive data)
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct TokenResponse {
+    pub id: String,
+    pub prefix: String,
+    pub description: String,
+    pub scopes: Vec<String>,
+    pub is_enabled: bool,
+    pub revoked_at: Option<i64>,
+    pub last_used_at: Option<i64>,
+    pub expires_at: Option<i64>,
+    pub created_at: i64,
+    pub created_by_user_id: i64,
+    pub tenant_id: String,
+    pub rate_limit_per_minute: Option<i32>,
+}
+
+impl From<ApiToken> for TokenResponse {
+    fn from(token: ApiToken) -> Self {
+        Self {
+            id: token.id,
+            prefix: token.prefix,
+            description: token.description,
+            scopes: token.scopes,
+            is_enabled: token.is_enabled,
+            revoked_at: token.revoked_at,
+            last_used_at: token.last_used_at,
+            expires_at: token.expires_at,
+            created_at: token.created_at,
+            created_by_user_id: token.created_by_user_id,
+            tenant_id: token.tenant_id,
+            rate_limit_per_minute: token.rate_limit_per_minute,
+        }
+    }
+}
+
+/// Token list response with pagination
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct TokenListResponse {
+    pub tokens: Vec<TokenResponse>,
+    pub total: i64,
+    pub page: i32,
+    pub per_page: i32,
+    pub has_more: bool,
+}
+
+/// Token usage statistics
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct TokenUsageStats {
+    pub token_id: String,
+    pub requests_last_hour: i32,
+    pub requests_last_day: i32,
+    pub requests_last_week: i32,
+    pub last_used_at: Option<i64>,
+    pub last_used_endpoint: Option<String>,
+    pub last_used_ip: Option<String>,
+}
