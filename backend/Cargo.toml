@@ -54,3 +54,5 @@ hex = "0.4"
 x509-parser = "0.17"
 rustls = { version = "0.23.29", features = ["aws-lc-rs"] }
 tokio-rustls = "0.26.1"
+ctor = "0.2"
+env_logger = "0.11"

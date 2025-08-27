@@ -79,6 +79,28 @@ impl VaulTLSClient {
         client
     }
 
+    pub(crate) async fn login_admin(&self) -> Result<rocket::http::Header<'static>> {
+        let login_data = LoginRequest {
+            username: TEST_USER_NAME.to_string(),
+            password: TEST_PASSWORD.to_string(),
+        };
+
+        let request = self
+            .post("/server/login")
+            .header(ContentType::JSON)
+            .body(serde_json::to_string(&login_data).unwrap());
+        let response = request.dispatch().await;
+        assert_eq!(response.status(), Status::Ok);
+
+        // Extract session cookie from response
+        let cookies = response.headers().get("Set-Cookie").collect::<Vec<_>>();
+        let session_cookie = cookies.iter()
+            .find(|cookie| cookie.starts_with("session="))
+            .expect("Session cookie not found");
+
+        Ok(rocket::http::Header::new("Cookie", session_cookie.to_string()))
+    }
+
     pub(crate) async fn create_client_cert(&self, user_id: Option<i64>, password: Option<String>) -> Result<Certificate> {
         let cert_req = CreateUserCertificateRequest {
             cert_name: TEST_CLIENT_CERT_NAME.to_string(),

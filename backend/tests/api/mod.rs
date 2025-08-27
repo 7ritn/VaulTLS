@@ -1,2 +1,7 @@
 mod api_test_functionality;
 mod api_test_safety;
+mod bearer_auth_tests;
+mod profile_tests;
+mod certificate_search_tests;
+mod audit_tests;
+mod integration_workflow_tests;
