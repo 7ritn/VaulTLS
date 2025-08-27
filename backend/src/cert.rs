@@ -60,16 +60,246 @@ pub struct CA {
     pub valid_until: i64,
     pub tenant_id: String,
     pub name: Option<String>,
+    pub description: Option<String>,
     pub key_algorithm: String,
+    pub key_size: Option<i32>,
     pub path_len: Option<i32>,
     pub basic_constraints: Option<String>,
     pub crl_distribution_points: Option<String>,  // JSON string
     pub authority_info_access: Option<String>,    // JSON string
     pub is_active: bool,
+    pub is_root_ca: bool,
+    pub parent_ca_id: Option<i64>,
+    pub serial_number: Option<String>,
+    pub issuer: Option<String>,
+    pub subject: Option<String>,
+    pub key_usage: Option<String>,           // JSON array of key usage flags
+    pub extended_key_usage: Option<String>,  // JSON array of EKU OIDs
+    pub certificate_policies: Option<String>, // JSON array of policy OIDs
+    pub policy_constraints: Option<String>,   // JSON object with policy constraints
+    pub name_constraints: Option<String>,     // JSON object with name constraints
+    pub created_by_user_id: i64,
+    pub metadata: Option<String>,            // JSON object for additional metadata
     #[serde(skip)]
     pub cert: Vec<u8>,
     #[serde(skip)]
     pub key: Vec<u8>,
+}
+
+/// Key algorithm options for CA creation
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum KeyAlgorithm {
+    #[serde(rename = "rsa-2048")]
+    Rsa2048,
+    #[serde(rename = "rsa-3072")]
+    Rsa3072,
+    #[serde(rename = "rsa-4096")]
+    Rsa4096,
+    #[serde(rename = "ecdsa-p256")]
+    EcdsaP256,
+    #[serde(rename = "ecdsa-p384")]
+    EcdsaP384,
+    #[serde(rename = "ecdsa-p521")]
+    EcdsaP521,
+    #[serde(rename = "ed25519")]
+    Ed25519,
+}
+
+impl KeyAlgorithm {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            KeyAlgorithm::Rsa2048 => "rsa-2048",
+            KeyAlgorithm::Rsa3072 => "rsa-3072",
+            KeyAlgorithm::Rsa4096 => "rsa-4096",
+            KeyAlgorithm::EcdsaP256 => "ecdsa-p256",
+            KeyAlgorithm::EcdsaP384 => "ecdsa-p384",
+            KeyAlgorithm::EcdsaP521 => "ecdsa-p521",
+            KeyAlgorithm::Ed25519 => "ed25519",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "rsa-2048" => Some(KeyAlgorithm::Rsa2048),
+            "rsa-3072" => Some(KeyAlgorithm::Rsa3072),
+            "rsa-4096" => Some(KeyAlgorithm::Rsa4096),
+            "ecdsa-p256" => Some(KeyAlgorithm::EcdsaP256),
+            "ecdsa-p384" => Some(KeyAlgorithm::EcdsaP384),
+            "ecdsa-p521" => Some(KeyAlgorithm::EcdsaP521),
+            "ed25519" => Some(KeyAlgorithm::Ed25519),
+            _ => None,
+        }
+    }
+
+    pub fn key_size(&self) -> i32 {
+        match self {
+            KeyAlgorithm::Rsa2048 => 2048,
+            KeyAlgorithm::Rsa3072 => 3072,
+            KeyAlgorithm::Rsa4096 => 4096,
+            KeyAlgorithm::EcdsaP256 => 256,
+            KeyAlgorithm::EcdsaP384 => 384,
+            KeyAlgorithm::EcdsaP521 => 521,
+            KeyAlgorithm::Ed25519 => 255,
+        }
+    }
+
+    pub fn is_rsa(&self) -> bool {
+        matches!(self, KeyAlgorithm::Rsa2048 | KeyAlgorithm::Rsa3072 | KeyAlgorithm::Rsa4096)
+    }
+
+    pub fn is_ecdsa(&self) -> bool {
+        matches!(self, KeyAlgorithm::EcdsaP256 | KeyAlgorithm::EcdsaP384 | KeyAlgorithm::EcdsaP521)
+    }
+
+    pub fn is_ed25519(&self) -> bool {
+        matches!(self, KeyAlgorithm::Ed25519)
+    }
+}
+
+impl Default for KeyAlgorithm {
+    fn default() -> Self {
+        KeyAlgorithm::EcdsaP256
+    }
+}
+
+/// CA creation request
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct CreateCaRequest {
+    pub name: String,
+    pub description: Option<String>,
+    pub key_algorithm: Option<KeyAlgorithm>,
+    pub validity_years: Option<i32>,
+    pub is_root_ca: Option<bool>,
+    pub parent_ca_id: Option<i64>,
+    pub path_len: Option<i32>,
+    pub key_usage: Option<Vec<String>>,
+    pub extended_key_usage: Option<Vec<String>>,
+    pub certificate_policies: Option<Vec<String>>,
+    pub name_constraints: Option<NameConstraints>,
+    pub crl_distribution_points: Option<Vec<String>>,
+    pub authority_info_access: Option<AuthorityInfoAccess>,
+}
+
+/// CA update request
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct UpdateCaRequest {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub is_active: Option<bool>,
+    pub crl_distribution_points: Option<Vec<String>>,
+    pub authority_info_access: Option<AuthorityInfoAccess>,
+}
+
+/// Name constraints for CA certificates
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct NameConstraints {
+    pub permitted_dns: Option<Vec<String>>,
+    pub excluded_dns: Option<Vec<String>>,
+    pub permitted_email: Option<Vec<String>>,
+    pub excluded_email: Option<Vec<String>>,
+    pub permitted_uri: Option<Vec<String>>,
+    pub excluded_uri: Option<Vec<String>>,
+    pub permitted_ip: Option<Vec<String>>,
+    pub excluded_ip: Option<Vec<String>>,
+}
+
+/// Authority Information Access extension
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct AuthorityInfoAccess {
+    pub ca_issuers: Option<Vec<String>>,
+    pub ocsp_responders: Option<Vec<String>>,
+}
+
+/// CA response (without sensitive data)
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct CaResponse {
+    pub id: i64,
+    pub created_on: i64,
+    pub valid_until: i64,
+    pub tenant_id: String,
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub key_algorithm: String,
+    pub key_size: Option<i32>,
+    pub path_len: Option<i32>,
+    pub is_active: bool,
+    pub is_root_ca: bool,
+    pub parent_ca_id: Option<i64>,
+    pub serial_number: Option<String>,
+    pub issuer: Option<String>,
+    pub subject: Option<String>,
+    pub key_usage: Option<Vec<String>>,
+    pub extended_key_usage: Option<Vec<String>>,
+    pub certificate_policies: Option<Vec<String>>,
+    pub crl_distribution_points: Option<Vec<String>>,
+    pub authority_info_access: Option<AuthorityInfoAccess>,
+    pub created_by_user_id: i64,
+    pub certificate_count: Option<i64>,
+    pub last_crl_update: Option<i64>,
+}
+
+impl From<CA> for CaResponse {
+    fn from(ca: CA) -> Self {
+        Self {
+            id: ca.id,
+            created_on: ca.created_on,
+            valid_until: ca.valid_until,
+            tenant_id: ca.tenant_id,
+            name: ca.name,
+            description: ca.description,
+            key_algorithm: ca.key_algorithm,
+            key_size: ca.key_size,
+            path_len: ca.path_len,
+            is_active: ca.is_active,
+            is_root_ca: ca.is_root_ca,
+            parent_ca_id: ca.parent_ca_id,
+            serial_number: ca.serial_number,
+            issuer: ca.issuer,
+            subject: ca.subject,
+            key_usage: ca.key_usage.and_then(|s| serde_json::from_str(&s).ok()),
+            extended_key_usage: ca.extended_key_usage.and_then(|s| serde_json::from_str(&s).ok()),
+            certificate_policies: ca.certificate_policies.and_then(|s| serde_json::from_str(&s).ok()),
+            crl_distribution_points: ca.crl_distribution_points.and_then(|s| serde_json::from_str(&s).ok()),
+            authority_info_access: ca.authority_info_access.and_then(|s| serde_json::from_str(&s).ok()),
+            created_by_user_id: ca.created_by_user_id,
+            certificate_count: None, // Will be populated by the API layer
+            last_crl_update: None,   // Will be populated by the API layer
+        }
+    }
+}
+
+/// CA list response with pagination
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct CaListResponse {
+    pub cas: Vec<CaResponse>,
+    pub total: i64,
+    pub page: i32,
+    pub per_page: i32,
+    pub has_more: bool,
+}
+
+/// CA hierarchy information
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct CaHierarchy {
+    pub ca: CaResponse,
+    pub children: Vec<CaHierarchy>,
+    pub depth: i32,
+}
+
+/// CA statistics
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct CaStatistics {
+    pub ca_id: i64,
+    pub tenant_id: String,
+    pub total_certificates: i64,
+    pub active_certificates: i64,
+    pub revoked_certificates: i64,
+    pub expired_certificates: i64,
+    pub certificates_issued_last_30_days: i64,
+    pub last_certificate_issued: Option<i64>,
+    pub last_crl_generated: Option<i64>,
+    pub crl_size_bytes: Option<i64>,
 }
 
 pub struct CertificateBuilder {
@@ -219,12 +449,26 @@ impl CertificateBuilder {
             key: self.private_key.private_key_to_der()?,
             tenant_id: "00000000-0000-0000-0000-000000000000".to_string(), // Default tenant
             name: None,
-            key_algorithm: "rsa-2048".to_string(),
+            description: None,
+            key_algorithm: "ecdsa-p256".to_string(),
+            key_size: Some(256),
             path_len: None,
             basic_constraints: None,
             crl_distribution_points: None,
             authority_info_access: None,
             is_active: true,
+            is_root_ca: true,
+            parent_ca_id: None,
+            serial_number: None,
+            issuer: None,
+            subject: None,
+            key_usage: None,
+            extended_key_usage: None,
+            certificate_policies: None,
+            policy_constraints: None,
+            name_constraints: None,
+            created_by_user_id: 1, // Default admin user
+            metadata: None,
         })
     }
 

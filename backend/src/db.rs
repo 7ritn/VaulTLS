@@ -206,14 +206,117 @@ impl VaulTLSDB {
                     key: row.get(4)?,
                     tenant_id: row.get(5).unwrap_or_else(|_| "00000000-0000-0000-0000-000000000000".to_string()),
                     name: row.get(6).unwrap_or(None),
-                    key_algorithm: row.get(7).unwrap_or_else(|_| "rsa-2048".to_string()),
+                    description: row.get(13).unwrap_or(None),
+                    key_algorithm: row.get(7).unwrap_or_else(|_| "ecdsa-p256".to_string()),
+                    key_size: row.get(14).unwrap_or(Some(256)),
                     path_len: row.get(8).unwrap_or(None),
                     basic_constraints: row.get(9).unwrap_or(None),
                     crl_distribution_points: row.get(10).unwrap_or(None),
                     authority_info_access: row.get(11).unwrap_or(None),
                     is_active: row.get(12).unwrap_or(true),
+                    is_root_ca: row.get(15).unwrap_or(true),
+                    parent_ca_id: row.get(16).unwrap_or(None),
+                    serial_number: row.get(17).unwrap_or(None),
+                    issuer: row.get(18).unwrap_or(None),
+                    subject: row.get(19).unwrap_or(None),
+                    key_usage: row.get(20).unwrap_or(None),
+                    extended_key_usage: row.get(21).unwrap_or(None),
+                    certificate_policies: row.get(22).unwrap_or(None),
+                    policy_constraints: row.get(23).unwrap_or(None),
+                    name_constraints: row.get(24).unwrap_or(None),
+                    created_by_user_id: row.get(25).unwrap_or(1),
+                    metadata: row.get(26).unwrap_or(None),
                 })
             }).map_err(|_| anyhow!("VaulTLS has not been set-up yet"))
+        })
+    }
+
+    /// Get CA by ID
+    pub(crate) async fn get_ca_by_id(&self, ca_id: i64) -> Result<CA> {
+        db_do!(self.pool, |conn: &Connection| {
+            Ok(conn.query_row(
+                "SELECT * FROM ca_certificates WHERE id = ?1",
+                params![ca_id],
+                |row| {
+                    Ok(CA{
+                        id: row.get(0)?,
+                        created_on: row.get(1)?,
+                        valid_until: row.get(2)?,
+                        cert: row.get(3)?,
+                        key: row.get(4)?,
+                        tenant_id: row.get(5)?,
+                        name: row.get(6)?,
+                        description: row.get(13)?,
+                        key_algorithm: row.get(7)?,
+                        key_size: row.get(14)?,
+                        path_len: row.get(8)?,
+                        basic_constraints: row.get(9)?,
+                        crl_distribution_points: row.get(10)?,
+                        authority_info_access: row.get(11)?,
+                        is_active: row.get(12)?,
+                        is_root_ca: row.get(15)?,
+                        parent_ca_id: row.get(16)?,
+                        serial_number: row.get(17)?,
+                        issuer: row.get(18)?,
+                        subject: row.get(19)?,
+                        key_usage: row.get(20)?,
+                        extended_key_usage: row.get(21)?,
+                        certificate_policies: row.get(22)?,
+                        policy_constraints: row.get(23)?,
+                        name_constraints: row.get(24)?,
+                        created_by_user_id: row.get(25)?,
+                        metadata: row.get(26)?,
+                    })
+                }
+            )?)
+        })
+    }
+
+    /// Get CAs for a tenant
+    pub(crate) async fn get_cas_for_tenant(&self, tenant_id: &str) -> Result<Vec<CA>> {
+        let tenant_id = tenant_id.to_string();
+        db_do!(self.pool, |conn: &Connection| {
+            let mut stmt = conn.prepare(
+                "SELECT * FROM ca_certificates WHERE tenant_id = ?1 ORDER BY created_on DESC"
+            )?;
+
+            let rows = stmt.query_map(params![tenant_id], |row| {
+                Ok(CA{
+                    id: row.get(0)?,
+                    created_on: row.get(1)?,
+                    valid_until: row.get(2)?,
+                    cert: row.get(3)?,
+                    key: row.get(4)?,
+                    tenant_id: row.get(5)?,
+                    name: row.get(6)?,
+                    description: row.get(13)?,
+                    key_algorithm: row.get(7)?,
+                    key_size: row.get(14)?,
+                    path_len: row.get(8)?,
+                    basic_constraints: row.get(9)?,
+                    crl_distribution_points: row.get(10)?,
+                    authority_info_access: row.get(11)?,
+                    is_active: row.get(12)?,
+                    is_root_ca: row.get(15)?,
+                    parent_ca_id: row.get(16)?,
+                    serial_number: row.get(17)?,
+                    issuer: row.get(18)?,
+                    subject: row.get(19)?,
+                    key_usage: row.get(20)?,
+                    extended_key_usage: row.get(21)?,
+                    certificate_policies: row.get(22)?,
+                    policy_constraints: row.get(23)?,
+                    name_constraints: row.get(24)?,
+                    created_by_user_id: row.get(25)?,
+                    metadata: row.get(26)?,
+                })
+            })?;
+
+            let mut cas = Vec::new();
+            for ca in rows {
+                cas.push(ca?);
+            }
+            Ok(cas)
         })
     }
 
