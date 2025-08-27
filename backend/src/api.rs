@@ -1027,7 +1027,7 @@ pub(crate) async fn create_ca(
     if let Some(parent_ca_id) = request.parent_ca_id {
         let parent_ca = state.db.get_ca_by_id(parent_ca_id).await?;
         if parent_ca.tenant_id != authentication.auth.token.tenant_id {
-            return Err(ApiError::Forbidden);
+            return Err(ApiError::tenant_access_denied());
         }
     }
 
@@ -1156,7 +1156,7 @@ pub(crate) async fn get_ca(
 
     // Check tenant access
     if ca.tenant_id != authentication.auth.token.tenant_id {
-        return Err(ApiError::Forbidden);
+        return Err(ApiError::tenant_access_denied());
     }
 
     // Convert to response format with additional data
@@ -1189,7 +1189,7 @@ pub(crate) async fn update_ca(
 
     // Check tenant access
     if ca.tenant_id != authentication.auth.token.tenant_id {
-        return Err(ApiError::Forbidden);
+        return Err(ApiError::tenant_access_denied());
     }
 
     // Update fields
@@ -1245,7 +1245,7 @@ pub(crate) async fn delete_ca(
 
     // Check tenant access
     if ca.tenant_id != authentication.auth.token.tenant_id {
-        return Err(ApiError::Forbidden);
+        return Err(ApiError::tenant_access_denied());
     }
 
     // Check if CA has child CAs
@@ -1300,7 +1300,7 @@ pub(crate) async fn download_ca_certificate(
 
     // Check tenant access
     if ca.tenant_id != authentication.auth.token.tenant_id {
-        return Err(ApiError::Forbidden);
+        return Err(ApiError::tenant_access_denied());
     }
 
     // Determine format (default to PEM)
@@ -1381,7 +1381,7 @@ pub(crate) async fn download_ca_chain(
 
     // Check tenant access
     if ca.tenant_id != authentication.auth.token.tenant_id {
-        return Err(ApiError::Forbidden);
+        return Err(ApiError::tenant_access_denied());
     }
 
     // Determine format (default to PEM)
@@ -1502,7 +1502,7 @@ pub(crate) async fn rotate_ca_key(
 
     // Check tenant access
     if old_ca.tenant_id != authentication.auth.token.tenant_id {
-        return Err(ApiError::Forbidden);
+        return Err(ApiError::tenant_access_denied());
     }
 
     // Validate rotation request
@@ -1648,7 +1648,7 @@ pub(crate) async fn create_certificate_with_ca(
             let ca = state.db.get_ca_by_id(ca_id).await?;
             // Check tenant access
             if ca.tenant_id != authentication.auth.token.tenant_id {
-                return Err(ApiError::Forbidden);
+                return Err(ApiError::tenant_access_denied());
             }
             ca
         },

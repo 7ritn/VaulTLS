@@ -329,7 +329,7 @@ impl<'r> FromRequest<'r> for BearerAuthenticated {
     async fn from_request(request: &'r Request<'_>) -> Outcome<Self, Self::Error> {
         match Self::authenticate_bearer_token(request).await {
             Some(auth) => Outcome::Success(BearerAuthenticated { auth }),
-            None => Outcome::Error((Status::Unauthorized, ApiError::Unauthorized)),
+            None => Outcome::Error((Status::Unauthorized, ApiError::missing_bearer_token())),
         }
     }
 }
@@ -347,7 +347,7 @@ impl<'r> FromRequest<'r> for BearerAuthenticatedWithEndpointScopes {
         // First authenticate the token
         let auth = match BearerAuthenticated::authenticate_bearer_token(request).await {
             Some(auth) => auth,
-            None => return Outcome::Error((Status::Unauthorized, ApiError::Unauthorized)),
+            None => return Outcome::Error((Status::Unauthorized, ApiError::missing_bearer_token())),
         };
 
         // Get app state for permission checking
@@ -368,7 +368,7 @@ impl<'r> FromRequest<'r> for BearerAuthenticatedWithEndpointScopes {
             Ok(true) => Outcome::Success(BearerAuthenticatedWithEndpointScopes { auth }),
             Ok(false) => {
                 debug!("Token {} lacks required scopes for {} {}", auth.token.prefix, method, endpoint);
-                Outcome::Error((Status::Forbidden, ApiError::Forbidden))
+                Outcome::Error((Status::Forbidden, ApiError::insufficient_scope("required for this endpoint")))
             },
             Err(e) => {
                 warn!("Permission check failed: {}", e);
@@ -401,10 +401,10 @@ macro_rules! bearer_auth_with_scopes {
                             Outcome::Success($name { auth })
                         } else {
                             debug!("Token {} missing required scopes", auth.token.prefix);
-                            Outcome::Error((Status::Forbidden, ApiError::Forbidden))
+                            Outcome::Error((Status::Forbidden, ApiError::insufficient_scope("required for this operation")))
                         }
                     },
-                    None => Outcome::Error((Status::Unauthorized, ApiError::Unauthorized)),
+                    None => Outcome::Error((Status::Unauthorized, ApiError::missing_bearer_token())),
                 }
             }
         }
