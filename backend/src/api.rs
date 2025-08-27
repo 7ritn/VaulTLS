@@ -75,6 +75,7 @@ pub(crate) async fn setup(
         password_hash,
         oidc_id: None,
         role: UserRole::Admin,
+        tenant_id: "00000000-0000-0000-0000-000000000000".to_string(), // Default tenant
     };
 
     state.db.insert_user(user).await?;
@@ -470,7 +471,8 @@ pub(crate) async fn create_user(
         email: payload.user_email.to_string(),
         password_hash,
         oidc_id: None,
-        role: payload.role
+        role: payload.role,
+        tenant_id: "00000000-0000-0000-0000-000000000000".to_string(), // Default tenant
     };
 
     user = state.db.insert_user(user).await?;

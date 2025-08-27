@@ -28,5 +28,6 @@ pub struct User {
     pub password_hash: Option<Password>,
     #[serde(skip)]
     pub oidc_id: Option<String>,
-    pub role: UserRole
+    pub role: UserRole,
+    pub tenant_id: String,
 }

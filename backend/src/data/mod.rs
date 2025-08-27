@@ -2,3 +2,7 @@ pub mod enums;
 pub mod api;
 pub(crate) mod error;
 pub mod objects;
+pub mod tenant;
+pub mod token;
+pub mod audit;
+pub mod profile;

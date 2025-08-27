@@ -32,6 +32,16 @@ pub struct Certificate {
     pub certificate_type: CertificateType,
     pub user_id: i64,
     pub renew_method: CertificateRenewMethod,
+    pub tenant_id: String,
+    pub profile_id: Option<String>,
+    pub serial_number: Option<String>,
+    pub issuer: Option<String>,
+    pub subject: Option<String>,
+    pub algorithm: Option<String>,
+    pub key_size: Option<i32>,
+    pub sans: Option<String>,  // JSON string
+    pub metadata: Option<String>,  // JSON string
+    pub status: String,
     #[serde(skip)]
     pub pkcs12: Vec<u8>,
     #[serde(skip)]
@@ -45,6 +55,14 @@ pub struct CA {
     pub id: i64,
     pub created_on: i64,
     pub valid_until: i64,
+    pub tenant_id: String,
+    pub name: Option<String>,
+    pub key_algorithm: String,
+    pub path_len: Option<i32>,
+    pub basic_constraints: Option<String>,
+    pub crl_distribution_points: Option<String>,  // JSON string
+    pub authority_info_access: Option<String>,    // JSON string
+    pub is_active: bool,
     #[serde(skip)]
     pub cert: Vec<u8>,
     #[serde(skip)]
@@ -196,6 +214,14 @@ impl CertificateBuilder {
             valid_until,
             cert: cert.to_der()?,
             key: self.private_key.private_key_to_der()?,
+            tenant_id: "00000000-0000-0000-0000-000000000000".to_string(), // Default tenant
+            name: None,
+            key_algorithm: "rsa-2048".to_string(),
+            path_len: None,
+            basic_constraints: None,
+            crl_distribution_points: None,
+            authority_info_access: None,
+            is_active: true,
         })
     }
 
@@ -257,7 +283,17 @@ impl CertificateBuilder {
             pkcs12_password: self.pkcs12_password,
             ca_id,
             user_id,
-            renew_method: self.renew_method
+            renew_method: self.renew_method,
+            tenant_id: "00000000-0000-0000-0000-000000000000".to_string(), // Default tenant
+            profile_id: None,
+            serial_number: None,
+            issuer: None,
+            subject: None,
+            algorithm: Some("ecdsa-p256".to_string()),
+            key_size: Some(256),
+            sans: None,
+            metadata: None,
+            status: "active".to_string(),
         })
     }
 }

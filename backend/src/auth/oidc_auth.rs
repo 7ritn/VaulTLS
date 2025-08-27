@@ -141,7 +141,8 @@ impl OidcAuth {
             email: user_email,
             password_hash: None,
             oidc_id: Some(oidc_id.to_string()),
-            role: UserRole::User
+            role: UserRole::User,
+            tenant_id: "00000000-0000-0000-0000-000000000000".to_string(), // Default tenant
         })
     }
 }

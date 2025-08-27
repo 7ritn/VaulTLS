@@ -19,16 +19,16 @@ schemars = { version = "0.8", features = ["derive"] }
 serde = "1.0"
 serde_json = "1.0"
 serde_repr = "0.1"
-rusqlite = { version = "0.37", features = ["bundled-sqlcipher"] }
+rusqlite = { version = "0.37", features = ["bundled"] }
 r2d2 = "0.8"
-r2d2_sqlite = { version = "0.31", features = ["bundled-sqlcipher"] }
-openssl = "0.10"
+r2d2_sqlite = { version = "0.31", features = ["bundled"] }
+openssl = { version = "0.10", features = ["vendored"] }
 argon2 = "0.5"
 jsonwebtoken = "9"
 openidconnect = "4.0"
 anyhow = "1.0"
 num_enum = "0.7"
-lettre = { version = "0.11", features = ["tokio1", "builder", "smtp-transport", "tokio1-native-tls"] }
+lettre = { version = "0.11", default-features = false, features = ["tokio1", "builder", "smtp-transport", "tokio1-rustls-tls"] }
 maud = "0.27"
 chrono = "0.4"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
@@ -41,6 +41,14 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 derive_deref = "1.1"
 parking_lot = "0.12"
+uuid = { version = "1.0", features = ["v4", "serde"] }
+hmac = "0.12"
+sha2 = "0.10"
+rand = "0.8"
+base64 = "0.22"
+regex = "1.0"
+subtle = "2.5"
+hex = "0.4"
 
 [dev-dependencies]
 x509-parser = "0.17"

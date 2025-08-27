@@ -1,4 +1,5 @@
 use std::{env, fs};
+#[cfg(unix)]
 use std::os::unix::prelude::PermissionsExt;
 use std::path::Path;
 use std::sync::Arc;
@@ -79,10 +80,13 @@ pub async fn create_rocket() -> Rocket<Build> {
     }
     if !db_initialized {
         info!("New database. Set initial database file permissions to 0600");
-        // Adjust permissions
-        let mut perms = fs::metadata(db_path).unwrap().permissions();
-        perms.set_mode(0o600);
-        fs::set_permissions(db_path, perms).unwrap();
+        // Adjust permissions (Unix only)
+        #[cfg(unix)]
+        {
+            let mut perms = fs::metadata(db_path).unwrap().permissions();
+            perms.set_mode(0o600);
+            fs::set_permissions(db_path, perms).unwrap();
+        }
     }
     info!("Database initialized");
 
