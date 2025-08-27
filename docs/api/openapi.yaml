@@ -1,0 +1,613 @@
+openapi: 3.1.0
+info:
+  title: VaulTLS API
+  description: |
+    VaulTLS is a self-hosted web application for managing mTLS certificates.
+    
+    This API allows you to:
+    - Manage certificates and certificate authorities
+    - Create and manage users
+    - Configure application settings
+    - Automate certificate lifecycle management
+    
+    ## Authentication
+    
+    VaulTLS supports two authentication methods:
+    
+    ### Session Authentication (Web UI)
+    Used by the web interface with HTTP-only cookies containing JWT tokens.
+    
+    ### Bearer Token Authentication (API Automation) 🚀
+    **Recommended for API automation.** Uses Bearer tokens with fine-grained scopes.
+    
+    ```
+    Authorization: Bearer vlt_abc123_<token-value>
+    ```
+    
+    See the [Authentication Guide](https://github.com/7ritn/VaulTLS/blob/main/docs/api/authentication.md) for detailed examples.
+    
+    ## Rate Limiting
+    
+    - Default: 100 requests/minute per IP
+    - Authenticated: 1000 requests/minute
+    - Bearer tokens: Configurable per token
+    
+    ## Error Handling
+    
+    All errors follow RFC 7807 Problem Details format:
+    
+    ```json
+    {
+      "type": "https://vaultls.example.com/errors/unauthorized",
+      "title": "Authentication Required", 
+      "status": 401,
+      "detail": "Bearer token is missing or invalid",
+      "instance": "/api/certificates"
+    }
+    ```
+  version: 1.0.0
+  contact:
+    name: VaulTLS
+    url: https://github.com/7ritn/VaulTLS
+  license:
+    name: MIT
+    url: https://github.com/7ritn/VaulTLS/blob/main/LICENSE
+
+servers:
+  - url: https://vaultls.example.com/api
+    description: Production server
+  - url: http://localhost:5173/api
+    description: Development server
+
+security:
+  - BearerAuth: []
+  - SessionAuth: []
+
+paths:
+  /server/version:
+    get:
+      tags: [Server]
+      summary: Get server version
+      description: Returns the current VaulTLS server version
+      security: []
+      responses:
+        '200':
+          description: Server version
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "1.0.0"
+
+  /server/setup:
+    get:
+      tags: [Server]
+      summary: Check setup status
+      description: Check if the server has been set up
+      security: []
+      responses:
+        '200':
+          description: Setup status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SetupStatus'
+    
+    post:
+      tags: [Server]
+      summary: Initial server setup
+      description: Perform initial server setup (only possible if not already set up)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetupRequest'
+      responses:
+        '204':
+          description: Setup completed successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: Server already set up
+
+  /auth/login:
+    post:
+      tags: [Authentication]
+      summary: Login with email and password
+      description: Authenticate user and create session cookie
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '204':
+          description: Login successful, session cookie set
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/logout:
+    post:
+      tags: [Authentication]
+      summary: Logout current session
+      description: Clear authentication session
+      responses:
+        '204':
+          description: Logout successful
+
+  /auth/oidc/login:
+    get:
+      tags: [Authentication]
+      summary: Initiate OIDC login
+      description: Redirect to OIDC provider for authentication
+      security: []
+      responses:
+        '302':
+          description: Redirect to OIDC provider
+        '400':
+          description: OIDC not configured
+
+  /certificates:
+    get:
+      tags: [Certificates]
+      summary: List certificates
+      description: Get list of certificates (users see only their own)
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: List of certificates
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Certificate'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    
+    post:
+      tags: [Certificates]
+      summary: Create new certificate
+      description: Create a new certificate (admin only)
+      security:
+        - BearerAuth: [cert.write]
+        - SessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCertificateRequest'
+      responses:
+        '201':
+          description: Certificate created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Certificate'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /certificates/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+        description: Certificate ID
+    
+    get:
+      tags: [Certificates]
+      summary: Get certificate details
+      description: Get detailed information about a specific certificate
+      security:
+        - BearerAuth: [cert.read]
+        - SessionAuth: []
+      responses:
+        '200':
+          description: Certificate details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Certificate'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    
+    delete:
+      tags: [Certificates]
+      summary: Delete certificate
+      description: Delete a certificate (admin only)
+      security:
+        - BearerAuth: [cert.write]
+        - SessionAuth: []
+      responses:
+        '204':
+          description: Certificate deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /certificates/{id}/download:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+        description: Certificate ID
+    
+    get:
+      tags: [Certificates]
+      summary: Download certificate
+      description: Download certificate in specified format
+      security:
+        - BearerAuth: [cert.download]
+        - SessionAuth: []
+      parameters:
+        - name: format
+          in: query
+          schema:
+            type: string
+            enum: [pkcs12, pem, der]
+            default: pkcs12
+          description: Certificate format
+      responses:
+        '200':
+          description: Certificate file
+          content:
+            application/x-pkcs12:
+              schema:
+                type: string
+                format: binary
+            application/x-pem-file:
+              schema:
+                type: string
+                format: binary
+            application/x-x509-ca-cert:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /certificates/{id}/password:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+        description: Certificate ID
+    
+    get:
+      tags: [Certificates]
+      summary: Get certificate password
+      description: Get the PKCS#12 password for a certificate
+      security:
+        - BearerAuth: [cert.read]
+        - SessionAuth: []
+      responses:
+        '200':
+          description: Certificate password
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  password:
+                    type: string
+                    description: PKCS#12 password
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /certificates/ca/download:
+    get:
+      tags: [Certificate Authority]
+      summary: Download CA certificate
+      description: Download the Certificate Authority certificate
+      security: []
+      parameters:
+        - name: format
+          in: query
+          schema:
+            type: string
+            enum: [pem, der, cer]
+            default: pem
+          description: Certificate format
+      responses:
+        '200':
+          description: CA certificate file
+          content:
+            application/x-pem-file:
+              schema:
+                type: string
+                format: binary
+            application/x-x509-ca-cert:
+              schema:
+                type: string
+                format: binary
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: "vlt_xxxxxx_<token>"
+      description: |
+        Bearer token authentication for API automation.
+        
+        Format: `vlt_<6-char-prefix>_<base64url-token-value>`
+        
+        Example: `vlt_abc123_dGVzdF90b2tlbl92YWx1ZQ`
+        
+        Supports fine-grained permissions through scopes:
+        - `cert.read`, `cert.write`, `cert.revoke`, `cert.download`
+        - `ca.read`, `ca.write`, `ca.keyop`
+        - `profile.read`, `profile.write`
+        - `token.read`, `token.write`, `token.admin`
+        - `audit.read`, `metrics.read`
+        - `admin.tenant`
+    
+    SessionAuth:
+      type: apiKey
+      in: cookie
+      name: auth_token
+      description: |
+        Session-based authentication using HTTP-only cookies.
+        Used by the web interface. Not recommended for API automation.
+
+  parameters:
+    Page:
+      name: page
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+      description: Page number (1-based)
+    
+    Limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 50
+      description: Number of items per page
+
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+          example:
+            type: "https://vaultls.example.com/errors/bad-request"
+            title: "Bad Request"
+            status: 400
+            detail: "Invalid certificate type specified"
+            instance: "/api/certificates"
+    
+    Unauthorized:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+          example:
+            type: "https://vaultls.example.com/errors/unauthorized"
+            title: "Authentication Required"
+            status: 401
+            detail: "Bearer token is missing or invalid"
+            instance: "/api/certificates"
+    
+    Forbidden:
+      description: Insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+          example:
+            type: "https://vaultls.example.com/errors/forbidden"
+            title: "Insufficient Permissions"
+            status: 403
+            detail: "Token missing required scope: cert.write"
+            instance: "/api/certificates"
+    
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+          example:
+            type: "https://vaultls.example.com/errors/not-found"
+            title: "Resource Not Found"
+            status: 404
+            detail: "Certificate with ID 123 not found"
+            instance: "/api/certificates/123"
+
+  schemas:
+    ProblemDetails:
+      type: object
+      description: RFC 7807 Problem Details for HTTP APIs
+      properties:
+        type:
+          type: string
+          format: uri
+          description: URI identifying the problem type
+        title:
+          type: string
+          description: Short, human-readable summary
+        status:
+          type: integer
+          description: HTTP status code
+        detail:
+          type: string
+          description: Human-readable explanation
+        instance:
+          type: string
+          format: uri
+          description: URI identifying the specific occurrence
+      required: [type, title, status]
+
+    SetupStatus:
+      type: object
+      properties:
+        setup:
+          type: boolean
+          description: Whether the server has been set up
+        password:
+          type: boolean
+          description: Whether password authentication is enabled
+        oidc:
+          type: string
+          description: OIDC configuration status
+          enum: [configured, not_configured, error]
+      required: [setup, password, oidc]
+
+    SetupRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Administrator name
+          example: "Admin User"
+        email:
+          type: string
+          format: email
+          description: Administrator email
+          example: "admin@example.com"
+        password:
+          type: string
+          description: Administrator password (optional if OIDC configured)
+          example: "secure-password"
+      required: [name, email]
+
+    LoginRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+          description: User email address
+          example: "user@example.com"
+        password:
+          type: string
+          description: User password
+          example: "password"
+      required: [email, password]
+
+    Certificate:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: Certificate ID
+          example: 1
+        name:
+          type: string
+          description: Certificate name
+          example: "api.example.com"
+        created_on:
+          type: integer
+          description: Creation timestamp (Unix)
+          example: 1640995200
+        valid_until:
+          type: integer
+          description: Expiration timestamp (Unix)
+          example: 1672531200
+        certificate_type:
+          type: string
+          enum: [server, client]
+          description: Certificate type
+          example: "server"
+        user_id:
+          type: integer
+          description: Owner user ID
+          example: 1
+        renew_method:
+          type: string
+          enum: [manual, automatic]
+          description: Renewal method
+          example: "manual"
+      required: [id, name, created_on, valid_until, certificate_type, user_id, renew_method]
+
+    CreateCertificateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Certificate name
+          example: "api.example.com"
+        certificate_type:
+          type: string
+          enum: [server, client]
+          description: Certificate type
+          example: "server"
+        dns_names:
+          type: array
+          items:
+            type: string
+          description: DNS Subject Alternative Names
+          example: ["api.example.com", "www.api.example.com"]
+        ip_addresses:
+          type: array
+          items:
+            type: string
+          description: IP Subject Alternative Names
+          example: ["192.168.1.100"]
+        email_addresses:
+          type: array
+          items:
+            type: string
+          description: Email Subject Alternative Names
+          example: []
+        validity_days:
+          type: integer
+          minimum: 1
+          maximum: 3650
+          description: Certificate validity period in days
+          example: 365
+        key_algorithm:
+          type: string
+          enum: [rsa-2048, rsa-3072, rsa-4096, ecdsa-p256, ecdsa-p384]
+          description: Key algorithm and size
+          example: "ecdsa-p256"
+      required: [name, certificate_type]
+
+tags:
+  - name: Server
+    description: Server information and setup
+  - name: Authentication
+    description: User authentication and session management
+  - name: Certificates
+    description: Certificate management operations
+  - name: Certificate Authority
+    description: Certificate Authority operations
+  - name: Users
+    description: User management (admin only)
+  - name: Settings
+    description: Application settings (admin only)

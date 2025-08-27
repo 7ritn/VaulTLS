@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VaulTLS API Documentation</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f8f9fa;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 40px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+            text-align: center;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 2.5em;
+        }
+        .header p {
+            margin: 10px 0 0 0;
+            opacity: 0.9;
+        }
+        .cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .card {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            border-left: 4px solid #667eea;
+        }
+        .card h3 {
+            margin-top: 0;
+            color: #667eea;
+        }
+        .btn {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            padding: 12px 24px;
+            text-decoration: none;
+            border-radius: 5px;
+            margin: 5px 5px 5px 0;
+            transition: background 0.3s;
+        }
+        .btn:hover {
+            background: #5a6fd8;
+        }
+        .btn-secondary {
+            background: #6c757d;
+        }
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+        .code-block {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 15px 0;
+            overflow-x: auto;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 14px;
+        }
+        .quick-start {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+        }
+        .status-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        .status-ok { background: #28a745; }
+        .status-warning { background: #ffc107; }
+        .status-info { background: #17a2b8; }
+        .footer {
+            text-align: center;
+            margin-top: 40px;
+            padding: 20px;
+            color: #6c757d;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🔐 VaulTLS API Documentation</h1>
+        <p>Self-hosted mTLS certificate management with powerful automation APIs</p>
+    </div>
+
+    <div class="quick-start">
+        <h2>🚀 Quick Start</h2>
+        <p>Get started with the VaulTLS API in minutes:</p>
+        
+        <div class="code-block">
+# 1. Check your VaulTLS instance
+curl https://your-vaultls-instance.com/api/server/version
+
+# 2. Login (session-based authentication)
+curl -X POST https://your-vaultls-instance.com/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email": "admin@example.com", "password": "your-password"}' \
+  -c cookies.txt
+
+# 3. List certificates
+curl https://your-vaultls-instance.com/api/certificates -b cookies.txt
+
+# 4. Download CA certificate (no auth required)
+curl https://your-vaultls-instance.com/api/certificates/ca/download -o ca.pem
+        </div>
+
+        <a href="/api-docs" class="btn">🔍 Try Interactive API</a>
+        <a href="getting-started.md" class="btn btn-secondary">📖 Complete Guide</a>
+    </div>
+
+    <div class="cards">
+        <div class="card">
+            <h3>📚 Documentation</h3>
+            <p>Comprehensive guides and references for using the VaulTLS API effectively.</p>
+            <a href="getting-started.md" class="btn">Getting Started</a>
+            <a href="authentication.md" class="btn btn-secondary">Authentication</a>
+            <a href="endpoints.md" class="btn btn-secondary">API Reference</a>
+        </div>
+
+        <div class="card">
+            <h3>🔧 Interactive Tools</h3>
+            <p>Explore and test the API directly in your browser with live documentation.</p>
+            <a href="/api-docs" class="btn">RapiDoc Interface</a>
+            <a href="/api/openapi.json" class="btn btn-secondary">OpenAPI Spec</a>
+            <a href="/api/docs" class="btn btn-secondary">API Info</a>
+        </div>
+
+        <div class="card">
+            <h3>🤖 Automation Examples</h3>
+            <p>Ready-to-use code examples for building certificate management automation.</p>
+            <a href="getting-started.md#certificate-management-agent" class="btn">Python Agent</a>
+            <a href="getting-started.md#bash-script-example" class="btn btn-secondary">Bash Scripts</a>
+            <a href="getting-started.md#integration-with-cicd" class="btn btn-secondary">CI/CD Integration</a>
+        </div>
+
+        <div class="card">
+            <h3>🔐 Authentication Methods</h3>
+            <p>Choose the right authentication method for your use case.</p>
+            <div style="margin: 15px 0;">
+                <div><span class="status-indicator status-ok"></span><strong>Session Auth</strong> - Web UI (available now)</div>
+                <div><span class="status-indicator status-warning"></span><strong>Bearer Tokens</strong> - API automation (coming soon)</div>
+                <div><span class="status-indicator status-info"></span><strong>OIDC</strong> - Enterprise SSO (available now)</div>
+            </div>
+            <a href="authentication.md" class="btn">Authentication Guide</a>
+        </div>
+
+        <div class="card">
+            <h3>📊 API Features</h3>
+            <p>Powerful features for certificate lifecycle management.</p>
+            <ul style="margin: 15px 0; padding-left: 20px;">
+                <li>Certificate creation and management</li>
+                <li>Multiple download formats (PKCS#12, PEM, DER)</li>
+                <li>CA certificate distribution</li>
+                <li>User and role management</li>
+                <li>Application settings configuration</li>
+                <li>OIDC authentication support</li>
+            </ul>
+            <a href="endpoints.md" class="btn">View All Endpoints</a>
+        </div>
+
+        <div class="card">
+            <h3>🛠️ Developer Resources</h3>
+            <p>Tools and resources for developers integrating with VaulTLS.</p>
+            <a href="https://github.com/7ritn/VaulTLS" class="btn">GitHub Repository</a>
+            <a href="https://github.com/7ritn/VaulTLS/issues" class="btn btn-secondary">Report Issues</a>
+            <a href="https://github.com/7ritn/VaulTLS/discussions" class="btn btn-secondary">Community</a>
+        </div>
+    </div>
+
+    <div class="quick-start">
+        <h2>🎯 Common Use Cases</h2>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; margin-top: 20px;">
+            <div>
+                <h4>🔄 Certificate Automation</h4>
+                <p>Build agents that automatically renew certificates before expiration, similar to ACME clients.</p>
+            </div>
+            <div>
+                <h4>📦 CI/CD Integration</h4>
+                <p>Integrate certificate management into your deployment pipelines for automated provisioning.</p>
+            </div>
+            <div>
+                <h4>📊 Monitoring & Alerts</h4>
+                <p>Monitor certificate expiration dates and send alerts when certificates need attention.</p>
+            </div>
+            <div>
+                <h4>🔗 Infrastructure Integration</h4>
+                <p>Distribute CA certificates to load balancers, reverse proxies, and other infrastructure components.</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer">
+        <p>VaulTLS - Self-hosted mTLS certificate management</p>
+        <p>Built with ❤️ by the VaulTLS community</p>
+    </div>
+
+    <script>
+        // Simple script to check API availability
+        fetch('/api/server/version')
+            .then(response => response.text())
+            .then(version => {
+                console.log('VaulTLS API Version:', version);
+                // Could add a status indicator here
+            })
+            .catch(error => {
+                console.log('API not available:', error);
+            });
+    </script>
+</body>
+</html>

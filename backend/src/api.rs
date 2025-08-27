@@ -23,6 +23,62 @@ pub(crate) fn version() -> &'static str {
     VAULTLS_VERSION
 }
 
+#[openapi(tag = "Documentation")]
+#[get("/docs")]
+/// Get API documentation information and links.
+pub(crate) fn api_docs() -> Json<serde_json::Value> {
+    Json(serde_json::json!({
+        "title": "VaulTLS API Documentation",
+        "version": VAULTLS_VERSION,
+        "description": "VaulTLS is a self-hosted web application for managing mTLS certificates",
+        "links": {
+            "interactive_docs": "/api-docs",
+            "openapi_spec": "/api/openapi.json",
+            "authentication_guide": "https://github.com/7ritn/VaulTLS/blob/main/docs/api/authentication.md",
+            "getting_started": "https://github.com/7ritn/VaulTLS/blob/main/docs/api/getting-started.md",
+            "endpoints_reference": "https://github.com/7ritn/VaulTLS/blob/main/docs/api/endpoints.md"
+        },
+        "authentication": {
+            "session_auth": {
+                "description": "Cookie-based authentication for web UI",
+                "login_endpoint": "/api/auth/login",
+                "logout_endpoint": "/api/auth/logout"
+            },
+            "bearer_auth": {
+                "description": "Bearer token authentication for API automation (coming soon)",
+                "format": "Bearer vlt_xxxxxx_<token-value>",
+                "scopes": [
+                    "cert.read", "cert.write", "cert.revoke", "cert.download",
+                    "ca.read", "ca.write", "ca.keyop",
+                    "profile.read", "profile.write",
+                    "token.read", "token.write", "token.admin",
+                    "audit.read", "metrics.read", "admin.tenant"
+                ]
+            }
+        },
+        "examples": {
+            "login": {
+                "method": "POST",
+                "url": "/api/auth/login",
+                "body": {
+                    "email": "admin@example.com",
+                    "password": "your-password"
+                }
+            },
+            "list_certificates": {
+                "method": "GET",
+                "url": "/api/certificates",
+                "auth": "session or bearer token"
+            },
+            "download_ca": {
+                "method": "GET",
+                "url": "/api/certificates/ca/download",
+                "auth": "none required"
+            }
+        }
+    }))
+}
+
 #[openapi(tag = "Setup")]
 #[get("/server/setup")]
 /// Get server setup parameters.

@@ -85,10 +85,38 @@ If no user is found a new one is created.
 Users can only see certificates created for them. Only admins can create new certificates.
 User certificates can be downloaded through the web interface.
 
-The CA certificate to be integrated with your reverse proxy is available as a file at /app/data/ca.cert 
+The CA certificate to be integrated with your reverse proxy is available as a file at /app/data/ca.cert
 and as download via the API endpoint /api/certificates/ca/download.
 
-Further API documentation is available at the endpoint /api
+## API Documentation 🚀
+
+VaulTLS provides a comprehensive REST API for automation and integration:
+
+- **📖 Getting Started Guide**: [docs/api/getting-started.md](docs/api/getting-started.md)
+- **🔍 Interactive Documentation**: Visit `/api-docs` on your VaulTLS instance
+- **🔐 Authentication Guide**: [docs/api/authentication.md](docs/api/authentication.md)
+- **📋 API Reference**: [docs/api/endpoints.md](docs/api/endpoints.md)
+- **📄 OpenAPI Specification**: [docs/api/openapi.yaml](docs/api/openapi.yaml)
+
+### Quick API Example
+
+```bash
+# Login and get session cookie
+curl -X POST https://your-vaultls-instance.com/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email": "admin@example.com", "password": "your-password"}' \
+  -c cookies.txt
+
+# List certificates
+curl https://your-vaultls-instance.com/api/certificates -b cookies.txt
+
+# Download CA certificate (no authentication required)
+curl https://your-vaultls-instance.com/api/certificates/ca/download -o ca.pem
+```
+
+### Building Certificate Automation
+
+The API is perfect for building ACME-like certificate automation services. See the [Getting Started Guide](docs/api/getting-started.md) for complete Python and Bash examples.
 
 ### PKCS12 Passwords
 By default, PKCS12 passwords are optional and certificates will be generated with no password. In the settings page, the PKCS12 password requirements can be set with the following options:

@@ -160,6 +160,7 @@ pub async fn create_rocket() -> Rocket<Build> {
             "/api",
             openapi_get_routes![
                 version,
+                api_docs,
                 get_certificates,
                 create_user_certificate,
                 download_ca,
@@ -183,24 +184,30 @@ pub async fn create_rocket() -> Rocket<Build> {
             ],
         )
         .mount(
-            "/api",
+            "/api-docs",
             make_rapidoc(&RapiDocConfig {
                 general: GeneralConfig {
-                    spec_urls: vec![UrlObject::new("General", "/api/openapi.json")],
+                    spec_urls: vec![UrlObject::new("VaulTLS API", "/api/openapi.json")],
                     ..Default::default()
                 },
                 layout: LayoutConfig {
-                    layout: Layout::Row,
-                    render_style: RenderStyle::View,
-                    response_area_height: "300px".to_string(),
+                    layout: Layout::Column,
+                    render_style: RenderStyle::Read,
+                    response_area_height: "400px".to_string(),
                 },
                 schema: SchemaConfig {
-                    schema_style: SchemaStyle::Table,
+                    schema_style: SchemaStyle::Tree,
                     ..Default::default()
                 },
                 hide_show: HideShowConfig {
-                    allow_spec_url_load: false,
+                    allow_spec_url_load: true,
                     allow_spec_file_load: false,
+                    allow_search: true,
+                    allow_try: true,
+                    allow_server_selection: true,
+                    show_header: true,
+                    show_info: true,
+                    show_components: true,
                     ..Default::default()
                 },
                 ..Default::default()
@@ -237,6 +244,7 @@ pub async fn create_test_rocket() -> Rocket<Build> {
             "/",
             openapi_get_routes![
                 version,
+                api_docs,
                 get_certificates,
                 create_user_certificate,
                 download_ca,
