@@ -428,3 +428,6 @@ bearer_auth_with_scopes!(BearerCaReadWrite, &Scope::CaRead, &Scope::CaWrite);
 // Profile scope guards
 bearer_auth_with_scopes!(BearerProfileRead, &Scope::ProfileRead);
 bearer_auth_with_scopes!(BearerProfileWrite, &Scope::ProfileWrite);
+
+// Audit scope guards
+bearer_auth_with_scopes!(BearerAuditRead, &Scope::AuditRead);

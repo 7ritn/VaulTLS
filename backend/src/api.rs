@@ -15,8 +15,9 @@ use crate::data::token::{ApiToken, CreateTokenRequest, TokenResponse, UpdateToke
 use crate::cert::{CreateCaRequest, UpdateCaRequest, CaResponse, CaListResponse, KeyAlgorithm, CA, RotateCaRequest, CaRotationResponse, CertificateAction, CreateCertificateWithCaRequest, CaSelection, CertificateBuilder, CertificateSearchRequest, CertificateSearchResponse, BatchOperationRequest, BatchOperationResponse, ChainValidationRequest, ChainValidationResponse, CertificateStatistics, BulkDownloadRequest};
 use crate::data::enums::CertificateType;
 use crate::data::profile::{Profile, CreateProfileRequest, UpdateProfileRequest, ProfileListResponse};
+use crate::data::audit::{AuditEvent, AuditEventQuery, AuditEventType, AuditResourceType, AuditEventListResponse, AuditStatistics, AuditActivityResponse, AuditExportRequest};
 use crate::crl::CrlManager;
-use crate::auth::token_auth::{TokenAuthService, BearerAuthenticated, BearerTokenAdmin, BearerCaRead, BearerCaWrite, BearerCaKeyop, BearerCertWrite, BearerProfileRead, BearerProfileWrite, BearerCertRead};
+use crate::auth::token_auth::{TokenAuthService, BearerAuthenticated, BearerTokenAdmin, BearerCaRead, BearerCaWrite, BearerCaKeyop, BearerCertWrite, BearerProfileRead, BearerProfileWrite, BearerCertRead, BearerAuditRead};
 use openssl::x509::X509;
 use crate::data::enums::{CertificateType, PasswordRule, UserRole};
 use crate::data::error::ApiError;
@@ -2210,5 +2211,217 @@ pub(crate) async fn bulk_download_certificates(
         content_type: "application/zip".to_string(),
         filename,
         body: zip_data,
+    })
+}
+
+// ===== AUDIT LOGGING & REPORTING ENDPOINTS =====
+
+#[openapi(tag = "Audit")]
+#[get("/audit/events?<event_type>&<resource_type>&<resource_id>&<user_id>&<start_date>&<end_date>&<page>&<per_page>")]
+/// Get audit events with filtering. Requires audit.read scope.
+pub(crate) async fn get_audit_events(
+    state: &State<AppState>,
+    event_type: Option<String>,
+    resource_type: Option<String>,
+    resource_id: Option<String>,
+    user_id: Option<i64>,
+    start_date: Option<i64>,
+    end_date: Option<i64>,
+    page: Option<i32>,
+    per_page: Option<i32>,
+    authentication: BearerAuditRead
+) -> Result<Json<AuditEventListResponse>, ApiError> {
+    let page = page.unwrap_or(1).max(1);
+    let per_page = per_page.unwrap_or(50).min(1000).max(1);
+    let offset = (page - 1) * per_page;
+
+    // Get audit events for tenant
+    let events = state.db.get_audit_events(
+        Some(&authentication.auth.token.tenant_id),
+        event_type.as_deref(),
+        resource_type.as_deref(),
+        start_date,
+        end_date,
+        Some(per_page),
+        Some(offset),
+    ).await?;
+
+    // Get total count
+    let total = state.db.count_audit_events(
+        Some(&authentication.auth.token.tenant_id),
+        event_type.as_deref(),
+        resource_type.as_deref(),
+        start_date,
+        end_date,
+    ).await?;
+
+    let response = AuditEventListResponse {
+        events,
+        total,
+        page,
+        per_page,
+        has_more: offset + per_page < total as i32,
+    };
+
+    Ok(Json(response))
+}
+
+#[openapi(tag = "Audit")]
+#[post("/audit/events/search", format = "json", data = "<payload>")]
+/// Advanced audit event search. Requires audit.read scope.
+pub(crate) async fn search_audit_events(
+    state: &State<AppState>,
+    payload: Json<AuditEventQuery>,
+    authentication: BearerAuditRead
+) -> Result<Json<AuditEventListResponse>, ApiError> {
+    let query = payload.into_inner();
+
+    // Ensure tenant isolation
+    let mut tenant_query = query;
+    tenant_query.tenant_id = Some(authentication.auth.token.tenant_id.clone());
+
+    let events = state.db.search_audit_events(&tenant_query).await?;
+    let total = state.db.count_audit_events_by_query(&tenant_query).await?;
+
+    let page = tenant_query.page.unwrap_or(1);
+    let per_page = tenant_query.page_size.unwrap_or(50);
+
+    let response = AuditEventListResponse {
+        events,
+        total,
+        page,
+        per_page,
+        has_more: (page * per_page) < total as i32,
+    };
+
+    Ok(Json(response))
+}
+
+#[openapi(tag = "Audit")]
+#[get("/audit/statistics?<days>&<resource_type>")]
+/// Get audit statistics for the tenant. Requires audit.read scope.
+pub(crate) async fn get_audit_statistics(
+    state: &State<AppState>,
+    days: Option<i32>,
+    resource_type: Option<String>,
+    authentication: BearerAuditRead
+) -> Result<Json<AuditStatistics>, ApiError> {
+    let days = days.unwrap_or(30).min(365).max(1);
+    let start_date = chrono::Utc::now().timestamp() - (days as i64 * 24 * 60 * 60);
+
+    let stats = state.db.get_audit_statistics(
+        &authentication.auth.token.tenant_id,
+        start_date,
+        resource_type.as_deref(),
+    ).await?;
+
+    Ok(Json(stats))
+}
+
+#[openapi(tag = "Audit")]
+#[get("/audit/activity?<hours>")]
+/// Get recent activity timeline. Requires audit.read scope.
+pub(crate) async fn get_audit_activity(
+    state: &State<AppState>,
+    hours: Option<i32>,
+    authentication: BearerAuditRead
+) -> Result<Json<AuditActivityResponse>, ApiError> {
+    let hours = hours.unwrap_or(24).min(168).max(1); // Max 1 week
+    let start_date = chrono::Utc::now().timestamp() - (hours as i64 * 60 * 60);
+
+    let activity = state.db.get_audit_activity(
+        &authentication.auth.token.tenant_id,
+        start_date,
+    ).await?;
+
+    Ok(Json(activity))
+}
+
+#[openapi(tag = "Audit")]
+#[post("/audit/export", format = "json", data = "<payload>")]
+/// Export audit events as CSV. Requires audit.read scope.
+pub(crate) async fn export_audit_events(
+    state: &State<AppState>,
+    payload: Json<AuditExportRequest>,
+    authentication: BearerAuditRead
+) -> Result<DownloadResponse, ApiError> {
+    let request = payload.into_inner();
+
+    // Ensure tenant isolation
+    let mut query = request.query;
+    query.tenant_id = Some(authentication.auth.token.tenant_id.clone());
+
+    // Get events for export
+    let events = state.db.search_audit_events(&query).await?;
+
+    // Generate CSV
+    let csv_data = state.db.generate_audit_csv(&events, &request.fields).await?;
+
+    // Log audit event for export
+    let _ = state.db.log_audit_event(
+        "audit.export",
+        Some(authentication.auth.token.created_by_user_id),
+        Some(&authentication.auth.token.tenant_id),
+        None,
+        Some(&format!("Exported {} audit events", events.len())),
+    ).await;
+
+    let filename = format!("audit_export_{}.csv", chrono::Utc::now().format("%Y%m%d_%H%M%S"));
+
+    Ok(DownloadResponse {
+        content_type: "text/csv".to_string(),
+        filename,
+        body: csv_data.into_bytes(),
+    })
+}
+
+#[openapi(tag = "Audit")]
+#[get("/audit/compliance-report?<start_date>&<end_date>&<format>")]
+/// Generate compliance report. Requires audit.read scope.
+pub(crate) async fn generate_compliance_report(
+    state: &State<AppState>,
+    start_date: Option<i64>,
+    end_date: Option<i64>,
+    format: Option<String>,
+    authentication: BearerAuditRead
+) -> Result<DownloadResponse, ApiError> {
+    let end_date = end_date.unwrap_or_else(|| chrono::Utc::now().timestamp());
+    let start_date = start_date.unwrap_or(end_date - (30 * 24 * 60 * 60)); // Default 30 days
+    let format = format.unwrap_or_else(|| "pdf".to_string()).to_lowercase();
+
+    let report = state.db.generate_compliance_report(
+        &authentication.auth.token.tenant_id,
+        start_date,
+        end_date,
+        &format,
+    ).await?;
+
+    // Log audit event for compliance report
+    let _ = state.db.log_audit_event(
+        "audit.compliance_report",
+        Some(authentication.auth.token.created_by_user_id),
+        Some(&authentication.auth.token.tenant_id),
+        None,
+        Some(&format!("Generated compliance report for {} to {}",
+            chrono::DateTime::from_timestamp(start_date, 0).unwrap().format("%Y-%m-%d"),
+            chrono::DateTime::from_timestamp(end_date, 0).unwrap().format("%Y-%m-%d"))),
+    ).await;
+
+    let filename = format!("compliance_report_{}_{}.{}",
+        chrono::DateTime::from_timestamp(start_date, 0).unwrap().format("%Y%m%d"),
+        chrono::DateTime::from_timestamp(end_date, 0).unwrap().format("%Y%m%d"),
+        format);
+
+    let content_type = match format.as_str() {
+        "pdf" => "application/pdf",
+        "html" => "text/html",
+        "json" => "application/json",
+        _ => "application/octet-stream",
+    };
+
+    Ok(DownloadResponse {
+        content_type: content_type.to_string(),
+        filename,
+        body: report,
     })
 }

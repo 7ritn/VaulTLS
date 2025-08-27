@@ -1601,6 +1601,176 @@ impl VaulTLSDB {
         })
     }
 
+    // ===== ENHANCED AUDIT REPORTING =====
+
+    /// Count audit events with filtering
+    pub(crate) async fn count_audit_events(
+        &self,
+        tenant_id: Option<&str>,
+        event_type: Option<&str>,
+        resource_type: Option<&str>,
+        start_date: Option<i64>,
+        end_date: Option<i64>,
+    ) -> Result<i64> {
+        let tenant_id = tenant_id.map(|s| s.to_string());
+        let event_type = event_type.map(|s| s.to_string());
+        let resource_type = resource_type.map(|s| s.to_string());
+
+        db_do!(self.pool, |conn: &Connection| {
+            let mut query = "SELECT COUNT(*) FROM audit_events WHERE 1=1".to_string();
+            let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+
+            if let Some(tenant_id) = tenant_id {
+                query.push_str(" AND tenant_id = ?");
+                params.push(Box::new(tenant_id));
+            }
+            if let Some(event_type) = event_type {
+                query.push_str(" AND event_type = ?");
+                params.push(Box::new(event_type));
+            }
+            if let Some(resource_type) = resource_type {
+                query.push_str(" AND resource_type = ?");
+                params.push(Box::new(resource_type));
+            }
+            if let Some(start_date) = start_date {
+                query.push_str(" AND created_at >= ?");
+                params.push(Box::new(start_date));
+            }
+            if let Some(end_date) = end_date {
+                query.push_str(" AND created_at <= ?");
+                params.push(Box::new(end_date));
+            }
+
+            let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+            Ok(conn.query_row(&query, param_refs.as_slice(), |row| row.get(0))?)
+        })
+    }
+
+    /// Search audit events with advanced query
+    pub(crate) async fn search_audit_events(
+        &self,
+        query: &crate::data::audit::AuditEventQuery,
+    ) -> Result<Vec<crate::data::audit::AuditEvent>> {
+        db_do!(self.pool, |conn: &Connection| {
+            let mut sql = "SELECT id, event_type, resource_type, resource_id, user_id, token_prefix, tenant_id, endpoint, method, status_code, duration_ms, ip_address, user_agent, request_body, response_body, created_at FROM audit_events WHERE 1=1".to_string();
+            let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+
+            if let Some(ref tenant_id) = query.tenant_id {
+                sql.push_str(" AND tenant_id = ?");
+                params.push(Box::new(tenant_id.clone()));
+            }
+            if let Some(ref event_type) = query.event_type {
+                sql.push_str(" AND event_type = ?");
+                params.push(Box::new(event_type.clone()));
+            }
+            if let Some(ref resource_type) = query.resource_type {
+                sql.push_str(" AND resource_type = ?");
+                params.push(Box::new(resource_type.clone()));
+            }
+            if let Some(ref resource_id) = query.resource_id {
+                sql.push_str(" AND resource_id = ?");
+                params.push(Box::new(resource_id.clone()));
+            }
+            if let Some(user_id) = query.user_id {
+                sql.push_str(" AND user_id = ?");
+                params.push(Box::new(user_id));
+            }
+            if let Some(ref token_prefix) = query.token_prefix {
+                sql.push_str(" AND token_prefix = ?");
+                params.push(Box::new(token_prefix.clone()));
+            }
+            if let Some(start_date) = query.start_date {
+                sql.push_str(" AND created_at >= ?");
+                params.push(Box::new(start_date));
+            }
+            if let Some(end_date) = query.end_date {
+                sql.push_str(" AND created_at <= ?");
+                params.push(Box::new(end_date));
+            }
+
+            sql.push_str(" ORDER BY created_at DESC");
+
+            if let Some(page_size) = query.page_size {
+                let page = query.page.unwrap_or(1);
+                let offset = (page - 1) * page_size;
+                sql.push_str(&format!(" LIMIT {} OFFSET {}", page_size, offset));
+            }
+
+            let mut stmt = conn.prepare(&sql)?;
+            let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+
+            let rows = stmt.query_map(param_refs.as_slice(), |row| {
+                Ok(crate::data::audit::AuditEvent {
+                    id: row.get(0)?,
+                    event_type: row.get(1)?,
+                    resource_type: row.get(2)?,
+                    resource_id: row.get(3)?,
+                    user_id: row.get(4)?,
+                    token_prefix: row.get(5)?,
+                    tenant_id: row.get(6)?,
+                    endpoint: row.get(7)?,
+                    method: row.get(8)?,
+                    status_code: row.get(9)?,
+                    duration_ms: row.get(10)?,
+                    ip_address: row.get(11)?,
+                    user_agent: row.get(12)?,
+                    request_body: row.get(13)?,
+                    response_body: row.get(14)?,
+                    created_at: row.get(15)?,
+                })
+            })?;
+
+            let mut events = Vec::new();
+            for event in rows {
+                events.push(event?);
+            }
+            Ok(events)
+        })
+    }
+
+    /// Count audit events by query
+    pub(crate) async fn count_audit_events_by_query(
+        &self,
+        query: &crate::data::audit::AuditEventQuery,
+    ) -> Result<i64> {
+        db_do!(self.pool, |conn: &Connection| {
+            let mut sql = "SELECT COUNT(*) FROM audit_events WHERE 1=1".to_string();
+            let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+
+            if let Some(ref tenant_id) = query.tenant_id {
+                sql.push_str(" AND tenant_id = ?");
+                params.push(Box::new(tenant_id.clone()));
+            }
+            if let Some(ref event_type) = query.event_type {
+                sql.push_str(" AND event_type = ?");
+                params.push(Box::new(event_type.clone()));
+            }
+            if let Some(ref resource_type) = query.resource_type {
+                sql.push_str(" AND resource_type = ?");
+                params.push(Box::new(resource_type.clone()));
+            }
+            if let Some(ref resource_id) = query.resource_id {
+                sql.push_str(" AND resource_id = ?");
+                params.push(Box::new(resource_id.clone()));
+            }
+            if let Some(user_id) = query.user_id {
+                sql.push_str(" AND user_id = ?");
+                params.push(Box::new(user_id));
+            }
+            if let Some(start_date) = query.start_date {
+                sql.push_str(" AND created_at >= ?");
+                params.push(Box::new(start_date));
+            }
+            if let Some(end_date) = query.end_date {
+                sql.push_str(" AND created_at <= ?");
+                params.push(Box::new(end_date));
+            }
+
+            let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+            Ok(conn.query_row(&sql, param_refs.as_slice(), |row| row.get(0))?)
+        })
+    }
+
     // ===== CA MANAGEMENT OPERATIONS =====
 
     /// Update CA
@@ -2759,5 +2929,186 @@ impl VaulTLSDB {
         }
 
         Ok(archive_data)
+    }
+
+    // ===== AUDIT STATISTICS AND REPORTING =====
+
+    /// Get audit statistics for a tenant
+    pub(crate) async fn get_audit_statistics(
+        &self,
+        tenant_id: &str,
+        start_date: i64,
+        resource_type: Option<&str>,
+    ) -> Result<crate::data::audit::AuditStatistics> {
+        let tenant_id = tenant_id.to_string();
+        let resource_type = resource_type.map(|s| s.to_string());
+
+        db_do!(self.pool, |conn: &Connection| {
+            // Total events
+            let total_events: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM audit_events WHERE tenant_id = ?1 AND created_at >= ?2",
+                params![tenant_id, start_date],
+                |row| row.get(0)
+            )?;
+
+            // Events by type (simplified - would need full implementation)
+            let events_by_type = Vec::new();
+            let events_by_resource = Vec::new();
+            let events_by_user = Vec::new();
+            let events_by_day = Vec::new();
+            let top_endpoints = Vec::new();
+
+            // Error rate calculation
+            let error_events: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM audit_events WHERE tenant_id = ?1 AND created_at >= ?2 AND status_code >= 400",
+                params![tenant_id, start_date],
+                |row| row.get(0)
+            )?;
+
+            let error_rate = if total_events > 0 {
+                (error_events as f64 / total_events as f64) * 100.0
+            } else {
+                0.0
+            };
+
+            // Average response time
+            let avg_response_time: Option<f64> = conn.query_row(
+                "SELECT AVG(duration_ms) FROM audit_events WHERE tenant_id = ?1 AND created_at >= ?2 AND duration_ms IS NOT NULL",
+                params![tenant_id, start_date],
+                |row| row.get(0)
+            ).unwrap_or(None);
+
+            Ok(crate::data::audit::AuditStatistics {
+                total_events,
+                events_by_type,
+                events_by_resource,
+                events_by_user,
+                events_by_day,
+                top_endpoints,
+                error_rate,
+                average_response_time: avg_response_time.unwrap_or(0.0),
+            })
+        })
+    }
+
+    /// Get audit activity timeline
+    pub(crate) async fn get_audit_activity(
+        &self,
+        tenant_id: &str,
+        start_date: i64,
+    ) -> Result<crate::data::audit::AuditActivityResponse> {
+        let tenant_id = tenant_id.to_string();
+
+        db_do!(self.pool, |conn: &Connection| {
+            // Get recent events for timeline
+            let mut stmt = conn.prepare(
+                "SELECT ae.created_at, ae.event_type, ae.resource_type, ae.resource_id, u.name, ae.status_code
+                 FROM audit_events ae
+                 LEFT JOIN users u ON ae.user_id = u.id
+                 WHERE ae.tenant_id = ?1 AND ae.created_at >= ?2
+                 ORDER BY ae.created_at DESC LIMIT 100"
+            )?;
+
+            let rows = stmt.query_map(params![tenant_id, start_date], |row| {
+                let timestamp: i64 = row.get(0)?;
+                let event_type: String = row.get(1)?;
+                let resource_type: String = row.get(2)?;
+                let resource_id: Option<String> = row.get(3)?;
+                let user_name: Option<String> = row.get(4)?;
+                let status_code: i32 = row.get(5)?;
+
+                Ok(crate::data::audit::ActivityTimelineEntry {
+                    timestamp,
+                    event_type: event_type.clone(),
+                    resource_type: resource_type.clone(),
+                    resource_id,
+                    user_name,
+                    description: format!("{} on {}", event_type, resource_type),
+                    status_code,
+                })
+            })?;
+
+            let mut timeline = Vec::new();
+            for entry in rows {
+                timeline.push(entry?);
+            }
+
+            // Calculate summary statistics
+            let total_events = timeline.len() as i64;
+            let successful_operations = timeline.iter().filter(|e| e.status_code < 400).count() as i64;
+            let failed_operations = total_events - successful_operations;
+
+            let summary = crate::data::audit::ActivitySummary {
+                total_events,
+                successful_operations,
+                failed_operations,
+                unique_users: 0, // TODO: Calculate unique users
+                most_active_user: None, // TODO: Calculate most active user
+                most_common_operation: None, // TODO: Calculate most common operation
+            };
+
+            Ok(crate::data::audit::AuditActivityResponse {
+                timeline,
+                summary,
+            })
+        })
+    }
+
+    /// Generate CSV export of audit events
+    pub(crate) async fn generate_audit_csv(
+        &self,
+        events: &[crate::data::audit::AuditEvent],
+        fields: &[String],
+    ) -> Result<String> {
+        let mut csv = String::new();
+
+        // Header
+        csv.push_str(&fields.join(","));
+        csv.push('\n');
+
+        // Data rows
+        for event in events {
+            let mut row = Vec::new();
+            for field in fields {
+                let value = match field.as_str() {
+                    "id" => event.id.to_string(),
+                    "event_type" => event.event_type.clone(),
+                    "resource_type" => event.resource_type.clone(),
+                    "resource_id" => event.resource_id.clone().unwrap_or_default(),
+                    "user_id" => event.user_id.map(|id| id.to_string()).unwrap_or_default(),
+                    "tenant_id" => event.tenant_id.clone().unwrap_or_default(),
+                    "endpoint" => event.endpoint.clone(),
+                    "method" => event.method.clone(),
+                    "status_code" => event.status_code.to_string(),
+                    "created_at" => event.created_at.to_string(),
+                    _ => String::new(),
+                };
+                row.push(format!("\"{}\"", value.replace("\"", "\"\"")));
+            }
+            csv.push_str(&row.join(","));
+            csv.push('\n');
+        }
+
+        Ok(csv)
+    }
+
+    /// Generate compliance report
+    pub(crate) async fn generate_compliance_report(
+        &self,
+        tenant_id: &str,
+        start_date: i64,
+        end_date: i64,
+        format: &str,
+    ) -> Result<Vec<u8>> {
+        // Simplified implementation - would need full compliance report generation
+        let report_data = format!(
+            "Compliance Report for Tenant: {}\nPeriod: {} to {}\nFormat: {}",
+            tenant_id,
+            chrono::DateTime::from_timestamp(start_date, 0).unwrap().format("%Y-%m-%d"),
+            chrono::DateTime::from_timestamp(end_date, 0).unwrap().format("%Y-%m-%d"),
+            format
+        );
+
+        Ok(report_data.into_bytes())
     }
 }

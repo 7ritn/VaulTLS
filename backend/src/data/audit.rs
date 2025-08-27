@@ -158,3 +158,126 @@ pub struct AuditEventQuery {
     pub page: Option<i32>,
     pub page_size: Option<i32>,
 }
+
+/// Audit event list response
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct AuditEventListResponse {
+    pub events: Vec<AuditEvent>,
+    pub total: i64,
+    pub page: i32,
+    pub per_page: i32,
+    pub has_more: bool,
+}
+
+/// Audit statistics
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct AuditStatistics {
+    pub total_events: i64,
+    pub events_by_type: Vec<EventTypeCount>,
+    pub events_by_resource: Vec<ResourceTypeCount>,
+    pub events_by_user: Vec<UserEventCount>,
+    pub events_by_day: Vec<DailyEventCount>,
+    pub top_endpoints: Vec<EndpointCount>,
+    pub error_rate: f64,
+    pub average_response_time: f64,
+}
+
+/// Event count by type
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct EventTypeCount {
+    pub event_type: String,
+    pub count: i64,
+    pub percentage: f64,
+}
+
+/// Event count by resource type
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct ResourceTypeCount {
+    pub resource_type: String,
+    pub count: i64,
+    pub percentage: f64,
+}
+
+/// Event count by user
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct UserEventCount {
+    pub user_id: i64,
+    pub user_name: String,
+    pub count: i64,
+    pub percentage: f64,
+}
+
+/// Daily event count
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct DailyEventCount {
+    pub date: String, // YYYY-MM-DD format
+    pub count: i64,
+    pub errors: i64,
+}
+
+/// Endpoint usage count
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct EndpointCount {
+    pub endpoint: String,
+    pub method: String,
+    pub count: i64,
+    pub avg_response_time: f64,
+}
+
+/// Audit activity response
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct AuditActivityResponse {
+    pub timeline: Vec<ActivityTimelineEntry>,
+    pub summary: ActivitySummary,
+}
+
+/// Activity timeline entry
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct ActivityTimelineEntry {
+    pub timestamp: i64,
+    pub event_type: String,
+    pub resource_type: String,
+    pub resource_id: Option<String>,
+    pub user_name: Option<String>,
+    pub description: String,
+    pub status_code: i32,
+}
+
+/// Activity summary
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct ActivitySummary {
+    pub total_events: i64,
+    pub successful_operations: i64,
+    pub failed_operations: i64,
+    pub unique_users: i64,
+    pub most_active_user: Option<String>,
+    pub most_common_operation: Option<String>,
+}
+
+/// Audit export request
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct AuditExportRequest {
+    pub query: AuditEventQuery,
+    pub fields: Vec<String>,
+    pub format: Option<String>, // csv, json, xlsx
+}
+
+/// Rate limiting information
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct RateLimitInfo {
+    pub requests_made: i32,
+    pub requests_remaining: i32,
+    pub reset_time: i64,
+    pub limit_per_minute: i32,
+}
+
+/// Rate limit violation event
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct RateLimitViolation {
+    pub token_prefix: String,
+    pub ip_address: String,
+    pub endpoint: String,
+    pub requests_made: i32,
+    pub limit: i32,
+    pub timestamp: i64,
+}

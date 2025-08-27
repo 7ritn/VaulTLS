@@ -218,7 +218,13 @@ pub async fn create_rocket() -> Rocket<Build> {
                 validate_certificate_chain,
                 get_expiring_certificates,
                 get_certificate_statistics,
-                bulk_download_certificates
+                bulk_download_certificates,
+                get_audit_events,
+                search_audit_events,
+                get_audit_statistics,
+                get_audit_activity,
+                export_audit_events,
+                generate_compliance_report
             ],
         )
         .mount(
@@ -355,7 +361,13 @@ pub async fn create_test_rocket() -> Rocket<Build> {
                 validate_certificate_chain,
                 get_expiring_certificates,
                 get_certificate_statistics,
-                bulk_download_certificates
+                bulk_download_certificates,
+                get_audit_events,
+                search_audit_events,
+                get_audit_statistics,
+                get_audit_activity,
+                export_audit_events,
+                generate_compliance_report
             ],
         )
 }
