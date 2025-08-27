@@ -302,6 +302,40 @@ pub struct CaStatistics {
     pub crl_size_bytes: Option<i64>,
 }
 
+/// CA key rotation request
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct RotateCaRequest {
+    pub new_key_algorithm: Option<KeyAlgorithm>,
+    pub validity_years: Option<i32>,
+    pub new_description: Option<String>,
+    pub preserve_chain: Option<bool>,
+    pub force_rotation: Option<bool>,
+    pub certificate_action: Option<CertificateAction>,
+}
+
+/// Actions to take with existing certificates during CA rotation
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum CertificateAction {
+    /// Revoke all existing certificates
+    Revoke,
+    /// Migrate certificates to new CA (update ca_id)
+    Migrate,
+    /// Keep certificates as-is (they will reference old CA)
+    Keep,
+}
+
+/// CA key rotation response
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct CaRotationResponse {
+    pub old_ca_id: i64,
+    pub new_ca_id: i64,
+    pub new_ca: CaResponse,
+    pub certificates_affected: i64,
+    pub rotation_timestamp: i64,
+    pub chain_preserved: bool,
+}
+
 pub struct CertificateBuilder {
     x509: X509Builder,
     private_key: PKey<Private>,

@@ -1746,4 +1746,43 @@ impl VaulTLSDB {
             ).map(|_| ())?)
         })
     }
+
+    /// Replace CA (for root CA rotation)
+    pub(crate) async fn replace_ca(&self, old_ca_id: i64, new_ca: &CA) -> Result<()> {
+        db_do!(self.pool, |conn: &Connection| {
+            // Start transaction
+            let tx = conn.unchecked_transaction()?;
+
+            // Delete old CA
+            tx.execute("DELETE FROM ca_certificates WHERE id = ?1", params![old_ca_id])?;
+
+            // Insert new CA with same ID
+            tx.execute(
+                "INSERT INTO ca_certificates (id, created_on, valid_until, certificate, key, tenant_id, name, description, key_algorithm, key_size, path_len, basic_constraints, crl_distribution_points, authority_info_access, is_active, is_root_ca, parent_ca_id, serial_number, issuer, subject, key_usage, extended_key_usage, certificate_policies, policy_constraints, name_constraints, created_by_user_id, metadata) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27)",
+                params![
+                    old_ca_id, new_ca.created_on, new_ca.valid_until, new_ca.cert, new_ca.key,
+                    new_ca.tenant_id, new_ca.name, new_ca.description, new_ca.key_algorithm,
+                    new_ca.key_size, new_ca.path_len, new_ca.basic_constraints,
+                    new_ca.crl_distribution_points, new_ca.authority_info_access, new_ca.is_active,
+                    new_ca.is_root_ca, new_ca.parent_ca_id, new_ca.serial_number, new_ca.issuer,
+                    new_ca.subject, new_ca.key_usage, new_ca.extended_key_usage,
+                    new_ca.certificate_policies, new_ca.policy_constraints, new_ca.name_constraints,
+                    new_ca.created_by_user_id, new_ca.metadata
+                ]
+            )?;
+
+            tx.commit()?;
+            Ok(())
+        })
+    }
+
+    /// Migrate certificates from old CA to new CA
+    pub(crate) async fn migrate_certificates_to_new_ca(&self, old_ca_id: i64, new_ca_id: i64) -> Result<()> {
+        db_do!(self.pool, |conn: &Connection| {
+            Ok(conn.execute(
+                "UPDATE user_certificates SET ca_id = ?1 WHERE ca_id = ?2",
+                params![new_ca_id, old_ca_id]
+            ).map(|_| ())?)
+        })
+    }
 }

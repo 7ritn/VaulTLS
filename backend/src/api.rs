@@ -12,9 +12,9 @@ use crate::constants::VAULTLS_VERSION;
 use crate::data::api::{CallbackQuery, ChangePasswordRequest, CreateUserCertificateRequest, CreateUserRequest, DownloadResponse, IsSetupResponse, LoginRequest, SetupRequest};
 use crate::data::crl::{CertificateStatusRequest, CertificateStatusResponse, CrlFormat, CrlInfo, RevocationStatistics, RevokeCertificateRequest, RevokeCertificateResponse};
 use crate::data::token::{ApiToken, CreateTokenRequest, TokenResponse, UpdateTokenRequest, RotateTokenRequest, RotateTokenResponse};
-use crate::cert::{CreateCaRequest, UpdateCaRequest, CaResponse, CaListResponse, KeyAlgorithm, CA};
+use crate::cert::{CreateCaRequest, UpdateCaRequest, CaResponse, CaListResponse, KeyAlgorithm, CA, RotateCaRequest, CaRotationResponse, CertificateAction};
 use crate::crl::CrlManager;
-use crate::auth::token_auth::{TokenAuthService, BearerAuthenticated, BearerTokenAdmin, BearerCaRead, BearerCaWrite};
+use crate::auth::token_auth::{TokenAuthService, BearerAuthenticated, BearerTokenAdmin, BearerCaRead, BearerCaWrite, BearerCaKeyop};
 use openssl::x509::X509;
 use crate::data::enums::{CertificateType, PasswordRule, UserRole};
 use crate::data::error::ApiError;
@@ -1483,4 +1483,145 @@ fn create_pkcs7_chain(chain: &[Vec<u8>]) -> Result<Vec<u8>, ApiError> {
 
     pkcs7.to_der()
         .map_err(|_| ApiError::InternalServerError)
+}
+
+#[openapi(tag = "Certificate Authorities")]
+#[post("/cas/<ca_id>:rotate", format = "json", data = "<payload>")]
+/// Rotate CA key and certificate while preserving chain integrity. Requires ca.keyop scope.
+pub(crate) async fn rotate_ca_key(
+    state: &State<AppState>,
+    ca_id: i64,
+    payload: Json<RotateCaRequest>,
+    authentication: BearerCaKeyop
+) -> Result<Json<CaRotationResponse>, ApiError> {
+    let request = payload.into_inner();
+
+    // Get existing CA
+    let old_ca = state.db.get_ca_by_id(ca_id).await?;
+
+    // Check tenant access
+    if old_ca.tenant_id != authentication.auth.token.tenant_id {
+        return Err(ApiError::Forbidden);
+    }
+
+    // Validate rotation request
+    if old_ca.is_root_ca && request.preserve_chain.unwrap_or(true) {
+        return Err(ApiError::BadRequest(
+            "Root CA rotation requires preserve_chain=false".to_string()
+        ));
+    }
+
+    // Check if CA has active certificates
+    let cert_count = state.db.get_certificate_count_for_ca(ca_id).await?;
+    if cert_count > 0 && !request.force_rotation.unwrap_or(false) {
+        return Err(ApiError::BadRequest(
+            format!("CA has {} active certificates. Use force_rotation=true to proceed.", cert_count)
+        ));
+    }
+
+    // Determine new key algorithm (default to same as current)
+    let new_key_algorithm = request.new_key_algorithm
+        .unwrap_or_else(|| KeyAlgorithm::from_str(&old_ca.key_algorithm).unwrap_or_default());
+
+    // Create new CA certificate
+    let ca_builder = crate::cert::CertificateBuilder::new_with_key_algorithm(new_key_algorithm.clone())?;
+    let mut new_ca = ca_builder
+        .set_name(old_ca.name.as_deref().unwrap_or("Rotated CA"))
+        .set_valid_until(request.validity_years.unwrap_or(10))
+        .build_ca()?;
+
+    // Preserve CA properties from old CA
+    new_ca.tenant_id = old_ca.tenant_id.clone();
+    new_ca.name = old_ca.name.clone();
+    new_ca.description = request.new_description.or(old_ca.description);
+    new_ca.key_algorithm = new_key_algorithm.as_str().to_string();
+    new_ca.key_size = Some(new_key_algorithm.key_size());
+    new_ca.is_root_ca = old_ca.is_root_ca;
+    new_ca.parent_ca_id = old_ca.parent_ca_id;
+    new_ca.path_len = old_ca.path_len;
+    new_ca.created_by_user_id = authentication.auth.token.created_by_user_id;
+
+    // Preserve extensions
+    new_ca.key_usage = old_ca.key_usage.clone();
+    new_ca.extended_key_usage = old_ca.extended_key_usage.clone();
+    new_ca.certificate_policies = old_ca.certificate_policies.clone();
+    new_ca.policy_constraints = old_ca.policy_constraints.clone();
+    new_ca.name_constraints = old_ca.name_constraints.clone();
+    new_ca.crl_distribution_points = old_ca.crl_distribution_points.clone();
+    new_ca.authority_info_access = old_ca.authority_info_access.clone();
+
+    // Insert new CA into database
+    let new_ca_id = state.db.insert_ca(new_ca.clone()).await?;
+    new_ca.id = new_ca_id;
+
+    // Handle chain preservation
+    if request.preserve_chain.unwrap_or(true) && !old_ca.is_root_ca {
+        // For intermediate CAs, we create a new intermediate under the same parent
+        // The old CA remains in the database but is marked as inactive
+
+        // Deactivate old CA
+        let mut old_ca_mut = old_ca.clone();
+        old_ca_mut.is_active = false;
+        state.db.update_ca(&old_ca_mut).await?;
+
+        // Update child CAs to point to new CA (if any)
+        let child_cas = state.db.get_child_cas(ca_id).await?;
+        for mut child_ca in child_cas {
+            child_ca.parent_ca_id = Some(new_ca_id);
+            state.db.update_ca(&child_ca).await?;
+        }
+    } else {
+        // For root CA rotation or when not preserving chain
+        // Replace the old CA entirely
+        state.db.replace_ca(ca_id, &new_ca).await?;
+    }
+
+    // Handle certificate migration
+    match request.certificate_action.unwrap_or(CertificateAction::Revoke) {
+        CertificateAction::Revoke => {
+            // Revoke all certificates issued by old CA
+            let certificates = state.db.get_certificates_by_ca(ca_id).await?;
+            for cert in certificates {
+                if cert.status != "revoked" {
+                    let _ = state.db.revoke_certificate(
+                        cert.id,
+                        authentication.auth.token.created_by_user_id,
+                        Some(4), // superseded
+                        Some("CA key rotation".to_string())
+                    ).await;
+                }
+            }
+        },
+        CertificateAction::Migrate => {
+            // Update certificates to reference new CA
+            state.db.migrate_certificates_to_new_ca(ca_id, new_ca_id).await?;
+        },
+        CertificateAction::Keep => {
+            // Keep certificates as-is (they will reference the old, inactive CA)
+        }
+    }
+
+    // Generate new CRL for the new CA
+    let crl_manager = CrlManager::new(state.db.clone());
+    let _ = crl_manager.generate_crl_for_ca(new_ca_id, &new_ca.tenant_id).await;
+
+    // Log audit event
+    let _ = state.db.log_audit_event(
+        "ca.rotate",
+        Some(authentication.auth.token.created_by_user_id),
+        Some(&authentication.auth.token.tenant_id),
+        Some(&ca_id.to_string()),
+        Some(&format!("Rotated CA key: {} -> {}", ca_id, new_ca_id)),
+    ).await;
+
+    let response = CaRotationResponse {
+        old_ca_id: ca_id,
+        new_ca_id,
+        new_ca: CaResponse::from(new_ca),
+        certificates_affected: cert_count,
+        rotation_timestamp: chrono::Utc::now().timestamp(),
+        chain_preserved: request.preserve_chain.unwrap_or(true),
+    };
+
+    Ok(Json(response))
 }
