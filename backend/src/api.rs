@@ -15,6 +15,7 @@ use crate::data::token::{ApiToken, CreateTokenRequest, TokenResponse, UpdateToke
 use crate::cert::{CreateCaRequest, UpdateCaRequest, CaResponse, CaListResponse, KeyAlgorithm, CA};
 use crate::crl::CrlManager;
 use crate::auth::token_auth::{TokenAuthService, BearerAuthenticated, BearerTokenAdmin, BearerCaRead, BearerCaWrite};
+use openssl::x509::X509;
 use crate::data::enums::{CertificateType, PasswordRule, UserRole};
 use crate::data::error::ApiError;
 use crate::data::objects::{AppState, User};
@@ -1282,4 +1283,204 @@ pub(crate) async fn delete_ca(
     ).await;
 
     Ok(())
+}
+
+#[openapi(tag = "Certificate Authorities")]
+#[get("/cas/<ca_id>/cert?<format>")]
+/// Download CA certificate in various formats. Requires ca.read scope.
+pub(crate) async fn download_ca_certificate(
+    state: &State<AppState>,
+    ca_id: i64,
+    format: Option<String>,
+    authentication: BearerCaRead
+) -> Result<DownloadResponse, ApiError> {
+    // Get CA
+    let ca = state.db.get_ca_by_id(ca_id).await?;
+
+    // Check tenant access
+    if ca.tenant_id != authentication.auth.token.tenant_id {
+        return Err(ApiError::Forbidden);
+    }
+
+    // Determine format (default to PEM)
+    let format = format.unwrap_or_else(|| "pem".to_string()).to_lowercase();
+
+    // Parse X509 certificate from DER
+    let cert = X509::from_der(&ca.cert)
+        .map_err(|e| ApiError::InternalServerError)?;
+
+    // Generate filename
+    let ca_name = ca.name.as_deref().unwrap_or("ca");
+    let safe_name = ca_name.replace(' ', "_").replace(['/', '\\', ':', '*', '?', '"', '<', '>', '|'], "_");
+
+    let (content_type, file_extension, cert_data) = match format.as_str() {
+        "pem" => {
+            let pem_data = cert.to_pem()
+                .map_err(|_| ApiError::InternalServerError)?;
+            ("application/x-pem-file", "pem", pem_data)
+        },
+        "der" => {
+            let der_data = cert.to_der()
+                .map_err(|_| ApiError::InternalServerError)?;
+            ("application/x-x509-ca-cert", "der", der_data)
+        },
+        "cer" => {
+            // CER is just DER with different extension
+            let der_data = cert.to_der()
+                .map_err(|_| ApiError::InternalServerError)?;
+            ("application/pkix-cert", "cer", der_data)
+        },
+        "crt" => {
+            // CRT can be either PEM or DER, we'll use PEM
+            let pem_data = cert.to_pem()
+                .map_err(|_| ApiError::InternalServerError)?;
+            ("application/x-x509-ca-cert", "crt", pem_data)
+        },
+        "p7b" | "p7c" => {
+            // PKCS#7 format (certificate chain)
+            let pkcs7_data = create_pkcs7_certificate_chain(&ca, state).await?;
+            ("application/x-pkcs7-certificates", "p7b", pkcs7_data)
+        },
+        _ => {
+            return Err(ApiError::BadRequest(
+                "Unsupported format. Supported formats: pem, der, cer, crt, p7b, p7c".to_string()
+            ));
+        }
+    };
+
+    let filename = format!("{}_{}.{}", safe_name, ca.id, file_extension);
+
+    // Log audit event
+    let _ = state.db.log_audit_event(
+        "ca.download",
+        Some(authentication.auth.token.created_by_user_id),
+        Some(&authentication.auth.token.tenant_id),
+        Some(&ca_id.to_string()),
+        Some(&format!("Downloaded CA certificate: {} (format: {})", ca_name, format)),
+    ).await;
+
+    Ok(DownloadResponse {
+        content_type: content_type.to_string(),
+        filename,
+        body: cert_data,
+    })
+}
+
+#[openapi(tag = "Certificate Authorities")]
+#[get("/cas/<ca_id>/chain?<format>")]
+/// Download CA certificate chain (including parent CAs). Requires ca.read scope.
+pub(crate) async fn download_ca_chain(
+    state: &State<AppState>,
+    ca_id: i64,
+    format: Option<String>,
+    authentication: BearerCaRead
+) -> Result<DownloadResponse, ApiError> {
+    // Get CA
+    let ca = state.db.get_ca_by_id(ca_id).await?;
+
+    // Check tenant access
+    if ca.tenant_id != authentication.auth.token.tenant_id {
+        return Err(ApiError::Forbidden);
+    }
+
+    // Determine format (default to PEM)
+    let format = format.unwrap_or_else(|| "pem".to_string()).to_lowercase();
+
+    // Build certificate chain
+    let chain = build_certificate_chain(&ca, state).await?;
+
+    // Generate filename
+    let ca_name = ca.name.as_deref().unwrap_or("ca");
+    let safe_name = ca_name.replace(' ', "_").replace(['/', '\\', ':', '*', '?', '"', '<', '>', '|'], "_");
+
+    let (content_type, file_extension, chain_data) = match format.as_str() {
+        "pem" => {
+            let mut pem_chain = Vec::new();
+            for cert_der in chain {
+                let cert = X509::from_der(&cert_der)
+                    .map_err(|_| ApiError::InternalServerError)?;
+                let pem_data = cert.to_pem()
+                    .map_err(|_| ApiError::InternalServerError)?;
+                pem_chain.extend_from_slice(&pem_data);
+            }
+            ("application/x-pem-file", "pem", pem_chain)
+        },
+        "p7b" | "p7c" => {
+            // PKCS#7 format with full chain
+            let pkcs7_data = create_pkcs7_chain(&chain)?;
+            ("application/x-pkcs7-certificates", "p7b", pkcs7_data)
+        },
+        _ => {
+            return Err(ApiError::BadRequest(
+                "Unsupported format for chain. Supported formats: pem, p7b, p7c".to_string()
+            ));
+        }
+    };
+
+    let filename = format!("{}_chain_{}.{}", safe_name, ca.id, file_extension);
+
+    // Log audit event
+    let _ = state.db.log_audit_event(
+        "ca.download_chain",
+        Some(authentication.auth.token.created_by_user_id),
+        Some(&authentication.auth.token.tenant_id),
+        Some(&ca_id.to_string()),
+        Some(&format!("Downloaded CA certificate chain: {} (format: {})", ca_name, format)),
+    ).await;
+
+    Ok(DownloadResponse {
+        content_type: content_type.to_string(),
+        filename,
+        body: chain_data,
+    })
+}
+
+/// Helper function to create PKCS#7 certificate chain
+async fn create_pkcs7_certificate_chain(ca: &CA, state: &State<AppState>) -> Result<Vec<u8>, ApiError> {
+    let chain = build_certificate_chain(ca, state).await?;
+    create_pkcs7_chain(&chain)
+}
+
+/// Helper function to build certificate chain from CA to root
+async fn build_certificate_chain(ca: &CA, state: &State<AppState>) -> Result<Vec<Vec<u8>>, ApiError> {
+    let mut chain = Vec::new();
+    let mut current_ca = ca.clone();
+
+    // Add current CA certificate
+    chain.push(current_ca.cert.clone());
+
+    // Walk up the chain to root CA
+    while let Some(parent_ca_id) = current_ca.parent_ca_id {
+        match state.db.get_ca_by_id(parent_ca_id).await {
+            Ok(parent_ca) => {
+                chain.push(parent_ca.cert.clone());
+                current_ca = parent_ca;
+            },
+            Err(_) => break, // Parent CA not found, stop chain building
+        }
+    }
+
+    Ok(chain)
+}
+
+/// Helper function to create PKCS#7 format from certificate chain
+fn create_pkcs7_chain(chain: &[Vec<u8>]) -> Result<Vec<u8>, ApiError> {
+    use openssl::pkcs7::Pkcs7;
+    use openssl::stack::Stack;
+
+    let mut cert_stack = Stack::new()
+        .map_err(|_| ApiError::InternalServerError)?;
+
+    for cert_der in chain {
+        let cert = X509::from_der(cert_der)
+            .map_err(|_| ApiError::InternalServerError)?;
+        cert_stack.push(cert)
+            .map_err(|_| ApiError::InternalServerError)?;
+    }
+
+    let pkcs7 = Pkcs7::from_certificates(&cert_stack)
+        .map_err(|_| ApiError::InternalServerError)?;
+
+    pkcs7.to_der()
+        .map_err(|_| ApiError::InternalServerError)
 }

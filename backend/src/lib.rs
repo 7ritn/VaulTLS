@@ -200,7 +200,9 @@ pub async fn create_rocket() -> Rocket<Build> {
                 list_cas,
                 get_ca,
                 update_ca,
-                delete_ca
+                delete_ca,
+                download_ca_certificate,
+                download_ca_chain
             ],
         )
         .mount(
@@ -303,7 +305,9 @@ pub async fn create_test_rocket() -> Rocket<Build> {
                 list_cas,
                 get_ca,
                 update_ca,
-                delete_ca
+                delete_ca,
+                download_ca_certificate,
+                download_ca_chain
             ],
         )
 }
