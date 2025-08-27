@@ -33,18 +33,24 @@ info:
     - Bearer tokens: Configurable per token
     
     ## Error Handling
-    
-    All errors follow RFC 7807 Problem Details format:
-    
+
+    All errors follow RFC 9457 Problem Details format with `application/problem+json` content type:
+
     ```json
     {
-      "type": "https://vaultls.example.com/errors/unauthorized",
-      "title": "Authentication Required", 
+      "type": "https://tools.ietf.org/html/rfc9110#section-15.5.2",
+      "title": "Unauthorized",
       "status": 401,
       "detail": "Bearer token is missing or invalid",
       "instance": "/api/certificates"
     }
     ```
+
+    ## Documentation
+
+    - **RapiDoc (Interactive)**: `/api-docs` - Try API endpoints directly
+    - **Redoc (Reference)**: `/redoc` - Clean, comprehensive documentation
+    - **OpenAPI Spec**: `/api/openapi.json` - Machine-readable specification
   version: 1.0.0
   contact:
     name: VaulTLS
@@ -78,6 +84,242 @@ paths:
               schema:
                 type: string
                 example: "1.0.0"
+
+  # ===== ENHANCED CERTIFICATE MANAGEMENT =====
+
+  /certificates/search:
+    post:
+      tags: [Certificates]
+      summary: Advanced certificate search
+      description: |
+        Search certificates with advanced filters and operators.
+
+        Supports 17 searchable fields and 13 operators for complex queries.
+      security:
+        - BearerAuth: [cert.read]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                filters:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      field:
+                        type: string
+                        enum: [name, commonName, serialNumber, issuer, subject, status, certificateType, algorithm, keySize, createdAt, validUntil, revokedAt, sans, profileId, caId, userId, metadata]
+                      operator:
+                        type: string
+                        enum: [eq, ne, lt, lte, gt, gte, like, in, nin, between, contains, startsWith, endsWith]
+                      value:
+                        oneOf:
+                          - type: string
+                          - type: number
+                          - type: boolean
+                          - type: array
+                            items:
+                              type: string
+                          - type: object
+                            properties:
+                              start:
+                                type: number
+                              end:
+                                type: number
+                sort:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      field:
+                        type: string
+                        enum: [name, commonName, serialNumber, issuer, subject, status, certificateType, algorithm, keySize, createdAt, validUntil, revokedAt, sans, profileId, caId, userId, metadata]
+                      direction:
+                        type: string
+                        enum: [asc, desc]
+                page:
+                  type: integer
+                  minimum: 1
+                  default: 1
+                per_page:
+                  type: integer
+                  minimum: 1
+                  maximum: 100
+                  default: 20
+                include_revoked:
+                  type: boolean
+                  default: true
+                include_expired:
+                  type: boolean
+                  default: true
+            examples:
+              basic_search:
+                summary: Basic search by status
+                value:
+                  filters:
+                    - field: status
+                      operator: eq
+                      value: active
+                  page: 1
+                  per_page: 20
+              advanced_search:
+                summary: Advanced search with multiple filters
+                value:
+                  filters:
+                    - field: status
+                      operator: eq
+                      value: active
+                    - field: valid_until
+                      operator: between
+                      value:
+                        start: 1640995200
+                        end: 1672531200
+                    - field: sans
+                      operator: contains
+                      value: example.com
+                  sort:
+                    - field: valid_until
+                      direction: asc
+                    - field: created_at
+                      direction: desc
+                  page: 1
+                  per_page: 50
+                  include_revoked: false
+      responses:
+        '200':
+          description: Search results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  certificates:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Certificate'
+                  total:
+                    type: integer
+                  page:
+                    type: integer
+                  per_page:
+                    type: integer
+                  has_more:
+                    type: boolean
+                  filters_applied:
+                    type: array
+                  sort_applied:
+                    type: array
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /certificates/batch:
+    post:
+      tags: [Certificates]
+      summary: Batch certificate operations
+      description: |
+        Perform bulk operations on multiple certificates.
+
+        Supported operations: revoke, restore, delete, download, renew, updateMetadata
+      security:
+        - BearerAuth: [cert.write]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [certificate_ids, operation]
+              properties:
+                certificate_ids:
+                  type: array
+                  items:
+                    type: integer
+                  minItems: 1
+                  maxItems: 100
+                operation:
+                  type: string
+                  enum: [revoke, restore, delete, download, renew, updateMetadata]
+                parameters:
+                  type: object
+                  properties:
+                    revocation_reason:
+                      type: integer
+                      description: RFC 5280 revocation reason code
+                    revocation_note:
+                      type: string
+                    format:
+                      type: string
+                      enum: [pem, der, p12]
+                    include_chain:
+                      type: boolean
+                    validity_years:
+                      type: integer
+                      minimum: 1
+                      maximum: 10
+                    metadata:
+                      type: object
+            examples:
+              bulk_revoke:
+                summary: Bulk revoke certificates
+                value:
+                  certificate_ids: [1, 2, 3, 4, 5]
+                  operation: revoke
+                  parameters:
+                    revocation_reason: 1
+                    revocation_note: "Security incident response"
+              bulk_download:
+                summary: Bulk download certificates
+                value:
+                  certificate_ids: [10, 11, 12]
+                  operation: download
+                  parameters:
+                    format: pem
+                    include_chain: true
+      responses:
+        '200':
+          description: Batch operation results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  operation:
+                    type: string
+                  total_requested:
+                    type: integer
+                  successful:
+                    type: integer
+                  failed:
+                    type: integer
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        certificate_id:
+                          type: integer
+                        success:
+                          type: boolean
+                        error:
+                          type: string
+                        details:
+                          type: string
+                  download_url:
+                    type: string
+                    description: Present for download operations
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
 
   /server/setup:
     get:
@@ -348,6 +590,200 @@ paths:
                 format: binary
 
 components:
+  schemas:
+    Certificate:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 123
+        name:
+          type: string
+          example: "web-server-cert"
+        created_on:
+          type: integer
+          format: int64
+          description: Unix timestamp
+          example: 1640995200
+        valid_until:
+          type: integer
+          format: int64
+          description: Unix timestamp
+          example: 1672531200
+        certificate_type:
+          type: string
+          enum: [Server, Client]
+          example: "Server"
+        user_id:
+          type: integer
+          example: 1
+        tenant_id:
+          type: string
+          example: "tenant_123"
+        profile_id:
+          type: string
+          example: "profile_456"
+        serial_number:
+          type: string
+          example: "1A:2B:3C:4D:5E:6F"
+        issuer:
+          type: string
+          example: "CN=VaulTLS CA,O=Example Corp"
+        subject:
+          type: string
+          example: "CN=web.example.com,O=Example Corp"
+        algorithm:
+          type: string
+          example: "RSA-2048"
+        key_size:
+          type: integer
+          example: 2048
+        sans:
+          type: string
+          description: JSON string of Subject Alternative Names
+          example: '{"dns_names":["web.example.com","api.example.com"]}'
+        metadata:
+          type: string
+          description: JSON string of additional metadata
+          example: '{"department":"IT","environment":"production"}'
+        status:
+          type: string
+          enum: [active, revoked, expired]
+          example: "active"
+        ca_id:
+          type: integer
+          example: 1
+        revoked_at:
+          type: integer
+          format: int64
+          nullable: true
+        revoked_by_user_id:
+          type: integer
+          nullable: true
+        revocation_reason:
+          type: integer
+          nullable: true
+
+    ProblemDetails:
+      type: object
+      description: RFC 9457 Problem Details for HTTP APIs
+      required: [type, title, status]
+      properties:
+        type:
+          type: string
+          format: uri
+          description: URI reference that identifies the problem type
+          example: "https://tools.ietf.org/html/rfc9110#section-15.5.2"
+        title:
+          type: string
+          description: Short, human-readable summary of the problem type
+          example: "Unauthorized"
+        status:
+          type: integer
+          description: HTTP status code
+          example: 401
+        detail:
+          type: string
+          description: Human-readable explanation specific to this occurrence
+          example: "Bearer token is missing or invalid"
+        instance:
+          type: string
+          format: uri
+          description: URI reference that identifies the specific occurrence
+          example: "/api/certificates"
+
+  responses:
+    BadRequest:
+      description: Bad Request - Invalid input parameters
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+          example:
+            type: "https://tools.ietf.org/html/rfc9110#section-15.5.1"
+            title: "Bad Request"
+            status: 400
+            detail: "Invalid search filter: field 'invalid_field' is not supported"
+            instance: "/api/certificates/search"
+
+    Unauthorized:
+      description: Unauthorized - Authentication failed
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+          example:
+            type: "https://tools.ietf.org/html/rfc9110#section-15.5.2"
+            title: "Unauthorized"
+            status: 401
+            detail: "Bearer token is missing or invalid"
+            instance: "/api/certificates"
+
+    Forbidden:
+      description: Forbidden - Insufficient permissions
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+          example:
+            type: "https://tools.ietf.org/html/rfc9110#section-15.5.4"
+            title: "Forbidden"
+            status: 403
+            detail: "Token missing required scope: cert.write"
+            instance: "/api/certificates/batch"
+
+    NotFound:
+      description: Not Found - Resource not found
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+          example:
+            type: "https://tools.ietf.org/html/rfc9110#section-15.5.5"
+            title: "Not Found"
+            status: 404
+            detail: "Certificate with ID 123 not found"
+            instance: "/api/certificates/123"
+
+    Conflict:
+      description: Conflict - Resource conflict
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+          example:
+            type: "https://tools.ietf.org/html/rfc9110#section-15.5.10"
+            title: "Conflict"
+            status: 409
+            detail: "Certificate profile 'server-profile' already exists"
+            instance: "/api/profiles"
+
+    TooManyRequests:
+      description: Too Many Requests - Rate limit exceeded
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+          example:
+            type: "https://tools.ietf.org/html/rfc6585#section-4"
+            title: "Too Many Requests"
+            status: 429
+            detail: "Rate limit of 100 requests per minute exceeded"
+            instance: "/api/certificates"
+
+    InternalServerError:
+      description: Internal Server Error
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+          example:
+            type: "https://tools.ietf.org/html/rfc9110#section-15.6.1"
+            title: "Internal Server Error"
+            status: 500
+            detail: "An unexpected error occurred"
+            instance: "/api/certificates"
+
   securitySchemes:
     BearerAuth:
       type: http
@@ -361,12 +797,33 @@ components:
         Example: `vlt_abc123_dGVzdF90b2tlbl92YWx1ZQ`
         
         Supports fine-grained permissions through scopes:
-        - `cert.read`, `cert.write`, `cert.revoke`, `cert.download`
-        - `ca.read`, `ca.write`, `ca.keyop`
-        - `profile.read`, `profile.write`
-        - `token.read`, `token.write`, `token.admin`
-        - `audit.read`, `metrics.read`
-        - `admin.tenant`
+
+        **Certificate Management:**
+        - `cert.read` - View certificates and search
+        - `cert.write` - Create, update, and batch operations
+        - `cert.revoke` - Revoke and restore certificates
+        - `cert.download` - Download certificates and chains
+
+        **Certificate Authority Management:**
+        - `ca.read` - View CAs and their details
+        - `ca.write` - Create, update, and delete CAs
+        - `ca.keyop` - Key operations (rotation, signing)
+
+        **Certificate Profiles:**
+        - `profile.read` - View certificate profiles
+        - `profile.write` - Create, update, and delete profiles
+
+        **API Token Management:**
+        - `token.read` - View API tokens
+        - `token.write` - Create, update, and rotate tokens
+        - `token.admin` - Full token management including revocation
+
+        **Audit and Monitoring:**
+        - `audit.read` - View audit logs and reports
+        - `metrics.read` - View system metrics and statistics
+
+        **Administrative:**
+        - `admin.tenant` - Tenant-level administrative operations
     
     SessionAuth:
       type: apiKey

@@ -41,6 +41,7 @@ pub(crate) fn api_docs() -> Json<serde_json::Value> {
         "description": "VaulTLS is a self-hosted web application for managing mTLS certificates",
         "links": {
             "interactive_docs": "/api-docs",
+            "redoc_docs": "/redoc",
             "openapi_spec": "/api/openapi.json",
             "authentication_guide": "https://github.com/7ritn/VaulTLS/blob/main/docs/api/authentication.md",
             "getting_started": "https://github.com/7ritn/VaulTLS/blob/main/docs/api/getting-started.md",

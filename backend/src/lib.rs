@@ -9,6 +9,7 @@ use rocket::http::Method;
 use rocket_cors::{AllowedOrigins, CorsOptions};
 use rocket_okapi::openapi_get_routes;
 use rocket_okapi::rapidoc::{make_rapidoc, GeneralConfig, HideShowConfig, Layout, LayoutConfig, RapiDocConfig, RenderStyle, SchemaConfig, SchemaStyle};
+use rocket_okapi::redoc::{make_redoc, RedocConfig};
 use rocket_okapi::settings::UrlObject;
 use tokio::sync::Mutex;
 use tracing::{debug, info, trace};
@@ -247,6 +248,23 @@ pub async fn create_rocket() -> Rocket<Build> {
                     show_components: true,
                     ..Default::default()
                 },
+                ..Default::default()
+            }),
+        )
+        .mount(
+            "/redoc",
+            make_redoc(&RedocConfig {
+                spec_url: "/api/openapi.json".to_string(),
+                title: Some("VaulTLS API Documentation".to_string()),
+                ..Default::default()
+            }),
+        )
+        .mount(
+            "/redoc",
+            make_redoc(&RedocConfig {
+                spec_url: "/api/openapi.json".to_string(),
+                title: Some("VaulTLS API Documentation".to_string()),
+                theme: Some("dark".to_string()),
                 ..Default::default()
             }),
         )
