@@ -14,8 +14,9 @@ use crate::data::crl::{CertificateStatusRequest, CertificateStatusResponse, CrlF
 use crate::data::token::{ApiToken, CreateTokenRequest, TokenResponse, UpdateTokenRequest, RotateTokenRequest, RotateTokenResponse};
 use crate::cert::{CreateCaRequest, UpdateCaRequest, CaResponse, CaListResponse, KeyAlgorithm, CA, RotateCaRequest, CaRotationResponse, CertificateAction, CreateCertificateWithCaRequest, CaSelection, CertificateBuilder};
 use crate::data::enums::CertificateType;
+use crate::data::profile::{Profile, CreateProfileRequest, UpdateProfileRequest, ProfileListResponse};
 use crate::crl::CrlManager;
-use crate::auth::token_auth::{TokenAuthService, BearerAuthenticated, BearerTokenAdmin, BearerCaRead, BearerCaWrite, BearerCaKeyop, BearerCertWrite};
+use crate::auth::token_auth::{TokenAuthService, BearerAuthenticated, BearerTokenAdmin, BearerCaRead, BearerCaWrite, BearerCaKeyop, BearerCertWrite, BearerProfileRead, BearerProfileWrite};
 use openssl::x509::X509;
 use crate::data::enums::{CertificateType, PasswordRule, UserRole};
 use crate::data::error::ApiError;
@@ -1754,4 +1755,256 @@ pub(crate) async fn get_available_cas(
         .collect();
 
     Ok(Json(ca_responses))
+}
+
+// ===== CERTIFICATE PROFILE ENDPOINTS =====
+
+#[openapi(tag = "Certificate Profiles")]
+#[post("/profiles", format = "json", data = "<payload>")]
+/// Create a new certificate profile. Requires profile.write scope.
+pub(crate) async fn create_profile(
+    state: &State<AppState>,
+    payload: Json<CreateProfileRequest>,
+    authentication: BearerProfileWrite
+) -> Result<Json<Profile>, ApiError> {
+    let request = payload.into_inner();
+
+    // Validate request
+    if request.name.trim().is_empty() {
+        return Err(ApiError::BadRequest("Profile name cannot be empty".to_string()));
+    }
+
+    if request.max_days < request.default_days {
+        return Err(ApiError::BadRequest("Maximum days must be greater than or equal to default days".to_string()));
+    }
+
+    if request.eku.is_empty() {
+        return Err(ApiError::BadRequest("Extended Key Usage (EKU) cannot be empty".to_string()));
+    }
+
+    if request.key_usage.is_empty() {
+        return Err(ApiError::BadRequest("Key Usage cannot be empty".to_string()));
+    }
+
+    // Check if profile name already exists for this tenant
+    if let Ok(_) = state.db.get_profile_by_name(&request.name, &authentication.auth.token.tenant_id).await {
+        return Err(ApiError::resource_already_exists("Profile", &request.name));
+    }
+
+    // Create profile
+    let mut profile = Profile::new(
+        request.name.clone(),
+        request.eku,
+        request.key_usage,
+        request.default_days,
+        request.max_days,
+        request.key_alg_options,
+        authentication.auth.token.tenant_id.clone(),
+    );
+
+    // Set optional fields
+    profile.san_rules = request.san_rules;
+    if let Some(renewal_window) = request.renewal_window_pct {
+        profile.renewal_window_pct = renewal_window;
+    }
+
+    // Insert into database
+    state.db.insert_profile(&profile).await?;
+
+    // Log audit event
+    let _ = state.db.log_audit_event(
+        "profile.create",
+        Some(authentication.auth.token.created_by_user_id),
+        Some(&authentication.auth.token.tenant_id),
+        Some(&profile.id),
+        Some(&format!("Created profile: {}", request.name)),
+    ).await;
+
+    Ok(Json(profile))
+}
+
+#[openapi(tag = "Certificate Profiles")]
+#[get("/profiles?<page>&<per_page>")]
+/// List certificate profiles for the current tenant. Requires profile.read scope.
+pub(crate) async fn list_profiles(
+    state: &State<AppState>,
+    page: Option<i32>,
+    per_page: Option<i32>,
+    authentication: BearerProfileRead
+) -> Result<Json<ProfileListResponse>, ApiError> {
+    let page = page.unwrap_or(1).max(1);
+    let per_page = per_page.unwrap_or(20).min(100).max(1);
+
+    // Get profiles for tenant
+    let profiles = state.db.get_profiles_for_tenant(&authentication.auth.token.tenant_id).await?;
+
+    // Apply pagination
+    let total = profiles.len() as i64;
+    let start = ((page - 1) * per_page) as usize;
+    let end = (start + per_page as usize).min(profiles.len());
+    let paginated_profiles = profiles[start..end].to_vec();
+
+    let response = ProfileListResponse {
+        profiles: paginated_profiles,
+        total,
+        page,
+        per_page,
+        has_more: end < profiles.len(),
+    };
+
+    Ok(Json(response))
+}
+
+#[openapi(tag = "Certificate Profiles")]
+#[get("/profiles/<profile_id>")]
+/// Get certificate profile details. Requires profile.read scope.
+pub(crate) async fn get_profile(
+    state: &State<AppState>,
+    profile_id: String,
+    authentication: BearerProfileRead
+) -> Result<Json<Profile>, ApiError> {
+    // Get profile
+    let profile = state.db.get_profile_by_id(&profile_id).await?;
+
+    // Check tenant access
+    if profile.tenant_id != authentication.auth.token.tenant_id {
+        return Err(ApiError::tenant_access_denied());
+    }
+
+    Ok(Json(profile))
+}
+
+#[openapi(tag = "Certificate Profiles")]
+#[patch("/profiles/<profile_id>", format = "json", data = "<payload>")]
+/// Update certificate profile. Requires profile.write scope.
+pub(crate) async fn update_profile(
+    state: &State<AppState>,
+    profile_id: String,
+    payload: Json<UpdateProfileRequest>,
+    authentication: BearerProfileWrite
+) -> Result<Json<Profile>, ApiError> {
+    let request = payload.into_inner();
+
+    // Get existing profile
+    let mut profile = state.db.get_profile_by_id(&profile_id).await?;
+
+    // Check tenant access
+    if profile.tenant_id != authentication.auth.token.tenant_id {
+        return Err(ApiError::tenant_access_denied());
+    }
+
+    // Update fields
+    if let Some(name) = request.name {
+        if name.trim().is_empty() {
+            return Err(ApiError::BadRequest("Profile name cannot be empty".to_string()));
+        }
+
+        // Check if new name conflicts with existing profile
+        if name != profile.name {
+            if let Ok(_) = state.db.get_profile_by_name(&name, &authentication.auth.token.tenant_id).await {
+                return Err(ApiError::resource_already_exists("Profile", &name));
+            }
+        }
+
+        profile.name = name;
+    }
+
+    if let Some(eku) = request.eku {
+        if eku.is_empty() {
+            return Err(ApiError::BadRequest("Extended Key Usage (EKU) cannot be empty".to_string()));
+        }
+        profile.eku = eku;
+    }
+
+    if let Some(key_usage) = request.key_usage {
+        if key_usage.is_empty() {
+            return Err(ApiError::BadRequest("Key Usage cannot be empty".to_string()));
+        }
+        profile.key_usage = key_usage;
+    }
+
+    if let Some(san_rules) = request.san_rules {
+        profile.san_rules = Some(san_rules);
+    }
+
+    if let Some(default_days) = request.default_days {
+        if default_days > profile.max_days {
+            return Err(ApiError::BadRequest("Default days cannot be greater than maximum days".to_string()));
+        }
+        profile.default_days = default_days;
+    }
+
+    if let Some(max_days) = request.max_days {
+        if max_days < profile.default_days {
+            return Err(ApiError::BadRequest("Maximum days must be greater than or equal to default days".to_string()));
+        }
+        profile.max_days = max_days;
+    }
+
+    if let Some(renewal_window_pct) = request.renewal_window_pct {
+        if renewal_window_pct < 1 || renewal_window_pct > 100 {
+            return Err(ApiError::BadRequest("Renewal window percentage must be between 1 and 100".to_string()));
+        }
+        profile.renewal_window_pct = renewal_window_pct;
+    }
+
+    if let Some(key_alg_options) = request.key_alg_options {
+        if key_alg_options.is_empty() {
+            return Err(ApiError::BadRequest("Key algorithm options cannot be empty".to_string()));
+        }
+        profile.key_alg_options = key_alg_options;
+    }
+
+    // Update in database
+    state.db.update_profile(&profile).await?;
+
+    // Log audit event
+    let _ = state.db.log_audit_event(
+        "profile.update",
+        Some(authentication.auth.token.created_by_user_id),
+        Some(&authentication.auth.token.tenant_id),
+        Some(&profile.id),
+        Some(&format!("Updated profile: {}", profile.name)),
+    ).await;
+
+    Ok(Json(profile))
+}
+
+#[openapi(tag = "Certificate Profiles")]
+#[delete("/profiles/<profile_id>")]
+/// Delete certificate profile. Requires profile.write scope.
+pub(crate) async fn delete_profile(
+    state: &State<AppState>,
+    profile_id: String,
+    authentication: BearerProfileWrite
+) -> Result<(), ApiError> {
+    // Get profile to check ownership
+    let profile = state.db.get_profile_by_id(&profile_id).await?;
+
+    // Check tenant access
+    if profile.tenant_id != authentication.auth.token.tenant_id {
+        return Err(ApiError::tenant_access_denied());
+    }
+
+    // Check if profile is in use by any certificates
+    let cert_count = state.db.get_certificate_count_for_profile(&profile_id).await?;
+    if cert_count > 0 {
+        return Err(ApiError::Conflict(
+            format!("Cannot delete profile '{}' as it is used by {} certificates", profile.name, cert_count)
+        ));
+    }
+
+    // Delete from database
+    state.db.delete_profile(&profile_id).await?;
+
+    // Log audit event
+    let _ = state.db.log_audit_event(
+        "profile.delete",
+        Some(authentication.auth.token.created_by_user_id),
+        Some(&authentication.auth.token.tenant_id),
+        Some(&profile.id),
+        Some(&format!("Deleted profile: {}", profile.name)),
+    ).await;
+
+    Ok(())
 }

@@ -196,6 +196,16 @@ pub struct UpdateProfileRequest {
     pub key_alg_options: Option<Vec<String>>,
 }
 
+/// Profile list response with pagination
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct ProfileListResponse {
+    pub profiles: Vec<Profile>,
+    pub total: i64,
+    pub page: i32,
+    pub per_page: i32,
+    pub has_more: bool,
+}
+
 /// Extended Key Usage values
 pub struct ExtendedKeyUsage;
 

@@ -424,3 +424,7 @@ bearer_auth_with_scopes!(BearerAdminTenant, &Scope::AdminTenant);
 // Combined scope guards
 bearer_auth_with_scopes!(BearerCertReadWrite, &Scope::CertRead, &Scope::CertWrite);
 bearer_auth_with_scopes!(BearerCaReadWrite, &Scope::CaRead, &Scope::CaWrite);
+
+// Profile scope guards
+bearer_auth_with_scopes!(BearerProfileRead, &Scope::ProfileRead);
+bearer_auth_with_scopes!(BearerProfileWrite, &Scope::ProfileWrite);

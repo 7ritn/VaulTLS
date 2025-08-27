@@ -1931,4 +1931,204 @@ impl VaulTLSDB {
             Ok(cas)
         })
     }
+
+    // ===== CERTIFICATE PROFILE OPERATIONS =====
+
+    /// Insert certificate profile
+    pub(crate) async fn insert_profile(&self, profile: &crate::data::profile::Profile) -> Result<()> {
+        let eku_json = serde_json::to_string(&profile.eku)?;
+        let key_usage_json = serde_json::to_string(&profile.key_usage)?;
+        let san_rules_json = profile.san_rules.as_ref()
+            .map(|rules| serde_json::to_string(rules))
+            .transpose()?;
+        let key_alg_options_json = serde_json::to_string(&profile.key_alg_options)?;
+
+        db_do!(self.pool, |conn: &Connection| {
+            Ok(conn.execute(
+                "INSERT INTO certificate_profiles (id, name, eku, key_usage, san_rules, default_days, max_days, renewal_window_pct, key_alg_options, tenant_id, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                params![
+                    profile.id, profile.name, eku_json, key_usage_json, san_rules_json,
+                    profile.default_days, profile.max_days, profile.renewal_window_pct,
+                    key_alg_options_json, profile.tenant_id, profile.created_at
+                ]
+            ).map(|_| ())?)
+        })
+    }
+
+    /// Get profile by ID
+    pub(crate) async fn get_profile_by_id(&self, profile_id: &str) -> Result<crate::data::profile::Profile> {
+        let profile_id = profile_id.to_string();
+        db_do!(self.pool, |conn: &Connection| {
+            Ok(conn.query_row(
+                "SELECT id, name, eku, key_usage, san_rules, default_days, max_days, renewal_window_pct, key_alg_options, tenant_id, created_at FROM certificate_profiles WHERE id = ?1",
+                params![profile_id],
+                |row| {
+                    let eku_json: String = row.get(2)?;
+                    let key_usage_json: String = row.get(3)?;
+                    let san_rules_json: Option<String> = row.get(4)?;
+                    let key_alg_options_json: String = row.get(8)?;
+
+                    let eku: Vec<String> = serde_json::from_str(&eku_json)
+                        .map_err(|_| rusqlite::Error::InvalidColumnType(2, "JSON".to_string(), rusqlite::types::Type::Text))?;
+                    let key_usage: Vec<String> = serde_json::from_str(&key_usage_json)
+                        .map_err(|_| rusqlite::Error::InvalidColumnType(3, "JSON".to_string(), rusqlite::types::Type::Text))?;
+                    let san_rules: Option<crate::data::profile::SanRules> = san_rules_json
+                        .map(|json| serde_json::from_str(&json))
+                        .transpose()
+                        .map_err(|_| rusqlite::Error::InvalidColumnType(4, "JSON".to_string(), rusqlite::types::Type::Text))?;
+                    let key_alg_options: Vec<String> = serde_json::from_str(&key_alg_options_json)
+                        .map_err(|_| rusqlite::Error::InvalidColumnType(8, "JSON".to_string(), rusqlite::types::Type::Text))?;
+
+                    Ok(crate::data::profile::Profile {
+                        id: row.get(0)?,
+                        name: row.get(1)?,
+                        eku,
+                        key_usage,
+                        san_rules,
+                        default_days: row.get(5)?,
+                        max_days: row.get(6)?,
+                        renewal_window_pct: row.get(7)?,
+                        key_alg_options,
+                        tenant_id: row.get(9)?,
+                        created_at: row.get(10)?,
+                    })
+                }
+            )?)
+        })
+    }
+
+    /// Get profile by name and tenant
+    pub(crate) async fn get_profile_by_name(&self, name: &str, tenant_id: &str) -> Result<crate::data::profile::Profile> {
+        let name = name.to_string();
+        let tenant_id = tenant_id.to_string();
+        db_do!(self.pool, |conn: &Connection| {
+            Ok(conn.query_row(
+                "SELECT id, name, eku, key_usage, san_rules, default_days, max_days, renewal_window_pct, key_alg_options, tenant_id, created_at FROM certificate_profiles WHERE name = ?1 AND tenant_id = ?2",
+                params![name, tenant_id],
+                |row| {
+                    let eku_json: String = row.get(2)?;
+                    let key_usage_json: String = row.get(3)?;
+                    let san_rules_json: Option<String> = row.get(4)?;
+                    let key_alg_options_json: String = row.get(8)?;
+
+                    let eku: Vec<String> = serde_json::from_str(&eku_json)
+                        .map_err(|_| rusqlite::Error::InvalidColumnType(2, "JSON".to_string(), rusqlite::types::Type::Text))?;
+                    let key_usage: Vec<String> = serde_json::from_str(&key_usage_json)
+                        .map_err(|_| rusqlite::Error::InvalidColumnType(3, "JSON".to_string(), rusqlite::types::Type::Text))?;
+                    let san_rules: Option<crate::data::profile::SanRules> = san_rules_json
+                        .map(|json| serde_json::from_str(&json))
+                        .transpose()
+                        .map_err(|_| rusqlite::Error::InvalidColumnType(4, "JSON".to_string(), rusqlite::types::Type::Text))?;
+                    let key_alg_options: Vec<String> = serde_json::from_str(&key_alg_options_json)
+                        .map_err(|_| rusqlite::Error::InvalidColumnType(8, "JSON".to_string(), rusqlite::types::Type::Text))?;
+
+                    Ok(crate::data::profile::Profile {
+                        id: row.get(0)?,
+                        name: row.get(1)?,
+                        eku,
+                        key_usage,
+                        san_rules,
+                        default_days: row.get(5)?,
+                        max_days: row.get(6)?,
+                        renewal_window_pct: row.get(7)?,
+                        key_alg_options,
+                        tenant_id: row.get(9)?,
+                        created_at: row.get(10)?,
+                    })
+                }
+            )?)
+        })
+    }
+
+    /// Get profiles for a tenant
+    pub(crate) async fn get_profiles_for_tenant(&self, tenant_id: &str) -> Result<Vec<crate::data::profile::Profile>> {
+        let tenant_id = tenant_id.to_string();
+        db_do!(self.pool, |conn: &Connection| {
+            let mut stmt = conn.prepare(
+                "SELECT id, name, eku, key_usage, san_rules, default_days, max_days, renewal_window_pct, key_alg_options, tenant_id, created_at FROM certificate_profiles WHERE tenant_id = ?1 ORDER BY created_at DESC"
+            )?;
+
+            let rows = stmt.query_map(params![tenant_id], |row| {
+                let eku_json: String = row.get(2)?;
+                let key_usage_json: String = row.get(3)?;
+                let san_rules_json: Option<String> = row.get(4)?;
+                let key_alg_options_json: String = row.get(8)?;
+
+                let eku: Vec<String> = serde_json::from_str(&eku_json)
+                    .map_err(|_| rusqlite::Error::InvalidColumnType(2, "JSON".to_string(), rusqlite::types::Type::Text))?;
+                let key_usage: Vec<String> = serde_json::from_str(&key_usage_json)
+                    .map_err(|_| rusqlite::Error::InvalidColumnType(3, "JSON".to_string(), rusqlite::types::Type::Text))?;
+                let san_rules: Option<crate::data::profile::SanRules> = san_rules_json
+                    .map(|json| serde_json::from_str(&json))
+                    .transpose()
+                    .map_err(|_| rusqlite::Error::InvalidColumnType(4, "JSON".to_string(), rusqlite::types::Type::Text))?;
+                let key_alg_options: Vec<String> = serde_json::from_str(&key_alg_options_json)
+                    .map_err(|_| rusqlite::Error::InvalidColumnType(8, "JSON".to_string(), rusqlite::types::Type::Text))?;
+
+                Ok(crate::data::profile::Profile {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    eku,
+                    key_usage,
+                    san_rules,
+                    default_days: row.get(5)?,
+                    max_days: row.get(6)?,
+                    renewal_window_pct: row.get(7)?,
+                    key_alg_options,
+                    tenant_id: row.get(9)?,
+                    created_at: row.get(10)?,
+                })
+            })?;
+
+            let mut profiles = Vec::new();
+            for profile in rows {
+                profiles.push(profile?);
+            }
+            Ok(profiles)
+        })
+    }
+
+    /// Update profile
+    pub(crate) async fn update_profile(&self, profile: &crate::data::profile::Profile) -> Result<()> {
+        let eku_json = serde_json::to_string(&profile.eku)?;
+        let key_usage_json = serde_json::to_string(&profile.key_usage)?;
+        let san_rules_json = profile.san_rules.as_ref()
+            .map(|rules| serde_json::to_string(rules))
+            .transpose()?;
+        let key_alg_options_json = serde_json::to_string(&profile.key_alg_options)?;
+
+        db_do!(self.pool, |conn: &Connection| {
+            Ok(conn.execute(
+                "UPDATE certificate_profiles SET name = ?1, eku = ?2, key_usage = ?3, san_rules = ?4, default_days = ?5, max_days = ?6, renewal_window_pct = ?7, key_alg_options = ?8 WHERE id = ?9",
+                params![
+                    profile.name, eku_json, key_usage_json, san_rules_json,
+                    profile.default_days, profile.max_days, profile.renewal_window_pct,
+                    key_alg_options_json, profile.id
+                ]
+            ).map(|_| ())?)
+        })
+    }
+
+    /// Delete profile
+    pub(crate) async fn delete_profile(&self, profile_id: &str) -> Result<()> {
+        let profile_id = profile_id.to_string();
+        db_do!(self.pool, |conn: &Connection| {
+            Ok(conn.execute(
+                "DELETE FROM certificate_profiles WHERE id = ?1",
+                params![profile_id]
+            ).map(|_| ())?)
+        })
+    }
+
+    /// Get certificate count for a profile
+    pub(crate) async fn get_certificate_count_for_profile(&self, profile_id: &str) -> Result<i64> {
+        let profile_id = profile_id.to_string();
+        db_do!(self.pool, |conn: &Connection| {
+            Ok(conn.query_row(
+                "SELECT COUNT(*) FROM user_certificates WHERE profile_id = ?1",
+                params![profile_id],
+                |row| row.get(0)
+            )?)
+        })
+    }
 }
