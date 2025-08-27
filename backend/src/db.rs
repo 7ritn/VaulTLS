@@ -1785,4 +1785,150 @@ impl VaulTLSDB {
             ).map(|_| ())?)
         })
     }
+
+    /// Get CA by name and tenant
+    pub(crate) async fn get_ca_by_name(&self, ca_name: &str, tenant_id: &str) -> Result<CA> {
+        let ca_name = ca_name.to_string();
+        let tenant_id = tenant_id.to_string();
+        db_do!(self.pool, |conn: &Connection| {
+            Ok(conn.query_row(
+                "SELECT * FROM ca_certificates WHERE name = ?1 AND tenant_id = ?2 AND is_active = 1",
+                params![ca_name, tenant_id],
+                |row| {
+                    Ok(CA{
+                        id: row.get(0)?,
+                        created_on: row.get(1)?,
+                        valid_until: row.get(2)?,
+                        cert: row.get(3)?,
+                        key: row.get(4)?,
+                        tenant_id: row.get(5)?,
+                        name: row.get(6)?,
+                        description: row.get(13)?,
+                        key_algorithm: row.get(7)?,
+                        key_size: row.get(14)?,
+                        path_len: row.get(8)?,
+                        basic_constraints: row.get(9)?,
+                        crl_distribution_points: row.get(10)?,
+                        authority_info_access: row.get(11)?,
+                        is_active: row.get(12)?,
+                        is_root_ca: row.get(15)?,
+                        parent_ca_id: row.get(16)?,
+                        serial_number: row.get(17)?,
+                        issuer: row.get(18)?,
+                        subject: row.get(19)?,
+                        key_usage: row.get(20)?,
+                        extended_key_usage: row.get(21)?,
+                        certificate_policies: row.get(22)?,
+                        policy_constraints: row.get(23)?,
+                        name_constraints: row.get(24)?,
+                        created_by_user_id: row.get(25)?,
+                        metadata: row.get(26)?,
+                    })
+                }
+            )?)
+        })
+    }
+
+    /// Get the best CA for certificate issuance
+    pub(crate) async fn get_best_ca_for_issuance(
+        &self,
+        tenant_id: &str,
+        cert_type: &crate::data::enums::CertificateType
+    ) -> Result<CA> {
+        let tenant_id = tenant_id.to_string();
+        db_do!(self.pool, |conn: &Connection| {
+            // Priority order:
+            // 1. Active CAs with keyCertSign usage
+            // 2. Most recently created
+            // 3. Intermediate CAs preferred over root CAs (for better security)
+            let mut stmt = conn.prepare(
+                "SELECT * FROM ca_certificates
+                 WHERE tenant_id = ?1 AND is_active = 1
+                 ORDER BY
+                   CASE WHEN is_root_ca = 0 THEN 0 ELSE 1 END,
+                   created_on DESC
+                 LIMIT 1"
+            )?;
+
+            stmt.query_row(params![tenant_id], |row| {
+                Ok(CA{
+                    id: row.get(0)?,
+                    created_on: row.get(1)?,
+                    valid_until: row.get(2)?,
+                    cert: row.get(3)?,
+                    key: row.get(4)?,
+                    tenant_id: row.get(5)?,
+                    name: row.get(6)?,
+                    description: row.get(13)?,
+                    key_algorithm: row.get(7)?,
+                    key_size: row.get(14)?,
+                    path_len: row.get(8)?,
+                    basic_constraints: row.get(9)?,
+                    crl_distribution_points: row.get(10)?,
+                    authority_info_access: row.get(11)?,
+                    is_active: row.get(12)?,
+                    is_root_ca: row.get(15)?,
+                    parent_ca_id: row.get(16)?,
+                    serial_number: row.get(17)?,
+                    issuer: row.get(18)?,
+                    subject: row.get(19)?,
+                    key_usage: row.get(20)?,
+                    extended_key_usage: row.get(21)?,
+                    certificate_policies: row.get(22)?,
+                    policy_constraints: row.get(23)?,
+                    name_constraints: row.get(24)?,
+                    created_by_user_id: row.get(25)?,
+                    metadata: row.get(26)?,
+                })
+            }).map_err(|_| anyhow!("No suitable CA found for certificate issuance"))
+        })
+    }
+
+    /// Get active CAs for a tenant (for CA selection)
+    pub(crate) async fn get_active_cas_for_tenant(&self, tenant_id: &str) -> Result<Vec<CA>> {
+        let tenant_id = tenant_id.to_string();
+        db_do!(self.pool, |conn: &Connection| {
+            let mut stmt = conn.prepare(
+                "SELECT * FROM ca_certificates WHERE tenant_id = ?1 AND is_active = 1 ORDER BY created_on DESC"
+            )?;
+
+            let rows = stmt.query_map(params![tenant_id], |row| {
+                Ok(CA{
+                    id: row.get(0)?,
+                    created_on: row.get(1)?,
+                    valid_until: row.get(2)?,
+                    cert: row.get(3)?,
+                    key: row.get(4)?,
+                    tenant_id: row.get(5)?,
+                    name: row.get(6)?,
+                    description: row.get(13)?,
+                    key_algorithm: row.get(7)?,
+                    key_size: row.get(14)?,
+                    path_len: row.get(8)?,
+                    basic_constraints: row.get(9)?,
+                    crl_distribution_points: row.get(10)?,
+                    authority_info_access: row.get(11)?,
+                    is_active: row.get(12)?,
+                    is_root_ca: row.get(15)?,
+                    parent_ca_id: row.get(16)?,
+                    serial_number: row.get(17)?,
+                    issuer: row.get(18)?,
+                    subject: row.get(19)?,
+                    key_usage: row.get(20)?,
+                    extended_key_usage: row.get(21)?,
+                    certificate_policies: row.get(22)?,
+                    policy_constraints: row.get(23)?,
+                    name_constraints: row.get(24)?,
+                    created_by_user_id: row.get(25)?,
+                    metadata: row.get(26)?,
+                })
+            })?;
+
+            let mut cas = Vec::new();
+            for ca in rows {
+                cas.push(ca?);
+            }
+            Ok(cas)
+        })
+    }
 }

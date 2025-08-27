@@ -336,6 +336,34 @@ pub struct CaRotationResponse {
     pub chain_preserved: bool,
 }
 
+/// Certificate creation request with CA selection
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct CreateCertificateWithCaRequest {
+    pub cert_name: String,
+    pub cert_type: Option<CertificateType>,
+    pub user_id: i64,
+    pub validity_in_years: Option<u64>,
+    pub dns_names: Option<Vec<String>>,
+    pub pkcs12_password: Option<String>,
+    pub renew_method: Option<CertificateRenewMethod>,
+    pub ca_selection: CaSelection,
+}
+
+/// CA selection criteria for certificate issuance
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "type", content = "value")]
+pub enum CaSelection {
+    /// Select CA by ID
+    #[serde(rename = "by_id")]
+    ById(i64),
+    /// Select CA by name
+    #[serde(rename = "by_name")]
+    ByName(String),
+    /// Automatically select the best CA
+    #[serde(rename = "auto")]
+    Auto,
+}
+
 pub struct CertificateBuilder {
     x509: X509Builder,
     private_key: PKey<Private>,
@@ -439,6 +467,60 @@ impl CertificateBuilder {
         let ca_key = PKey::private_key_from_der(&ca.key)?;
         self.ca = Some((ca.id, ca_cert, ca_key));
         Ok(self)
+    }
+
+    /// Set CA by ID (for multi-CA environments)
+    pub async fn set_ca_by_id(mut self, ca_id: i64, db: &crate::db::VaulTLSDB) -> Result<Self, anyhow::Error> {
+        let ca = db.get_ca_by_id(ca_id).await?;
+        self.set_ca(&ca)
+    }
+
+    /// Set CA by name and tenant (for multi-CA environments)
+    pub async fn set_ca_by_name(mut self, ca_name: &str, tenant_id: &str, db: &crate::db::VaulTLSDB) -> Result<Self, anyhow::Error> {
+        let ca = db.get_ca_by_name(ca_name, tenant_id).await?;
+        self.set_ca(&ca)
+    }
+
+    /// Get the best CA for certificate issuance based on criteria
+    pub async fn select_best_ca(
+        mut self,
+        tenant_id: &str,
+        cert_type: &CertificateType,
+        db: &crate::db::VaulTLSDB
+    ) -> Result<Self, anyhow::Error> {
+        let ca = db.get_best_ca_for_issuance(tenant_id, cert_type).await?;
+        self.set_ca(&ca)
+    }
+
+    /// Set CA with validation for certificate type compatibility
+    pub fn set_ca_with_validation(mut self, ca: &CA, cert_type: &CertificateType) -> Result<Self, anyhow::Error> {
+        // Validate CA is active
+        if !ca.is_active {
+            return Err(anyhow!("Cannot use inactive CA for certificate issuance"));
+        }
+
+        // Check if CA is suitable for the certificate type
+        if let Some(key_usage) = &ca.key_usage {
+            let key_usage_vec: Vec<String> = serde_json::from_str(key_usage)
+                .unwrap_or_default();
+
+            if !key_usage_vec.contains(&"keyCertSign".to_string()) {
+                return Err(anyhow!("CA does not have keyCertSign usage"));
+            }
+        }
+
+        // Additional validation based on certificate type
+        match cert_type {
+            CertificateType::Server => {
+                // Server certificates can be issued by any CA
+            },
+            CertificateType::Client => {
+                // Client certificates can be issued by any CA
+                // Could add specific validation here if needed
+            }
+        }
+
+        self.set_ca(ca)
     }
 
     pub fn set_user_id(mut self, user_id: i64) -> Result<Self, anyhow::Error> {

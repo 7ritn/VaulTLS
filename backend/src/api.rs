@@ -12,9 +12,10 @@ use crate::constants::VAULTLS_VERSION;
 use crate::data::api::{CallbackQuery, ChangePasswordRequest, CreateUserCertificateRequest, CreateUserRequest, DownloadResponse, IsSetupResponse, LoginRequest, SetupRequest};
 use crate::data::crl::{CertificateStatusRequest, CertificateStatusResponse, CrlFormat, CrlInfo, RevocationStatistics, RevokeCertificateRequest, RevokeCertificateResponse};
 use crate::data::token::{ApiToken, CreateTokenRequest, TokenResponse, UpdateTokenRequest, RotateTokenRequest, RotateTokenResponse};
-use crate::cert::{CreateCaRequest, UpdateCaRequest, CaResponse, CaListResponse, KeyAlgorithm, CA, RotateCaRequest, CaRotationResponse, CertificateAction};
+use crate::cert::{CreateCaRequest, UpdateCaRequest, CaResponse, CaListResponse, KeyAlgorithm, CA, RotateCaRequest, CaRotationResponse, CertificateAction, CreateCertificateWithCaRequest, CaSelection, CertificateBuilder};
+use crate::data::enums::CertificateType;
 use crate::crl::CrlManager;
-use crate::auth::token_auth::{TokenAuthService, BearerAuthenticated, BearerTokenAdmin, BearerCaRead, BearerCaWrite, BearerCaKeyop};
+use crate::auth::token_auth::{TokenAuthService, BearerAuthenticated, BearerTokenAdmin, BearerCaRead, BearerCaWrite, BearerCaKeyop, BearerCertWrite};
 use openssl::x509::X509;
 use crate::data::enums::{CertificateType, PasswordRule, UserRole};
 use crate::data::error::ApiError;
@@ -1624,4 +1625,133 @@ pub(crate) async fn rotate_ca_key(
     };
 
     Ok(Json(response))
+}
+
+#[openapi(tag = "Certificates")]
+#[post("/certificates/with-ca", format = "json", data = "<payload>")]
+/// Create a certificate with specific CA selection. Requires cert.write scope.
+pub(crate) async fn create_certificate_with_ca(
+    state: &State<AppState>,
+    payload: Json<CreateCertificateWithCaRequest>,
+    authentication: BearerCertWrite
+) -> Result<Json<Certificate>, ApiError> {
+    let request = payload.into_inner();
+
+    // Validate request
+    if request.cert_name.trim().is_empty() {
+        return Err(ApiError::BadRequest("Certificate name cannot be empty".to_string()));
+    }
+
+    // Get CA based on selection criteria
+    let ca = match request.ca_selection {
+        CaSelection::ById(ca_id) => {
+            let ca = state.db.get_ca_by_id(ca_id).await?;
+            // Check tenant access
+            if ca.tenant_id != authentication.auth.token.tenant_id {
+                return Err(ApiError::Forbidden);
+            }
+            ca
+        },
+        CaSelection::ByName(ca_name) => {
+            state.db.get_ca_by_name(&ca_name, &authentication.auth.token.tenant_id).await?
+        },
+        CaSelection::Auto => {
+            state.db.get_best_ca_for_issuance(
+                &authentication.auth.token.tenant_id,
+                &request.cert_type.unwrap_or_default()
+            ).await?
+        }
+    };
+
+    // Generate PKCS12 password
+    let use_random_password = state.settings.get_pkcs12_password().is_empty();
+    let pkcs12_password = get_password(use_random_password, &request.pkcs12_password);
+
+    // Create certificate builder
+    let cert_builder = CertificateBuilder::new()?
+        .set_name(&request.cert_name)?
+        .set_valid_until(request.validity_in_years.unwrap_or(1))?
+        .set_renew_method(request.renew_method.unwrap_or_default())?
+        .set_pkcs12_password(&pkcs12_password)?
+        .set_ca_with_validation(&ca, &request.cert_type.unwrap_or_default())?
+        .set_user_id(request.user_id)?;
+
+    // Build certificate based on type
+    let mut cert = match request.cert_type.unwrap_or_default() {
+        CertificateType::Client => {
+            let user = state.db.get_user(request.user_id).await?;
+            cert_builder
+                .set_email_san(&user.email)?
+                .build_client()?
+        }
+        CertificateType::Server => {
+            let dns = request.dns_names.clone().unwrap_or_default();
+            cert_builder
+                .set_dns_san(&dns)?
+                .build_server()?
+        }
+    };
+
+    // Set additional certificate properties
+    cert.tenant_id = authentication.auth.token.tenant_id.clone();
+    cert.ca_id = ca.id;
+
+    // Insert certificate into database
+    let cert_id = state.db.insert_certificate(cert.clone()).await?;
+    cert.id = cert_id;
+
+    // Log audit event
+    let _ = state.db.log_audit_event(
+        "certificate.create_with_ca",
+        Some(authentication.auth.token.created_by_user_id),
+        Some(&authentication.auth.token.tenant_id),
+        Some(&cert_id.to_string()),
+        Some(&format!("Created certificate {} with CA {}", request.cert_name, ca.name.as_deref().unwrap_or("Unknown"))),
+    ).await;
+
+    Ok(Json(cert))
+}
+
+#[openapi(tag = "Certificate Authorities")]
+#[get("/cas/available?<cert_type>")]
+/// Get available CAs for certificate issuance. Requires ca.read scope.
+pub(crate) async fn get_available_cas(
+    state: &State<AppState>,
+    cert_type: Option<String>,
+    authentication: BearerCaRead
+) -> Result<Json<Vec<CaResponse>>, ApiError> {
+    // Get active CAs for tenant
+    let cas = state.db.get_active_cas_for_tenant(&authentication.auth.token.tenant_id).await?;
+
+    // Filter CAs based on certificate type if specified
+    let filtered_cas = if let Some(cert_type_str) = cert_type {
+        let cert_type = match cert_type_str.as_str() {
+            "client" => CertificateType::Client,
+            "server" => CertificateType::Server,
+            _ => return Err(ApiError::BadRequest("Invalid certificate type".to_string())),
+        };
+
+        cas.into_iter()
+            .filter(|ca| {
+                // Check if CA is suitable for the certificate type
+                if let Some(key_usage) = &ca.key_usage {
+                    let key_usage_vec: Vec<String> = serde_json::from_str(key_usage)
+                        .unwrap_or_default();
+                    key_usage_vec.contains(&"keyCertSign".to_string())
+                } else {
+                    true // Assume suitable if no key usage specified
+                }
+            })
+            .collect()
+    } else {
+        cas
+    };
+
+    // Convert to response format
+    let ca_responses: Vec<CaResponse> = filtered_cas
+        .into_iter()
+        .map(CaResponse::from)
+        .collect();
+
+    Ok(Json(ca_responses))
 }
