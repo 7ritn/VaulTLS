@@ -42,6 +42,9 @@ pub struct Certificate {
     pub sans: Option<String>,  // JSON string
     pub metadata: Option<String>,  // JSON string
     pub status: String,
+    pub revoked_at: Option<i64>,
+    pub revoked_by_user_id: Option<i64>,
+    pub revocation_reason: Option<i32>,
     #[serde(skip)]
     pub pkcs12: Vec<u8>,
     #[serde(skip)]
@@ -294,6 +297,9 @@ impl CertificateBuilder {
             sans: None,
             metadata: None,
             status: "active".to_string(),
+            revoked_at: None,
+            revoked_by_user_id: None,
+            revocation_reason: None,
         })
     }
 }

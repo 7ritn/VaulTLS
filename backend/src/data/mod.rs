@@ -6,3 +6,4 @@ pub mod tenant;
 pub mod token;
 pub mod audit;
 pub mod profile;
+pub mod crl;

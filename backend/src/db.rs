@@ -6,6 +6,7 @@ use crate::data::tenant::Tenant;
 use crate::data::token::ApiToken;
 use crate::data::audit::AuditEvent;
 use crate::data::profile::Profile;
+use crate::data::crl::{CrlMetadata, RevokedCertificate, RevocationReason};
 use crate::helper::get_secret;
 use anyhow::anyhow;
 use anyhow::Result;
@@ -839,6 +840,347 @@ impl VaulTLSDB {
                 events.push(event?);
             }
             Ok(events)
+        })
+    }
+
+    // ===== CRL OPERATIONS =====
+
+    /// Revoke a certificate
+    pub(crate) async fn revoke_certificate(
+        &self,
+        certificate_id: i64,
+        revocation_date: i64,
+        reason: RevocationReason,
+        revoked_by_user_id: i64,
+    ) -> Result<()> {
+        db_do!(self.pool, |conn: &Connection| {
+            Ok(conn.execute(
+                "UPDATE user_certificates SET revocation_status = 'revoked', revoked_at = ?1, revocation_reason = ?2, revoked_by_user_id = ?3 WHERE id = ?4",
+                params![revocation_date, reason as u8, revoked_by_user_id, certificate_id]
+            ).map(|_| ())?)
+        })
+    }
+
+    /// Restore a certificate from revocation
+    pub(crate) async fn restore_certificate(&self, certificate_id: i64, restored_by_user_id: i64) -> Result<()> {
+        db_do!(self.pool, |conn: &Connection| {
+            Ok(conn.execute(
+                "UPDATE user_certificates SET revocation_status = 'active', revoked_at = NULL, revocation_reason = NULL, revoked_by_user_id = ?1 WHERE id = ?2",
+                params![restored_by_user_id, certificate_id]
+            ).map(|_| ())?)
+        })
+    }
+
+    /// Insert a revoked certificate record
+    pub(crate) async fn insert_revoked_certificate(&self, revoked_cert: RevokedCertificate) -> Result<RevokedCertificate> {
+        db_do!(self.pool, |conn: &Connection| {
+            conn.execute(
+                "INSERT INTO revoked_certificates (certificate_id, serial_number, revocation_date, revocation_reason, ca_id, tenant_id, revoked_by_user_id, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                params![
+                    revoked_cert.certificate_id, revoked_cert.serial_number, revoked_cert.revocation_date,
+                    revoked_cert.revocation_reason as u8, revoked_cert.ca_id, revoked_cert.tenant_id,
+                    revoked_cert.revoked_by_user_id, revoked_cert.created_at
+                ],
+            )?;
+
+            Ok(revoked_cert)
+        })
+    }
+
+    /// Remove a revoked certificate record
+    pub(crate) async fn remove_revoked_certificate(&self, certificate_id: i64) -> Result<()> {
+        db_do!(self.pool, |conn: &Connection| {
+            Ok(conn.execute(
+                "DELETE FROM revoked_certificates WHERE certificate_id = ?1",
+                params![certificate_id]
+            ).map(|_| ())?)
+        })
+    }
+
+    /// Get revoked certificates for a CA
+    pub(crate) async fn get_revoked_certificates_by_ca(&self, ca_id: i64, tenant_id: &str) -> Result<Vec<RevokedCertificate>> {
+        let tenant_id = tenant_id.to_string();
+        db_do!(self.pool, |conn: &Connection| {
+            let mut stmt = conn.prepare(
+                "SELECT id, certificate_id, serial_number, revocation_date, revocation_reason, ca_id, tenant_id, revoked_by_user_id, created_at FROM revoked_certificates WHERE ca_id = ?1 AND tenant_id = ?2 ORDER BY revocation_date DESC"
+            )?;
+
+            let rows = stmt.query_map(params![ca_id, tenant_id], |row| {
+                let reason_code: u8 = row.get(4)?;
+                let reason = RevocationReason::from_u8(reason_code).unwrap_or_default();
+
+                Ok(RevokedCertificate {
+                    id: row.get(0)?,
+                    certificate_id: row.get(1)?,
+                    serial_number: row.get(2)?,
+                    revocation_date: row.get(3)?,
+                    revocation_reason: reason,
+                    ca_id: row.get(5)?,
+                    tenant_id: row.get(6)?,
+                    revoked_by_user_id: row.get(7)?,
+                    created_at: row.get(8)?,
+                })
+            })?;
+
+            let mut revoked_certs = Vec::new();
+            for cert in rows {
+                revoked_certs.push(cert?);
+            }
+            Ok(revoked_certs)
+        })
+    }
+
+    /// Get certificate by serial number
+    pub(crate) async fn get_certificate_by_serial(&self, serial_number: &str) -> Result<Certificate> {
+        let serial_number = serial_number.to_string();
+        db_do!(self.pool, |conn: &Connection| {
+            Ok(conn.query_row(
+                "SELECT id, name, created_on, valid_until, type, user_id, renew_method, tenant_id, profile_id, serial_number, issuer, subject, algorithm, key_size, sans, metadata, status, ca_id, revoked_at, revoked_by_user_id, revocation_reason FROM user_certificates WHERE serial_number = ?1",
+                params![serial_number],
+                |row| {
+                    Ok(Certificate {
+                        id: row.get(0)?,
+                        name: row.get(1)?,
+                        created_on: row.get(2)?,
+                        valid_until: row.get(3)?,
+                        certificate_type: row.get(4)?,
+                        user_id: row.get(5)?,
+                        renew_method: row.get(6)?,
+                        tenant_id: row.get(7)?,
+                        profile_id: row.get(8)?,
+                        serial_number: row.get(9)?,
+                        issuer: row.get(10)?,
+                        subject: row.get(11)?,
+                        algorithm: row.get(12)?,
+                        key_size: row.get(13)?,
+                        sans: row.get(14)?,
+                        metadata: row.get(15)?,
+                        status: row.get(16)?,
+                        pkcs12: Vec::new(),
+                        pkcs12_password: String::new(),
+                        ca_id: row.get(17)?,
+                        revoked_at: row.get(18)?,
+                        revoked_by_user_id: row.get(19)?,
+                        revocation_reason: row.get(20)?,
+                    })
+                }
+            )?)
+        })
+    }
+
+    /// Get certificate by serial number and CA
+    pub(crate) async fn get_certificate_by_serial_and_ca(&self, serial_number: &str, ca_id: i64) -> Result<Certificate> {
+        let serial_number = serial_number.to_string();
+        db_do!(self.pool, |conn: &Connection| {
+            Ok(conn.query_row(
+                "SELECT id, name, created_on, valid_until, type, user_id, renew_method, tenant_id, profile_id, serial_number, issuer, subject, algorithm, key_size, sans, metadata, status, ca_id, revoked_at, revoked_by_user_id, revocation_reason FROM user_certificates WHERE serial_number = ?1 AND ca_id = ?2",
+                params![serial_number, ca_id],
+                |row| {
+                    Ok(Certificate {
+                        id: row.get(0)?,
+                        name: row.get(1)?,
+                        created_on: row.get(2)?,
+                        valid_until: row.get(3)?,
+                        certificate_type: row.get(4)?,
+                        user_id: row.get(5)?,
+                        renew_method: row.get(6)?,
+                        tenant_id: row.get(7)?,
+                        profile_id: row.get(8)?,
+                        serial_number: row.get(9)?,
+                        issuer: row.get(10)?,
+                        subject: row.get(11)?,
+                        algorithm: row.get(12)?,
+                        key_size: row.get(13)?,
+                        sans: row.get(14)?,
+                        metadata: row.get(15)?,
+                        status: row.get(16)?,
+                        pkcs12: Vec::new(),
+                        pkcs12_password: String::new(),
+                        ca_id: row.get(17)?,
+                        revoked_at: row.get(18)?,
+                        revoked_by_user_id: row.get(19)?,
+                        revocation_reason: row.get(20)?,
+                    })
+                }
+            )?)
+        })
+    }
+
+    /// Count certificates by CA
+    pub(crate) async fn count_certificates_by_ca(&self, ca_id: i64, tenant_id: &str) -> Result<i64> {
+        let tenant_id = tenant_id.to_string();
+        db_do!(self.pool, |conn: &Connection| {
+            Ok(conn.query_row(
+                "SELECT COUNT(*) FROM user_certificates WHERE ca_id = ?1 AND tenant_id = ?2",
+                params![ca_id, tenant_id],
+                |row| row.get(0)
+            )?)
+        })
+    }
+
+    /// Count active certificates by CA
+    pub(crate) async fn count_active_certificates_by_ca(&self, ca_id: i64, tenant_id: &str) -> Result<i64> {
+        let tenant_id = tenant_id.to_string();
+        db_do!(self.pool, |conn: &Connection| {
+            Ok(conn.query_row(
+                "SELECT COUNT(*) FROM user_certificates WHERE ca_id = ?1 AND tenant_id = ?2 AND (revocation_status = 'active' OR revocation_status IS NULL)",
+                params![ca_id, tenant_id],
+                |row| row.get(0)
+            )?)
+        })
+    }
+
+    /// Count revoked certificates by CA
+    pub(crate) async fn count_revoked_certificates_by_ca(&self, ca_id: i64, tenant_id: &str) -> Result<i64> {
+        let tenant_id = tenant_id.to_string();
+        db_do!(self.pool, |conn: &Connection| {
+            Ok(conn.query_row(
+                "SELECT COUNT(*) FROM user_certificates WHERE ca_id = ?1 AND tenant_id = ?2 AND revocation_status = 'revoked'",
+                params![ca_id, tenant_id],
+                |row| row.get(0)
+            )?)
+        })
+    }
+
+    /// Count expired certificates by CA
+    pub(crate) async fn count_expired_certificates_by_ca(&self, ca_id: i64, tenant_id: &str) -> Result<i64> {
+        let tenant_id = tenant_id.to_string();
+        let now = chrono::Utc::now().timestamp();
+        db_do!(self.pool, |conn: &Connection| {
+            Ok(conn.query_row(
+                "SELECT COUNT(*) FROM user_certificates WHERE ca_id = ?1 AND tenant_id = ?2 AND valid_until < ?3",
+                params![ca_id, tenant_id, now],
+                |row| row.get(0)
+            )?)
+        })
+    }
+
+    /// Get revocations by reason
+    pub(crate) async fn get_revocations_by_reason(&self, ca_id: i64, tenant_id: &str) -> Result<std::collections::HashMap<String, i64>> {
+        let tenant_id = tenant_id.to_string();
+        db_do!(self.pool, |conn: &Connection| {
+            let mut stmt = conn.prepare(
+                "SELECT revocation_reason, COUNT(*) FROM revoked_certificates WHERE ca_id = ?1 AND tenant_id = ?2 GROUP BY revocation_reason"
+            )?;
+
+            let rows = stmt.query_map(params![ca_id, tenant_id], |row| {
+                let reason_code: u8 = row.get(0)?;
+                let count: i64 = row.get(1)?;
+                let reason = RevocationReason::from_u8(reason_code).unwrap_or_default();
+                Ok((reason.description().to_string(), count))
+            })?;
+
+            let mut result = std::collections::HashMap::new();
+            for row in rows {
+                let (reason, count) = row?;
+                result.insert(reason, count);
+            }
+            Ok(result)
+        })
+    }
+
+    /// Count recent revocations
+    pub(crate) async fn count_recent_revocations(&self, ca_id: i64, tenant_id: &str, days: i32) -> Result<i64> {
+        let tenant_id = tenant_id.to_string();
+        let cutoff = chrono::Utc::now().timestamp() - (days as i64 * 24 * 60 * 60);
+        db_do!(self.pool, |conn: &Connection| {
+            Ok(conn.query_row(
+                "SELECT COUNT(*) FROM revoked_certificates WHERE ca_id = ?1 AND tenant_id = ?2 AND revocation_date >= ?3",
+                params![ca_id, tenant_id, cutoff],
+                |row| row.get(0)
+            )?)
+        })
+    }
+
+    /// Insert CRL metadata
+    pub(crate) async fn insert_crl_metadata(&self, metadata: CrlMetadata) -> Result<CrlMetadata> {
+        db_do!(self.pool, |conn: &Connection| {
+            conn.execute(
+                "INSERT INTO crl_metadata (ca_id, tenant_id, crl_number, this_update, next_update, revoked_count, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                params![
+                    metadata.ca_id, metadata.tenant_id, metadata.crl_number,
+                    metadata.this_update, metadata.next_update, metadata.revoked_count, metadata.created_at
+                ],
+            )?;
+
+            Ok(metadata)
+        })
+    }
+
+    /// Update CRL metadata
+    pub(crate) async fn update_crl_metadata(&self, metadata: CrlMetadata) -> Result<()> {
+        db_do!(self.pool, |conn: &Connection| {
+            Ok(conn.execute(
+                "UPDATE crl_metadata SET crl_number = ?1, this_update = ?2, next_update = ?3, revoked_count = ?4 WHERE ca_id = ?5 AND tenant_id = ?6",
+                params![
+                    metadata.crl_number, metadata.this_update, metadata.next_update,
+                    metadata.revoked_count, metadata.ca_id, metadata.tenant_id
+                ]
+            ).map(|_| ())?)
+        })
+    }
+
+    /// Get CRL metadata
+    pub(crate) async fn get_crl_metadata(&self, ca_id: i64, tenant_id: &str) -> Result<CrlMetadata> {
+        let tenant_id = tenant_id.to_string();
+        db_do!(self.pool, |conn: &Connection| {
+            Ok(conn.query_row(
+                "SELECT id, ca_id, tenant_id, crl_number, this_update, next_update, revoked_count, created_at FROM crl_metadata WHERE ca_id = ?1 AND tenant_id = ?2 ORDER BY created_at DESC LIMIT 1",
+                params![ca_id, tenant_id],
+                |row| {
+                    Ok(CrlMetadata {
+                        id: row.get(0)?,
+                        ca_id: row.get(1)?,
+                        tenant_id: row.get(2)?,
+                        crl_number: row.get(3)?,
+                        this_update: row.get(4)?,
+                        next_update: row.get(5)?,
+                        revoked_count: row.get(6)?,
+                        created_at: row.get(7)?,
+                    })
+                }
+            )?)
+        })
+    }
+
+    /// Get next CRL number
+    pub(crate) async fn get_next_crl_number(&self, ca_id: i64, tenant_id: &str) -> Result<i64> {
+        let tenant_id = tenant_id.to_string();
+        db_do!(self.pool, |conn: &Connection| {
+            let current_number: Result<i64, _> = conn.query_row(
+                "SELECT MAX(crl_number) FROM crl_metadata WHERE ca_id = ?1 AND tenant_id = ?2",
+                params![ca_id, tenant_id],
+                |row| row.get(0)
+            );
+
+            Ok(current_number.unwrap_or(0) + 1)
+        })
+    }
+
+    /// Store CRL data
+    pub(crate) async fn store_crl(&self, ca_id: i64, tenant_id: &str, crl_data: &[u8]) -> Result<()> {
+        let tenant_id = tenant_id.to_string();
+        let crl_data = crl_data.to_vec();
+        db_do!(self.pool, |conn: &Connection| {
+            // For now, we'll store CRL in a simple table
+            // In production, you might want to store in filesystem or object storage
+            conn.execute(
+                "INSERT OR REPLACE INTO crl_cache (ca_id, tenant_id, crl_data, created_at) VALUES (?1, ?2, ?3, ?4)",
+                params![ca_id, tenant_id, crl_data, chrono::Utc::now().timestamp()]
+            )?;
+            Ok(())
+        })
+    }
+
+    /// Get stored CRL data
+    pub(crate) async fn get_stored_crl(&self, ca_id: i64, tenant_id: &str) -> Result<Vec<u8>> {
+        let tenant_id = tenant_id.to_string();
+        db_do!(self.pool, |conn: &Connection| {
+            Ok(conn.query_row(
+                "SELECT crl_data FROM crl_cache WHERE ca_id = ?1 AND tenant_id = ?2",
+                params![ca_id, tenant_id],
+                |row| row.get(0)
+            )?)
         })
     }
 }

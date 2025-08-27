@@ -25,6 +25,7 @@ use crate::settings::Settings;
 
 mod db;
 pub mod cert;
+pub mod crl;
 mod settings;
 pub mod data;
 mod helper;
@@ -180,7 +181,14 @@ pub async fn create_rocket() -> Rocket<Build> {
                 get_users,
                 create_user,
                 delete_user,
-                update_user
+                update_user,
+                revoke_certificate,
+                restore_certificate,
+                download_crl,
+                get_crl_info,
+                check_certificate_status,
+                get_revocation_statistics,
+                generate_crl
             ],
         )
         .mount(
@@ -264,7 +272,14 @@ pub async fn create_test_rocket() -> Rocket<Build> {
                 get_users,
                 create_user,
                 delete_user,
-                update_user
+                update_user,
+                revoke_certificate,
+                restore_certificate,
+                download_crl,
+                get_crl_info,
+                check_certificate_status,
+                get_revocation_statistics,
+                generate_crl
             ],
         )
 }

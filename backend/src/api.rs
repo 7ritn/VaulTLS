@@ -10,6 +10,8 @@ use crate::auth::session_auth::{generate_token, Authenticated, AuthenticatedPriv
 use crate::cert::{get_password, get_pem, save_ca, Certificate, CertificateBuilder};
 use crate::constants::VAULTLS_VERSION;
 use crate::data::api::{CallbackQuery, ChangePasswordRequest, CreateUserCertificateRequest, CreateUserRequest, DownloadResponse, IsSetupResponse, LoginRequest, SetupRequest};
+use crate::data::crl::{CertificateStatusRequest, CertificateStatusResponse, CrlFormat, CrlInfo, RevocationStatistics, RevokeCertificateRequest, RevokeCertificateResponse};
+use crate::crl::CrlManager;
 use crate::data::enums::{CertificateType, PasswordRule, UserRole};
 use crate::data::error::ApiError;
 use crate::data::objects::{AppState, User};
@@ -427,13 +429,24 @@ pub(crate) async fn fetch_certificate_password(
 
 #[openapi(tag = "Certificates")]
 #[delete("/certificates/<id>")]
-/// Delete a user-owned certificate. Requires admin role.
+/// Delete a user-owned certificate. This now revokes the certificate instead of deleting it for security. Requires admin role.
 pub(crate) async fn delete_user_cert(
     state: &State<AppState>,
     id: i64,
-    _authentication: AuthenticatedPrivileged
+    authentication: AuthenticatedPrivileged
 ) -> Result<(), ApiError> {
-    state.db.delete_user_cert(id).await?;
+    // Instead of deleting, we now revoke the certificate for security
+    let base_url = std::env::var("VAULTLS_BASE_URL").unwrap_or_else(|_| "https://localhost:5173".to_string());
+    let crl_manager = CrlManager::new(state.db.clone(), base_url);
+
+    let revoke_request = RevokeCertificateRequest {
+        reason: Some(crate::data::crl::RevocationReason::CessationOfOperation),
+        effective_date: None, // Use current time
+    };
+
+    let _ = crl_manager.revoke_certificate(id, revoke_request, authentication.claims.id).await?;
+
+    info!("Certificate {} revoked via delete endpoint", id);
     Ok(())
 }
 
@@ -581,4 +594,131 @@ pub(crate) async fn delete_user(
     info!(user=?id, "User deleted.");
 
     Ok(())
+}
+
+// ===== CRL ENDPOINTS =====
+
+#[openapi(tag = "Certificate Revocation")]
+#[post("/certificates/<id>/revoke", format = "json", data = "<payload>")]
+/// Revoke a certificate. Requires admin role.
+pub(crate) async fn revoke_certificate(
+    state: &State<AppState>,
+    id: i64,
+    payload: Json<RevokeCertificateRequest>,
+    authentication: AuthenticatedPrivileged
+) -> Result<Json<RevokeCertificateResponse>, ApiError> {
+    let base_url = std::env::var("VAULTLS_BASE_URL").unwrap_or_else(|_| "https://localhost:5173".to_string());
+    let crl_manager = CrlManager::new(state.db.clone(), base_url);
+
+    let response = crl_manager.revoke_certificate(id, payload.into_inner(), authentication.claims.id).await?;
+    Ok(Json(response))
+}
+
+#[openapi(tag = "Certificate Revocation")]
+#[post("/certificates/<id>/restore")]
+/// Restore a revoked certificate. Requires admin role.
+pub(crate) async fn restore_certificate(
+    state: &State<AppState>,
+    id: i64,
+    authentication: AuthenticatedPrivileged
+) -> Result<(), ApiError> {
+    let base_url = std::env::var("VAULTLS_BASE_URL").unwrap_or_else(|_| "https://localhost:5173".to_string());
+    let crl_manager = CrlManager::new(state.db.clone(), base_url);
+
+    crl_manager.restore_certificate(id, authentication.claims.id).await?;
+    Ok(())
+}
+
+#[openapi(tag = "Certificate Revocation")]
+#[get("/crl/ca/<ca_id>/download?<format>")]
+/// Download Certificate Revocation List (CRL) for a CA.
+pub(crate) async fn download_crl(
+    state: &State<AppState>,
+    ca_id: i64,
+    format: Option<String>
+) -> Result<DownloadResponse, ApiError> {
+    let base_url = std::env::var("VAULTLS_BASE_URL").unwrap_or_else(|_| "https://localhost:5173".to_string());
+    let crl_manager = CrlManager::new(state.db.clone(), base_url);
+
+    let crl_format = format
+        .and_then(|f| CrlFormat::from_str(&f))
+        .unwrap_or_default();
+
+    let tenant_id = "00000000-0000-0000-0000-000000000000"; // Default tenant for now
+    let crl_data = crl_manager.get_crl(ca_id, tenant_id, crl_format.clone()).await?;
+
+    let filename = format!("ca_{}.{}", ca_id, crl_format.file_extension());
+    let mut response = DownloadResponse::new(crl_data, &filename);
+    response.content_type = Some(crl_format.content_type().to_string());
+
+    Ok(response)
+}
+
+#[openapi(tag = "Certificate Revocation")]
+#[get("/crl/ca/<ca_id>/info")]
+/// Get CRL information for a CA. Requires authentication.
+pub(crate) async fn get_crl_info(
+    state: &State<AppState>,
+    ca_id: i64,
+    _authentication: Authenticated
+) -> Result<Json<CrlInfo>, ApiError> {
+    let base_url = std::env::var("VAULTLS_BASE_URL").unwrap_or_else(|_| "https://localhost:5173".to_string());
+    let crl_manager = CrlManager::new(state.db.clone(), base_url);
+
+    let tenant_id = "00000000-0000-0000-0000-000000000000"; // Default tenant for now
+    let info = crl_manager.get_crl_info(ca_id, tenant_id).await?;
+
+    Ok(Json(info))
+}
+
+#[openapi(tag = "Certificate Revocation")]
+#[post("/certificates/status", format = "json", data = "<payload>")]
+/// Check certificate revocation status.
+pub(crate) async fn check_certificate_status(
+    state: &State<AppState>,
+    payload: Json<CertificateStatusRequest>
+) -> Result<Json<CertificateStatusResponse>, ApiError> {
+    let base_url = std::env::var("VAULTLS_BASE_URL").unwrap_or_else(|_| "https://localhost:5173".to_string());
+    let crl_manager = CrlManager::new(state.db.clone(), base_url);
+
+    let response = crl_manager.check_certificate_status(&payload.serial_number, payload.ca_id).await?;
+    Ok(Json(response))
+}
+
+#[openapi(tag = "Certificate Revocation")]
+#[get("/crl/ca/<ca_id>/statistics")]
+/// Get revocation statistics for a CA. Requires admin role.
+pub(crate) async fn get_revocation_statistics(
+    state: &State<AppState>,
+    ca_id: i64,
+    _authentication: AuthenticatedPrivileged
+) -> Result<Json<RevocationStatistics>, ApiError> {
+    let base_url = std::env::var("VAULTLS_BASE_URL").unwrap_or_else(|_| "https://localhost:5173".to_string());
+    let crl_manager = CrlManager::new(state.db.clone(), base_url);
+
+    let tenant_id = "00000000-0000-0000-0000-000000000000"; // Default tenant for now
+    let stats = crl_manager.get_revocation_statistics(ca_id, tenant_id).await?;
+
+    Ok(Json(stats))
+}
+
+#[openapi(tag = "Certificate Revocation")]
+#[post("/crl/ca/<ca_id>/generate")]
+/// Manually generate CRL for a CA. Requires admin role.
+pub(crate) async fn generate_crl(
+    state: &State<AppState>,
+    ca_id: i64,
+    _authentication: AuthenticatedPrivileged
+) -> Result<Json<CrlInfo>, ApiError> {
+    let base_url = std::env::var("VAULTLS_BASE_URL").unwrap_or_else(|_| "https://localhost:5173".to_string());
+    let crl_manager = CrlManager::new(state.db.clone(), base_url);
+
+    let tenant_id = "00000000-0000-0000-0000-000000000000"; // Default tenant for now
+
+    // Generate new CRL
+    let _ = crl_manager.generate_crl_for_ca(ca_id, tenant_id).await?;
+
+    // Return updated info
+    let info = crl_manager.get_crl_info(ca_id, tenant_id).await?;
+    Ok(Json(info))
 }

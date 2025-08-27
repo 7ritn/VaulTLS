@@ -210,6 +210,8 @@ DELETE /certificates/{id}
 
 **Response:** `204 No Content`
 
+**Note:** This endpoint now revokes the certificate instead of deleting it for security purposes. The certificate is added to the Certificate Revocation List (CRL) and marked as revoked.
+
 ### Certificate Authority
 
 #### Download CA Certificate
@@ -223,6 +225,158 @@ GET /certificates/ca/download
 - `format` (optional): `pem` (default), `der`, `cer`
 
 **Response:** Binary CA certificate data
+
+### Certificate Revocation
+
+#### Revoke Certificate
+```http
+POST /certificates/{id}/revoke
+```
+
+**Authentication:** Required (Admin role)
+
+**Request Body:**
+```json
+{
+  "reason": "cessation_of_operation",
+  "effective_date": 1640995200
+}
+```
+
+**Response:**
+```json
+{
+  "certificate_id": 1,
+  "serial_number": "abc123",
+  "revocation_date": 1640995200,
+  "reason": "cessation_of_operation",
+  "crl_updated": true
+}
+```
+
+#### Restore Certificate
+```http
+POST /certificates/{id}/restore
+```
+
+**Authentication:** Required (Admin role)
+
+**Response:** `204 No Content`
+
+#### Download CRL
+```http
+GET /crl/ca/{ca_id}/download?format={format}
+```
+
+**Authentication:** Not required
+
+**Query Parameters:**
+- `format` (optional): `der` (default), `pem`
+
+**Response:** Binary CRL data
+
+**Example:**
+```bash
+# Download CRL in DER format
+curl https://vaultls.example.com/api/crl/ca/1/download
+
+# Download CRL in PEM format
+curl https://vaultls.example.com/api/crl/ca/1/download?format=pem
+```
+
+#### Get CRL Information
+```http
+GET /crl/ca/{ca_id}/info
+```
+
+**Authentication:** Required (User role)
+
+**Response:**
+```json
+{
+  "ca_id": 1,
+  "tenant_id": "00000000-0000-0000-0000-000000000000",
+  "crl_number": 5,
+  "this_update": 1640995200,
+  "next_update": 1641600000,
+  "revoked_count": 3,
+  "total_certificates": 25,
+  "last_generated": 1640995200
+}
+```
+
+#### Check Certificate Status
+```http
+POST /certificates/status
+```
+
+**Authentication:** Not required
+
+**Request Body:**
+```json
+{
+  "serial_number": "abc123",
+  "ca_id": 1
+}
+```
+
+**Response:**
+```json
+{
+  "serial_number": "abc123",
+  "status": "revoked",
+  "revocation_date": 1640995200,
+  "revocation_reason": "key_compromise",
+  "valid_until": 1672531200,
+  "ca_id": 1,
+  "tenant_id": "00000000-0000-0000-0000-000000000000"
+}
+```
+
+#### Get Revocation Statistics
+```http
+GET /crl/ca/{ca_id}/statistics
+```
+
+**Authentication:** Required (Admin role)
+
+**Response:**
+```json
+{
+  "total_certificates": 25,
+  "active_certificates": 22,
+  "revoked_certificates": 3,
+  "expired_certificates": 0,
+  "revocations_by_reason": {
+    "Key Compromise": 1,
+    "Cessation of Operation": 2
+  },
+  "revocations_last_30_days": 1,
+  "tenant_id": "00000000-0000-0000-0000-000000000000",
+  "ca_id": 1
+}
+```
+
+#### Generate CRL
+```http
+POST /crl/ca/{ca_id}/generate
+```
+
+**Authentication:** Required (Admin role)
+
+**Response:**
+```json
+{
+  "ca_id": 1,
+  "tenant_id": "00000000-0000-0000-0000-000000000000",
+  "crl_number": 6,
+  "this_update": 1640995200,
+  "next_update": 1641600000,
+  "revoked_count": 3,
+  "total_certificates": 25,
+  "last_generated": 1640995200
+}
+```
 
 ### Users
 

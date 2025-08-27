@@ -156,6 +156,44 @@ class VaulTLSClient:
         response.raise_for_status()
         return response.content
 
+    def revoke_certificate(self, cert_id: int, reason: str = 'cessation_of_operation') -> Dict:
+        """Revoke a certificate"""
+        payload = {'reason': reason}
+        response = self.session.post(
+            f'{self.base_url}/api/certificates/{cert_id}/revoke',
+            json=payload
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def download_crl(self, ca_id: int, format: str = 'der') -> bytes:
+        """Download Certificate Revocation List"""
+        response = self.session.get(
+            f'{self.base_url}/api/crl/ca/{ca_id}/download',
+            params={'format': format}
+        )
+        response.raise_for_status()
+        return response.content
+
+    def check_certificate_status(self, serial_number: str, ca_id: int = None) -> Dict:
+        """Check if a certificate is revoked"""
+        payload = {'serial_number': serial_number}
+        if ca_id:
+            payload['ca_id'] = ca_id
+
+        response = self.session.post(
+            f'{self.base_url}/api/certificates/status',
+            json=payload
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def get_crl_info(self, ca_id: int) -> Dict:
+        """Get CRL information"""
+        response = self.session.get(f'{self.base_url}/api/crl/ca/{ca_id}/info')
+        response.raise_for_status()
+        return response.json()
+
 class CertificateManager:
     def __init__(self, client: VaulTLSClient):
         self.client = client
@@ -212,7 +250,43 @@ class CertificateManager:
             f.write(password)
         
         print(f"✓ Backed up certificate to {cert_file}")
-    
+
+    def check_revoked_certificates(self, ca_id: int = 1):
+        """Check for revoked certificates and download CRL"""
+        try:
+            # Get CRL information
+            crl_info = self.client.get_crl_info(ca_id)
+            print(f"\n🔒 CRL Information for CA {ca_id}:")
+            print(f"  CRL Number: {crl_info['crl_number']}")
+            print(f"  Revoked Certificates: {crl_info['revoked_count']}")
+            print(f"  Total Certificates: {crl_info['total_certificates']}")
+
+            # Download CRL for nginx/caddy
+            crl_data = self.client.download_crl(ca_id, 'pem')
+            with open(f'ca_{ca_id}.crl', 'wb') as f:
+                f.write(crl_data)
+            print(f"✓ Downloaded CRL to ca_{ca_id}.crl")
+
+            return crl_info
+        except Exception as e:
+            print(f"❌ Error checking CRL: {e}")
+            return None
+
+    def verify_certificate_status(self, serial_number: str, ca_id: int = None):
+        """Verify if a certificate is still valid"""
+        try:
+            status = self.client.check_certificate_status(serial_number, ca_id)
+            print(f"\n🔍 Certificate Status for {serial_number}:")
+            print(f"  Status: {status['status']}")
+            if status['status'] == 'revoked':
+                revocation_date = datetime.fromtimestamp(status['revocation_date'])
+                print(f"  Revoked: {revocation_date}")
+                print(f"  Reason: {status.get('revocation_reason', 'Unknown')}")
+            return status
+        except Exception as e:
+            print(f"❌ Error checking certificate status: {e}")
+            return None
+
     def monitor_certificates(self):
         """Monitor and report on certificate status"""
         certificates = self.client.get_certificates()
@@ -251,7 +325,10 @@ def main():
         
         # Monitor certificates
         manager.monitor_certificates()
-        
+
+        # Check CRL status
+        manager.check_revoked_certificates(ca_id=1)
+
         # Check for expiring certificates
         expiring = manager.check_expiring_certificates(days_ahead=30)
         
@@ -346,6 +423,23 @@ else
   echo "❌ Failed to download CA certificate"
 fi
 
+# Download Certificate Revocation List (CRL)
+echo "Downloading CRL..."
+curl -s -X GET "$VAULTLS_URL/api/crl/ca/1/download" \
+  -o "ca.crl"
+
+if [ $? -eq 0 ]; then
+  echo "✓ CRL saved to ca.crl"
+else
+  echo "❌ Failed to download CRL"
+fi
+
+# Check certificate status (example)
+echo "Checking certificate status..."
+curl -s -X POST "$VAULTLS_URL/api/certificates/status" \
+  -H "Content-Type: application/json" \
+  -d '{"serial_number": "example123", "ca_id": 1}' | jq .
+
 # Cleanup
 rm -f "$COOKIE_FILE"
 echo "✓ Cleanup complete"
@@ -420,12 +514,112 @@ curl -v -X POST https://your-vaultls-instance.com/api/auth/login \
 3. **Test with RapiDoc** - Use the interactive documentation at `/api`
 4. **Check GitHub issues** - Search for similar problems in the VaulTLS repository
 
+## Nginx Configuration with CRL
+
+Here's how to configure nginx to use VaulTLS certificates and CRL validation:
+
+```nginx
+# /etc/nginx/sites-available/vaultls-example
+server {
+    listen 443 ssl http2;
+    server_name api.example.com;
+
+    # Server certificate from VaulTLS
+    ssl_certificate /etc/ssl/certs/api.example.com.pem;
+    ssl_certificate_key /etc/ssl/private/api.example.com.key;
+
+    # CA certificate for client verification
+    ssl_client_certificate /etc/ssl/certs/vaultls-ca.pem;
+
+    # Certificate Revocation List
+    ssl_crl /etc/ssl/crl/vaultls-ca.crl;
+
+    # Enable client certificate verification
+    ssl_verify_client on;
+    ssl_verify_depth 2;
+
+    # SSL settings
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers ECDHE-RSA-AES256-GCM-SHA512:DHE-RSA-AES256-GCM-SHA512:ECDHE-RSA-AES256-GCM-SHA384:DHE-RSA-AES256-GCM-SHA384;
+    ssl_prefer_server_ciphers off;
+
+    location / {
+        # Your application
+        proxy_pass http://backend;
+
+        # Pass client certificate info to backend
+        proxy_set_header X-SSL-Client-Cert $ssl_client_cert;
+        proxy_set_header X-SSL-Client-Verify $ssl_client_verify;
+        proxy_set_header X-SSL-Client-S-DN $ssl_client_s_dn;
+    }
+}
+```
+
+### Automated Certificate and CRL Updates
+
+Create a script to automatically update certificates and CRL:
+
+```bash
+#!/bin/bash
+# /usr/local/bin/update-vaultls-certs.sh
+
+VAULTLS_URL="https://vaultls.example.com"
+CERT_DIR="/etc/ssl/certs"
+CRL_DIR="/etc/ssl/crl"
+PRIVATE_DIR="/etc/ssl/private"
+
+# Download CA certificate
+curl -s "$VAULTLS_URL/api/certificates/ca/download" -o "$CERT_DIR/vaultls-ca.pem"
+
+# Download CRL
+curl -s "$VAULTLS_URL/api/crl/ca/1/download?format=pem" -o "$CRL_DIR/vaultls-ca.crl"
+
+# Set proper permissions
+chmod 644 "$CERT_DIR/vaultls-ca.pem"
+chmod 644 "$CRL_DIR/vaultls-ca.crl"
+
+# Reload nginx to pick up new CRL
+nginx -t && systemctl reload nginx
+
+echo "✓ Updated VaulTLS CA certificate and CRL"
+```
+
+Add to crontab to run every hour:
+```bash
+# Update VaulTLS certificates and CRL hourly
+0 * * * * /usr/local/bin/update-vaultls-certs.sh
+```
+
+## Caddy Configuration with CRL
+
+For Caddy users, you can use the revocation validator plugin:
+
+```caddyfile
+api.example.com {
+    tls {
+        client_auth {
+            mode require_and_verify
+            trusted_ca_cert_file /etc/ssl/certs/vaultls-ca.pem
+        }
+    }
+
+    # Use the caddy-revocation-validator plugin
+    revocation_validator {
+        crl_url https://vaultls.example.com/api/crl/ca/1/download
+        cache_duration 1h
+    }
+
+    reverse_proxy localhost:8080
+}
+```
+
 ## Next Steps
 
-1. **Explore the API** - Visit `/api` on your VaulTLS instance for interactive documentation
-2. **Set up monitoring** - Implement certificate expiration monitoring
+1. **Explore the API** - Visit `/api-docs` on your VaulTLS instance for interactive documentation
+2. **Set up monitoring** - Implement certificate expiration and revocation monitoring
 3. **Automate renewals** - Build automated certificate renewal workflows
-4. **Integrate with your infrastructure** - Connect VaulTLS to your deployment pipelines
+4. **Configure CRL validation** - Set up nginx/caddy to validate certificates against CRL
+5. **Integrate with your infrastructure** - Connect VaulTLS to your deployment pipelines
 
 ---
 
