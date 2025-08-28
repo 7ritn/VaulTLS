@@ -1,28 +1,148 @@
 :root {
-    /* Base Colors */
-    --color-background: #e5eef4;    /* Sidebar background */
-    --color-card: #c4d4dc;         /* ProfileCard background */
-    --color-hover: #ebe7f0;        /* Sidebar nav-link hover */
-    --color-active: #ccc4dc;       /* Sidebar active state */
+    /* Brand Colors - Consistent across themes */
+    --brand-primary: #3b82f6;
+    --brand-secondary: #2563eb;
+    --brand-accent: #1d4ed8;
 
-    /* Avatar Colors (from ProfileCard) */
+    /* Avatar Colors (from ProfileCard) - Consistent across themes */
     --color-avatar-1: #264653;     /* Dark blue */
     --color-avatar-2: #2a9d8f;     /* Teal */
     --color-avatar-3: #e9c46a;     /* Yellow */
     --color-avatar-4: #f4a261;     /* Orange */
     --color-avatar-5: #e76f51;     /* Coral */
 
+    /* Semantic Colors - Consistent across themes */
+    --color-success: #22c55e;
+    --color-warning: #f59e0b;
+    --color-error: #ef4444;
+    --color-info: #3b82f6;
+
+    /* Typography */
+    --font-family-sans: 'Inter', system-ui, -apple-system, sans-serif;
+    --font-family-mono: 'JetBrains Mono', 'Consolas', monospace;
+
+    /* Spacing Scale */
+    --spacing-xs: 0.25rem;
+    --spacing-sm: 0.5rem;
+    --spacing-md: 1rem;
+    --spacing-lg: 1.5rem;
+    --spacing-xl: 2rem;
+    --spacing-2xl: 3rem;
+
+    /* Border Radius */
+    --radius-sm: 0.25rem;
+    --radius-md: 0.5rem;
+    --radius-lg: 0.75rem;
+    --radius-xl: 1rem;
+
+    /* Transitions */
+    --transition-fast: 150ms ease;
+    --transition-normal: 250ms ease;
+    --transition-slow: 350ms ease;
+}
+
+/* Light Theme (Default) */
+:root,
+:root.light {
+    /* Background Colors */
+    --color-background: #ffffff;
+    --color-background-secondary: #f8fafc;
+    --color-background-tertiary: #f1f5f9;
+    --color-sidebar: #e5eef4;
+    --color-card: #ffffff;
+    --color-surface: #f8fafc;
+
     /* Text Colors */
-    --color-text-primary: #000000; /* Sidebar nav-link color */
+    --color-text-primary: #0f172a;
+    --color-text-secondary: #475569;
+    --color-text-tertiary: #64748b;
+    --color-text-muted: #94a3b8;
+    --color-text-inverse: #ffffff;
 
-    /* Effects */
-    --shadow-color: rgba(0, 0, 0, 0.05); /* ProfileCard shadow */
+    /* Border Colors */
+    --color-border: #e2e8f0;
+    --color-border-secondary: #cbd5e1;
+    --color-border-focus: var(--brand-primary);
 
-    /* Semantic Colors */
-    --primary: var(--color-avatar-1);
+    /* Interactive Colors */
+    --color-hover: #f1f5f9;
+    --color-active: #e2e8f0;
+    --color-focus: rgba(59, 130, 246, 0.1);
+
+    /* Shadow Colors */
+    --shadow-color: rgba(0, 0, 0, 0.1);
+    --shadow-color-light: rgba(0, 0, 0, 0.05);
+    --shadow-color-medium: rgba(0, 0, 0, 0.15);
+
+    /* Component Specific */
+    --color-input-background: #ffffff;
+    --color-input-border: #d1d5db;
+    --color-button-primary: var(--brand-primary);
+    --color-button-primary-hover: var(--brand-secondary);
+}
+
+/* Dark Theme */
+:root.dark {
+    /* Background Colors */
+    --color-background: #0f172a;
+    --color-background-secondary: #1e293b;
+    --color-background-tertiary: #334155;
+    --color-sidebar: #1e293b;
+    --color-card: #1e293b;
+    --color-surface: #334155;
+
+    /* Text Colors */
+    --color-text-primary: #f8fafc;
+    --color-text-secondary: #cbd5e1;
+    --color-text-tertiary: #94a3b8;
+    --color-text-muted: #64748b;
+    --color-text-inverse: #0f172a;
+
+    /* Border Colors */
+    --color-border: #334155;
+    --color-border-secondary: #475569;
+    --color-border-focus: var(--brand-primary);
+
+    /* Interactive Colors */
+    --color-hover: #334155;
+    --color-active: #475569;
+    --color-focus: rgba(59, 130, 246, 0.2);
+
+    /* Shadow Colors */
+    --shadow-color: rgba(0, 0, 0, 0.3);
+    --shadow-color-light: rgba(0, 0, 0, 0.2);
+    --shadow-color-medium: rgba(0, 0, 0, 0.4);
+
+    /* Component Specific */
+    --color-input-background: #334155;
+    --color-input-border: #475569;
+    --color-button-primary: var(--brand-primary);
+    --color-button-primary-hover: var(--brand-secondary);
+}
+
+/* Responsive Design Breakpoints */
+:root {
+    --breakpoint-sm: 640px;
+    --breakpoint-md: 768px;
+    --breakpoint-lg: 1024px;
+    --breakpoint-xl: 1280px;
+    --breakpoint-2xl: 1536px;
+}
+
+/* Component Shadows */
+:root {
+    --shadow-sm: 0 1px 2px 0 var(--shadow-color-light);
+    --shadow-md: 0 4px 6px -1px var(--shadow-color), 0 2px 4px -1px var(--shadow-color-light);
+    --shadow-lg: 0 10px 15px -3px var(--shadow-color), 0 4px 6px -2px var(--shadow-color-light);
+    --shadow-xl: 0 20px 25px -5px var(--shadow-color), 0 10px 10px -5px var(--shadow-color-light);
+}
+
+/* Legacy Support - Map old variables to new system */
+:root {
+    /* Maintain backward compatibility */
+    --primary: var(--brand-primary);
     --secondary: var(--color-avatar-2);
     --accent: var(--color-avatar-3);
-    --warning: var(--color-avatar-4);
-    --danger: var(--color-avatar-5);
-
+    --warning: var(--color-warning);
+    --danger: var(--color-error);
 }

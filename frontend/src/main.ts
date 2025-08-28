@@ -1,5 +1,6 @@
 import 'bootstrap/dist/css/bootstrap.min.css';
 import './assets/styles/variables.css'
+import './assets/styles/theme.css'
 
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
@@ -8,6 +9,7 @@ import router from './router/router';
 import App from './App.vue'
 import {useSetupStore} from "@/stores/setup.ts";
 import {useAuthStore} from "@/stores/auth.ts";
+import {useThemeStore} from "@/stores/theme.ts";
 
 
 async function initApp() {
@@ -23,6 +25,10 @@ async function initApp() {
 
     const authStore = useAuthStore();
     await authStore.init();
+
+    // Initialize theme store
+    const themeStore = useThemeStore();
+    themeStore.initializeTheme();
 
     app.use(router);
 

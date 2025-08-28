@@ -58,6 +58,15 @@
           </li>
         </ul>
       </div>
+
+      <!-- Theme Toggle Section -->
+      <div class="p-3 border-top">
+        <div class="d-flex align-items-center justify-content-between">
+          <span class="text-muted small">Theme</span>
+          <ThemeToggle :show-label="false" size="sm" />
+        </div>
+      </div>
+
       <div class="p-3">
         <a
             href="#"
@@ -78,6 +87,7 @@
 import { computed, ref, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import ProfileCard from './ProfileCard.vue';
+import ThemeToggle from './ThemeToggle.vue';
 import { UserRole } from "@/types/User.ts";
 import { useAuthStore } from "@/stores/auth.ts";
 import {useSettingsStore} from "@/stores/settings.ts";

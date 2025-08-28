@@ -1,0 +1,115 @@
+version: '3.8'
+
+services:
+  # Frontend Service
+  frontend:
+    build:
+      context: ../../
+      dockerfile: IaC/docker/frontend/Dockerfile
+      target: production
+    container_name: vaultls-frontend-dev
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - VITE_API_BASE_URL=http://localhost:8000
+      - VITE_APP_TITLE=VaulTLS Development
+    depends_on:
+      - backend
+    networks:
+      - vaultls-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Backend Service
+  backend:
+    build:
+      context: ../../
+      dockerfile: IaC/docker/backend/Dockerfile
+    container_name: vaultls-backend-dev
+    ports:
+      - "8000:8000"
+    environment:
+      - RUST_LOG=debug
+      - VAULTLS_DATABASE_URL=sqlite:///app/data/vaultls.db
+      - VAULTLS_JWT_SECRET=dev-secret-change-in-production
+      - VAULTLS_CORS_ORIGINS=http://localhost:3000
+      - VAULTLS_API_DOCS_ENABLED=true
+      - VAULTLS_API_DOCS_REQUIRE_AUTH=false
+      - VAULTLS_LEGACY_API_ENABLED=true
+    volumes:
+      - backend-data:/app/data
+      - backend-logs:/app/logs
+      - backend-certs:/app/certs
+    networks:
+      - vaultls-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/server/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # Optional PostgreSQL Database (uncomment to use instead of SQLite)
+  # database:
+  #   build:
+  #     context: ../../
+  #     dockerfile: IaC/docker/database/Dockerfile
+  #   container_name: vaultls-database-dev
+  #   ports:
+  #     - "5432:5432"
+  #   environment:
+  #     - POSTGRES_DB=vaultls_dev
+  #     - POSTGRES_USER=vaultls
+  #     - POSTGRES_PASSWORD=dev-password-change-in-production
+  #   volumes:
+  #     - database-data:/var/lib/postgresql/data
+  #     - database-logs:/var/log/postgresql
+  #   networks:
+  #     - vaultls-network
+  #   restart: unless-stopped
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready -U vaultls -d vaultls_dev"]
+  #     interval: 30s
+  #     timeout: 5s
+  #     retries: 3
+  #     start_period: 30s
+
+  # Development Tools
+  adminer:
+    image: adminer:4.8.1
+    container_name: vaultls-adminer-dev
+    ports:
+      - "8080:8080"
+    environment:
+      - ADMINER_DEFAULT_SERVER=database
+    depends_on:
+      - backend
+    networks:
+      - vaultls-network
+    restart: unless-stopped
+
+# Networks
+networks:
+  vaultls-network:
+    driver: bridge
+    name: vaultls-dev-network
+
+# Volumes
+volumes:
+  backend-data:
+    name: vaultls-backend-data-dev
+  backend-logs:
+    name: vaultls-backend-logs-dev
+  backend-certs:
+    name: vaultls-backend-certs-dev
+  database-data:
+    name: vaultls-database-data-dev
+  database-logs:
+    name: vaultls-database-logs-dev
