@@ -1,0 +1,184 @@
+version: '3.8'
+
+services:
+  # Frontend Service for Testing
+  frontend:
+    build:
+      context: ../../
+      dockerfile: IaC/docker/frontend/Dockerfile
+      target: production
+    container_name: vaultls-frontend-test
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=test
+      - VITE_API_BASE_URL=http://localhost:8000
+      - VITE_APP_TITLE=VaulTLS Testing
+    depends_on:
+      - backend
+    networks:
+      - vaultls-test-network
+    restart: "no"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  # Backend Service for Testing
+  backend:
+    build:
+      context: ../../
+      dockerfile: IaC/docker/backend/Dockerfile
+    container_name: vaultls-backend-test
+    ports:
+      - "8000:8000"
+    environment:
+      - RUST_LOG=debug
+      - VAULTLS_DATABASE_URL=postgresql://vaultls_test:test_password@database:5432/vaultls_test
+      - VAULTLS_JWT_SECRET=test-secret-for-testing-only
+      - VAULTLS_CORS_ORIGINS=http://localhost:3000
+      - VAULTLS_API_DOCS_ENABLED=true
+      - VAULTLS_API_DOCS_REQUIRE_AUTH=false
+      - VAULTLS_LEGACY_API_ENABLED=true
+      - VAULTLS_RATE_LIMIT_ENABLED=false
+      - VAULTLS_AUDIT_ENABLED=true
+    volumes:
+      - backend-test-data:/app/data
+      - backend-test-logs:/app/logs
+    depends_on:
+      database:
+        condition: service_healthy
+    networks:
+      - vaultls-test-network
+    restart: "no"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/server/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  # Test Database
+  database:
+    image: postgres:16-alpine
+    container_name: vaultls-database-test
+    ports:
+      - "5433:5432"
+    environment:
+      - POSTGRES_DB=vaultls_test
+      - POSTGRES_USER=vaultls_test
+      - POSTGRES_PASSWORD=test_password
+    volumes:
+      - database-test-data:/var/lib/postgresql/data
+    networks:
+      - vaultls-test-network
+    restart: "no"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vaultls_test -d vaultls_test"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  # Test Runner Service
+  test-runner:
+    build:
+      context: ../../
+      dockerfile: IaC/docker/backend/Dockerfile
+    container_name: vaultls-test-runner
+    environment:
+      - RUST_LOG=debug
+      - VAULTLS_DATABASE_URL=postgresql://vaultls_test:test_password@database:5432/vaultls_test
+      - VAULTLS_JWT_SECRET=test-secret-for-testing-only
+      - VAULTLS_TEST_MODE=true
+    volumes:
+      - ../../backend:/app/src
+      - test-results:/app/test-results
+    depends_on:
+      database:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    networks:
+      - vaultls-test-network
+    restart: "no"
+    command: |
+      sh -c '
+        echo "Waiting for services to be ready..."
+        sleep 10
+        echo "Running backend tests..."
+        cargo test --release -- --test-threads=1 --nocapture
+        echo "Running integration tests..."
+        cargo test --release integration -- --test-threads=1 --nocapture
+        echo "Tests completed"
+      '
+
+  # Frontend Test Runner
+  frontend-test:
+    build:
+      context: ../../
+      dockerfile: IaC/docker/frontend/Dockerfile
+      target: builder
+    container_name: vaultls-frontend-test-runner
+    environment:
+      - NODE_ENV=test
+      - VITE_API_BASE_URL=http://backend:8000
+    volumes:
+      - ../../frontend:/app
+      - frontend-test-results:/app/test-results
+    depends_on:
+      - frontend
+      - backend
+    networks:
+      - vaultls-test-network
+    restart: "no"
+    command: |
+      sh -c '
+        echo "Running frontend tests..."
+        npm run test
+        echo "Running e2e tests..."
+        npm run test:e2e
+        echo "Frontend tests completed"
+      '
+
+  # Load Testing Service
+  load-test:
+    image: grafana/k6:latest
+    container_name: vaultls-load-test
+    volumes:
+      - ../../tests/load:/scripts
+      - load-test-results:/results
+    depends_on:
+      - backend
+    networks:
+      - vaultls-test-network
+    restart: "no"
+    command: |
+      sh -c '
+        echo "Running load tests..."
+        k6 run --out json=/results/load-test-results.json /scripts/api-load-test.js
+        echo "Load tests completed"
+      '
+
+# Networks
+networks:
+  vaultls-test-network:
+    driver: bridge
+    name: vaultls-test-network
+
+# Volumes
+volumes:
+  backend-test-data:
+    name: vaultls-backend-test-data
+  backend-test-logs:
+    name: vaultls-backend-test-logs
+  database-test-data:
+    name: vaultls-database-test-data
+  test-results:
+    name: vaultls-test-results
+  frontend-test-results:
+    name: vaultls-frontend-test-results
+  load-test-results:
+    name: vaultls-load-test-results

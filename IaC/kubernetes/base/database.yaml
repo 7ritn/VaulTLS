@@ -1,0 +1,123 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vaultls-database
+  namespace: vaultls
+  labels:
+    app.kubernetes.io/name: vaultls
+    app.kubernetes.io/component: database
+    app.kubernetes.io/part-of: vaultls
+    app.kubernetes.io/version: "16"
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate  # Database should not have multiple replicas without proper setup
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vaultls
+      app.kubernetes.io/component: database
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: vaultls
+        app.kubernetes.io/component: database
+        app.kubernetes.io/part-of: vaultls
+    spec:
+      securityContext:
+        fsGroup: 999  # postgres group
+      containers:
+      - name: postgres
+        image: postgres:16-alpine
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 5432
+          name: postgres
+        env:
+        - name: POSTGRES_DB
+          valueFrom:
+            configMapKeyRef:
+              name: vaultls-config
+              key: POSTGRES_DB
+        - name: POSTGRES_USER
+          valueFrom:
+            configMapKeyRef:
+              name: vaultls-config
+              key: POSTGRES_USER
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: vaultls-secrets
+              key: POSTGRES_PASSWORD
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
+        volumeMounts:
+        - name: postgres-data
+          mountPath: /var/lib/postgresql/data
+        - name: postgres-config
+          mountPath: /etc/postgresql/postgresql.conf
+          subPath: postgresql.conf
+        - name: postgres-init
+          mountPath: /docker-entrypoint-initdb.d/init-db.sql
+          subPath: init-db.sql
+        resources:
+          requests:
+            cpu: 500m
+            memory: 1Gi
+          limits:
+            cpu: 2
+            memory: 4Gi
+        livenessProbe:
+          exec:
+            command:
+            - pg_isready
+            - -U
+            - vaultls
+            - -d
+            - vaultls
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          exec:
+            command:
+            - pg_isready
+            - -U
+            - vaultls
+            - -d
+            - vaultls
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+      volumes:
+      - name: postgres-data
+        persistentVolumeClaim:
+          claimName: vaultls-database-data
+      - name: postgres-config
+        configMap:
+          name: postgres-config
+      - name: postgres-init
+        configMap:
+          name: postgres-config
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vaultls-database
+  namespace: vaultls
+  labels:
+    app.kubernetes.io/name: vaultls
+    app.kubernetes.io/component: database
+    app.kubernetes.io/part-of: vaultls
+spec:
+  type: ClusterIP
+  ports:
+  - port: 5432
+    targetPort: 5432
+    protocol: TCP
+    name: postgres
+  selector:
+    app.kubernetes.io/name: vaultls
+    app.kubernetes.io/component: database

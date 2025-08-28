@@ -1,0 +1,211 @@
+version: '3.8'
+
+services:
+  # Frontend Service
+  frontend:
+    build:
+      context: ../../
+      dockerfile: IaC/docker/frontend/Dockerfile
+      target: production
+    container_name: vaultls-frontend
+    ports:
+      - "80:3000"
+      - "443:3000"  # If using SSL termination at container level
+    environment:
+      - NODE_ENV=production
+      - VITE_API_BASE_URL=https://api.yourdomain.com
+      - VITE_APP_TITLE=VaulTLS
+    depends_on:
+      - backend
+    networks:
+      - vaultls-network
+      - web-proxy  # External network for reverse proxy
+    restart: unless-stopped
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Backend Service
+  backend:
+    build:
+      context: ../../
+      dockerfile: IaC/docker/backend/Dockerfile
+    container_name: vaultls-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - RUST_LOG=info
+      - VAULTLS_DATABASE_URL=postgresql://vaultls:${POSTGRES_PASSWORD}@database:5432/vaultls
+      - VAULTLS_JWT_SECRET=${JWT_SECRET}
+      - VAULTLS_CORS_ORIGINS=https://yourdomain.com
+      - VAULTLS_API_DOCS_ENABLED=true
+      - VAULTLS_API_DOCS_REQUIRE_AUTH=true
+      - VAULTLS_LEGACY_API_ENABLED=false
+      - VAULTLS_RATE_LIMIT_ENABLED=true
+      - VAULTLS_AUDIT_ENABLED=true
+    volumes:
+      - backend-data:/app/data
+      - backend-logs:/app/logs
+      - backend-certs:/app/certs
+    depends_on:
+      database:
+        condition: service_healthy
+    networks:
+      - vaultls-network
+    restart: unless-stopped
+    deploy:
+      replicas: 3
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/server/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+  # Database Service
+  database:
+    build:
+      context: ../../
+      dockerfile: IaC/docker/database/Dockerfile
+    container_name: vaultls-database
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=vaultls
+      - POSTGRES_USER=vaultls
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_INITDB_ARGS=--auth-host=scram-sha-256
+    volumes:
+      - database-data:/var/lib/postgresql/data
+      - database-logs:/var/log/postgresql
+      - ./backups:/backups
+    networks:
+      - vaultls-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '1.0'
+          memory: 1G
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vaultls -d vaultls"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "5"
+
+  # Redis for caching and session storage
+  redis:
+    image: redis:7-alpine
+    container_name: vaultls-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --requirepass ${REDIS_PASSWORD} --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis-data:/data
+    networks:
+      - vaultls-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Backup Service
+  backup:
+    image: postgres:16-alpine
+    container_name: vaultls-backup
+    environment:
+      - PGPASSWORD=${POSTGRES_PASSWORD}
+    volumes:
+      - ./backups:/backups
+      - ./scripts:/scripts
+    networks:
+      - vaultls-network
+    depends_on:
+      - database
+    restart: "no"
+    command: |
+      sh -c '
+        while true; do
+          echo "Creating backup at $$(date)"
+          pg_dump -h database -U vaultls -d vaultls > /backups/vaultls_$$(date +%Y%m%d_%H%M%S).sql
+          find /backups -name "*.sql" -mtime +7 -delete
+          sleep 86400
+        done
+      '
+
+# Networks
+networks:
+  vaultls-network:
+    driver: bridge
+    name: vaultls-network
+  web-proxy:
+    external: true
+    name: web-proxy
+
+# Volumes
+volumes:
+  backend-data:
+    name: vaultls-backend-data
+  backend-logs:
+    name: vaultls-backend-logs
+  backend-certs:
+    name: vaultls-backend-certs
+  database-data:
+    name: vaultls-database-data
+  database-logs:
+    name: vaultls-database-logs
+  redis-data:
+    name: vaultls-redis-data

@@ -1,0 +1,188 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vaultls-config
+  namespace: vaultls
+  labels:
+    app.kubernetes.io/name: vaultls
+    app.kubernetes.io/component: config
+data:
+  # Backend Configuration
+  RUST_LOG: "info"
+  VAULTLS_CORS_ORIGINS: "https://vaultls.yourdomain.com"
+  VAULTLS_API_DOCS_ENABLED: "true"
+  VAULTLS_API_DOCS_REQUIRE_AUTH: "true"
+  VAULTLS_LEGACY_API_ENABLED: "false"
+  VAULTLS_RATE_LIMIT_ENABLED: "true"
+  VAULTLS_AUDIT_ENABLED: "true"
+  VAULTLS_DATA_DIR: "/app/data"
+  VAULTLS_LOG_DIR: "/app/logs"
+  VAULTLS_CERT_DIR: "/app/certs"
+  
+  # Database Configuration
+  POSTGRES_DB: "vaultls"
+  POSTGRES_USER: "vaultls"
+  
+  # Frontend Configuration
+  NODE_ENV: "production"
+  VITE_API_BASE_URL: "https://api.vaultls.yourdomain.com"
+  VITE_APP_TITLE: "VaulTLS"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-config
+  namespace: vaultls
+  labels:
+    app.kubernetes.io/name: vaultls
+    app.kubernetes.io/component: frontend-config
+data:
+  nginx.conf: |
+    user nginx;
+    worker_processes auto;
+    error_log /var/log/nginx/error.log warn;
+    pid /var/run/nginx.pid;
+
+    events {
+        worker_connections 1024;
+        use epoll;
+        multi_accept on;
+    }
+
+    http {
+        include /etc/nginx/mime.types;
+        default_type application/octet-stream;
+
+        log_format main '$remote_addr - $remote_user [$time_local] "$request" '
+                        '$status $body_bytes_sent "$http_referer" '
+                        '"$http_user_agent" "$http_x_forwarded_for"';
+
+        access_log /var/log/nginx/access.log main;
+
+        sendfile on;
+        tcp_nopush on;
+        tcp_nodelay on;
+        keepalive_timeout 65;
+        types_hash_max_size 2048;
+        server_tokens off;
+
+        gzip on;
+        gzip_vary on;
+        gzip_min_length 1024;
+        gzip_proxied any;
+        gzip_comp_level 6;
+        gzip_types
+            text/plain
+            text/css
+            text/xml
+            text/javascript
+            application/json
+            application/javascript
+            application/xml+rss
+            application/atom+xml
+            image/svg+xml;
+
+        include /etc/nginx/conf.d/*.conf;
+    }
+
+  default.conf: |
+    server {
+        listen 3000;
+        server_name _;
+        root /usr/share/nginx/html;
+        index index.html;
+
+        # Security headers
+        add_header X-Frame-Options "DENY" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-XSS-Protection "1; mode=block" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
+        # Health check
+        location /health {
+            access_log off;
+            return 200 "healthy\n";
+            add_header Content-Type text/plain;
+        }
+
+        # API proxy
+        location /api/ {
+            proxy_pass http://vaultls-backend:8000;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection 'upgrade';
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_cache_bypass $http_upgrade;
+        }
+
+        # Static assets
+        location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
+            expires 1y;
+            add_header Cache-Control "public, immutable";
+        }
+
+        # SPA routing
+        location / {
+            try_files $uri $uri/ /index.html;
+        }
+    }
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-config
+  namespace: vaultls
+  labels:
+    app.kubernetes.io/name: vaultls
+    app.kubernetes.io/component: database-config
+data:
+  postgresql.conf: |
+    # PostgreSQL Configuration for VaulTLS
+    listen_addresses = '*'
+    port = 5432
+    max_connections = 200
+    shared_buffers = 256MB
+    effective_cache_size = 1GB
+    maintenance_work_mem = 64MB
+    work_mem = 4MB
+    wal_level = replica
+    wal_buffers = 16MB
+    checkpoint_completion_target = 0.9
+    max_wal_size = 1GB
+    min_wal_size = 80MB
+    log_destination = 'stderr'
+    logging_collector = on
+    log_min_duration_statement = 1000
+    log_checkpoints = on
+    log_connections = on
+    log_disconnections = on
+    shared_preload_libraries = 'pg_stat_statements'
+    track_activities = on
+    track_counts = on
+    track_io_timing = on
+    timezone = 'UTC'
+
+  init-db.sql: |
+    -- Create extensions
+    CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+    CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+    CREATE EXTENSION IF NOT EXISTS "pg_stat_statements";
+    
+    -- Create application user
+    DO $$
+    BEGIN
+        IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'vaultls_app') THEN
+            CREATE ROLE vaultls_app WITH LOGIN PASSWORD 'changeme_app';
+        END IF;
+    END
+    $$;
+    
+    -- Grant permissions
+    GRANT CONNECT ON DATABASE vaultls TO vaultls_app;
+    GRANT USAGE ON SCHEMA public TO vaultls_app;
+    GRANT CREATE ON SCHEMA public TO vaultls_app;
