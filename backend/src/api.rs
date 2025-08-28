@@ -48,6 +48,11 @@ pub(crate) fn api_docs() -> Json<serde_json::Value> {
             "getting_started": "https://github.com/7ritn/VaulTLS/blob/main/docs/api/getting-started.md",
             "endpoints_reference": "https://github.com/7ritn/VaulTLS/blob/main/docs/api/endpoints.md"
         },
+        "documentation_security": {
+            "enabled": std::env::var("VAULTLS_API_DOCS_ENABLED").unwrap_or_else(|_| "true".to_string()),
+            "requires_auth": std::env::var("VAULTLS_API_DOCS_REQUIRE_AUTH").unwrap_or_else(|_| "false".to_string()),
+            "note": "API documentation access can be controlled via environment variables"
+        },
         "authentication": {
             "session_auth": {
                 "description": "Cookie-based authentication for web UI",
@@ -2424,4 +2429,139 @@ pub(crate) async fn generate_compliance_report(
         filename,
         body: report,
     })
+}
+
+// ===== PROTECTED API DOCUMENTATION ENDPOINTS =====
+
+#[get("/")]
+/// Protected RapiDoc documentation (requires authentication)
+pub(crate) async fn protected_rapidoc(
+    _authentication: BearerAuthenticated
+) -> rocket::response::content::RawHtml<String> {
+    let html = format!(r#"
+<!DOCTYPE html>
+<html>
+<head>
+    <title>VaulTLS API Documentation</title>
+    <meta charset="utf-8">
+    <script type="module" src="https://unpkg.com/rapidoc/dist/rapidoc-min.js"></script>
+</head>
+<body>
+    <rapi-doc
+        spec-url="/api/openapi.json"
+        theme="dark"
+        render-style="read"
+        layout="column"
+        schema-style="tree"
+        allow-try="true"
+        allow-server-selection="true"
+        show-header="true"
+        show-info="true"
+        show-components="true"
+        response-area-height="400px">
+        <div slot="nav-logo">
+            <h2>🔒 VaulTLS API</h2>
+            <p>Protected Documentation</p>
+        </div>
+    </rapi-doc>
+</body>
+</html>
+"#);
+    rocket::response::content::RawHtml(html)
+}
+
+#[get("/")]
+/// Protected Redoc documentation (requires authentication)
+pub(crate) async fn protected_redoc(
+    _authentication: BearerAuthenticated
+) -> rocket::response::content::RawHtml<String> {
+    let html = format!(r#"
+<!DOCTYPE html>
+<html>
+<head>
+    <title>VaulTLS API Documentation</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="https://fonts.googleapis.com/css?family=Montserrat:300,400,700|Roboto:300,400,700" rel="stylesheet">
+    <style>
+        body {{ margin: 0; padding: 0; }}
+        .redoc-container {{ padding: 20px; }}
+        .auth-notice {{
+            background: #1a1a1a;
+            color: #fff;
+            padding: 10px 20px;
+            text-align: center;
+            font-family: 'Roboto', sans-serif;
+        }}
+    </style>
+</head>
+<body>
+    <div class="auth-notice">
+        🔒 Protected VaulTLS API Documentation - Authentication Required
+    </div>
+    <div id="redoc-container" class="redoc-container"></div>
+    <script src="https://cdn.redoc.ly/redoc/latest/bundles/redoc.standalone.js"></script>
+    <script>
+        Redoc.init('/api/openapi.json', {{
+            theme: {{
+                colors: {{
+                    primary: {{ main: '#3b82f6' }}
+                }}
+            }}
+        }}, document.getElementById('redoc-container'));
+    </script>
+</body>
+</html>
+"#);
+    rocket::response::content::RawHtml(html)
+}
+
+#[get("/")]
+/// Protected OpenAPI specification (requires authentication)
+pub(crate) async fn protected_openapi_spec(
+    _authentication: BearerAuthenticated
+) -> rocket::serde::json::Json<rocket_okapi::okapi::openapi3::OpenApi> {
+    // Return the OpenAPI specification
+    // This would need to be generated from the actual OpenAPI spec
+    // For now, return a minimal spec
+    use rocket_okapi::okapi::openapi3::*;
+
+    let spec = OpenApi {
+        openapi: "3.1.0".to_string(),
+        info: Info {
+            title: "VaulTLS API".to_string(),
+            version: "1.0.0".to_string(),
+            description: Some("Protected VaulTLS Certificate Management API".to_string()),
+            ..Default::default()
+        },
+        servers: vec![
+            Server {
+                url: "/api".to_string(),
+                description: Some("VaulTLS API Server".to_string()),
+                ..Default::default()
+            }
+        ],
+        paths: Default::default(),
+        components: Some(Components {
+            security_schemes: {
+                let mut schemes = std::collections::BTreeMap::new();
+                schemes.insert(
+                    "BearerAuth".to_string(),
+                    ReferenceOr::Object(SecurityScheme {
+                        scheme_type: SecuritySchemeType::Http {
+                            scheme: "bearer".to_string(),
+                            bearer_format: Some("JWT".to_string()),
+                        },
+                        description: Some("Bearer token authentication".to_string()),
+                        ..Default::default()
+                    })
+                );
+                schemes
+            },
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+
+    rocket::serde::json::Json(spec)
 }

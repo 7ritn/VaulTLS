@@ -227,44 +227,74 @@ pub async fn create_rocket() -> Rocket<Build> {
                 generate_compliance_report
             ],
         )
-        .mount(
-            "/api-docs",
-            make_rapidoc(&RapiDocConfig {
-                general: GeneralConfig {
-                    spec_urls: vec![UrlObject::new("VaulTLS API", "/api/openapi.json")],
-                    ..Default::default()
-                },
-                layout: LayoutConfig {
-                    layout: Layout::Column,
-                    render_style: RenderStyle::Read,
-                    response_area_height: "400px".to_string(),
-                },
-                schema: SchemaConfig {
-                    schema_style: SchemaStyle::Tree,
-                    ..Default::default()
-                },
-                hide_show: HideShowConfig {
-                    allow_spec_url_load: true,
-                    allow_spec_file_load: false,
-                    allow_search: true,
-                    allow_try: true,
-                    allow_server_selection: true,
-                    show_header: true,
-                    show_info: true,
-                    show_components: true,
-                    ..Default::default()
-                },
-                ..Default::default()
-            }),
-        )
-        .mount(
-            "/redoc",
-            make_redoc(&RedocConfig {
-                spec_url: "/api/openapi.json".to_string(),
-                title: Some("VaulTLS API Documentation".to_string()),
-                ..Default::default()
-            }),
-        )
+        // Conditionally mount API documentation based on environment variables
+        .attach(rocket::fairing::AdHoc::on_ignite("API Documentation", |rocket| async {
+            let docs_enabled = std::env::var("VAULTLS_API_DOCS_ENABLED")
+                .unwrap_or_else(|_| "true".to_string())
+                .parse::<bool>()
+                .unwrap_or(true);
+
+            let docs_require_auth = std::env::var("VAULTLS_API_DOCS_REQUIRE_AUTH")
+                .unwrap_or_else(|_| "false".to_string())
+                .parse::<bool>()
+                .unwrap_or(false);
+
+            if !docs_enabled {
+                println!("📚 API Documentation: DISABLED (VAULTLS_API_DOCS_ENABLED=false)");
+                return rocket;
+            }
+
+            if docs_require_auth {
+                println!("📚 API Documentation: ENABLED with authentication required");
+                // Mount protected documentation endpoints
+                rocket
+                    .mount("/api-docs", routes![protected_rapidoc])
+                    .mount("/redoc", routes![protected_redoc])
+                    .mount("/api/openapi.json", routes![protected_openapi_spec])
+            } else {
+                println!("📚 API Documentation: ENABLED (public access)");
+                // Mount public documentation endpoints
+                rocket
+                    .mount(
+                        "/api-docs",
+                        make_rapidoc(&RapiDocConfig {
+                            general: GeneralConfig {
+                                spec_urls: vec![UrlObject::new("VaulTLS API", "/api/openapi.json")],
+                                ..Default::default()
+                            },
+                            layout: LayoutConfig {
+                                layout: Layout::Column,
+                                render_style: RenderStyle::Read,
+                                response_area_height: "400px".to_string(),
+                            },
+                            schema: SchemaConfig {
+                                schema_style: SchemaStyle::Tree,
+                                ..Default::default()
+                            },
+                            hide_show: HideShowConfig {
+                                allow_spec_url_load: true,
+                                allow_spec_file_load: false,
+                                allow_search: true,
+                                allow_try: true,
+                                allow_server_selection: true,
+                                show_header: true,
+                                show_info: true,
+                                show_components: true,
+                                ..Default::default()
+                            },
+                            ..Default::default()
+                        }),
+                    )
+                    .mount(
+                        "/redoc",
+                        make_redoc(&RedocConfig {
+                            spec_url: "/api/openapi.json".to_string(),
+                            title: Some("VaulTLS API Documentation".to_string()),
+                            ..Default::default()
+                        }),
+                    )
+            }
+        }))
         .mount(
             "/redoc",
             make_redoc(&RedocConfig {
