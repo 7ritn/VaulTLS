@@ -45,12 +45,12 @@ pub(crate) fn api_docs() -> Json<serde_json::Value> {
         "version": VAULTLS_VERSION,
         "description": "VaulTLS is a self-hosted web application for managing mTLS certificates",
         "links": {
-            "interactive_docs": "/api-docs",
-            "redoc_docs": "/redoc",
+            "api_docs": "/docs",
             "openapi_spec": "/api/openapi.json",
             "authentication_guide": "https://github.com/7ritn/VaulTLS/blob/main/docs/api/authentication.md",
             "getting_started": "https://github.com/7ritn/VaulTLS/blob/main/docs/api/getting-started.md",
-            "endpoints_reference": "https://github.com/7ritn/VaulTLS/blob/main/docs/api/endpoints.md"
+            "endpoints_reference": "https://github.com/7ritn/VaulTLS/blob/main/docs/api/endpoints.md",
+            "migration_guide": "https://github.com/7ritn/VaulTLS/blob/main/docs/api/migration.md"
         },
         "documentation_security": {
             "enabled": std::env::var("VAULTLS_API_DOCS_ENABLED").unwrap_or_else(|_| "true".to_string()),
@@ -2442,43 +2442,6 @@ pub(crate) async fn generate_compliance_report(
 // ===== PROTECTED API DOCUMENTATION ENDPOINTS =====
 
 #[get("/")]
-/// Protected RapiDoc documentation (requires authentication)
-pub(crate) async fn protected_rapidoc(
-    _authentication: BearerAuthenticated
-) -> rocket::response::content::RawHtml<String> {
-    let html = format!(r#"
-<!DOCTYPE html>
-<html>
-<head>
-    <title>VaulTLS API Documentation</title>
-    <meta charset="utf-8">
-    <script type="module" src="https://unpkg.com/rapidoc/dist/rapidoc-min.js"></script>
-</head>
-<body>
-    <rapi-doc
-        spec-url="/api/openapi.json"
-        theme="dark"
-        render-style="read"
-        layout="column"
-        schema-style="tree"
-        allow-try="true"
-        allow-server-selection="true"
-        show-header="true"
-        show-info="true"
-        show-components="true"
-        response-area-height="400px">
-        <div slot="nav-logo">
-            <h2>🔒 VaulTLS API</h2>
-            <p>Protected Documentation</p>
-        </div>
-    </rapi-doc>
-</body>
-</html>
-"#);
-    rocket::response::content::RawHtml(html)
-}
-
-#[get("/")]
 /// Protected Redoc documentation (requires authentication)
 pub(crate) async fn protected_redoc(
     _authentication: BearerAuthenticated
@@ -2500,12 +2463,18 @@ pub(crate) async fn protected_redoc(
             padding: 10px 20px;
             text-align: center;
             font-family: 'Roboto', sans-serif;
+            border-bottom: 2px solid #3b82f6;
+        }}
+        .auth-notice h2 {{
+            margin: 0;
+            color: #3b82f6;
         }}
     </style>
 </head>
 <body>
     <div class="auth-notice">
-        🔒 Protected VaulTLS API Documentation - Authentication Required
+        <h2>🔒 VaulTLS API Documentation</h2>
+        <p>Protected Documentation - Bearer Token Authentication Required</p>
     </div>
     <div id="redoc-container" class="redoc-container"></div>
     <script src="https://cdn.redoc.ly/redoc/latest/bundles/redoc.standalone.js"></script>
@@ -2513,9 +2482,25 @@ pub(crate) async fn protected_redoc(
         Redoc.init('/api/openapi.json', {{
             theme: {{
                 colors: {{
-                    primary: {{ main: '#3b82f6' }}
+                    primary: {{ main: '#3b82f6' }},
+                    success: {{ main: '#10b981' }},
+                    warning: {{ main: '#f59e0b' }},
+                    error: {{ main: '#ef4444' }}
+                }},
+                typography: {{
+                    fontSize: '14px',
+                    lineHeight: '1.5em',
+                    code: {{
+                        fontSize: '13px',
+                        fontFamily: 'Courier, monospace'
+                    }}
                 }}
-            }}
+            }},
+            scrollYOffset: 60,
+            hideDownloadButton: false,
+            disableSearch: false,
+            expandResponses: '200,201',
+            jsonSampleExpandLevel: 2
         }}, document.getElementById('redoc-container'));
     </script>
 </body>

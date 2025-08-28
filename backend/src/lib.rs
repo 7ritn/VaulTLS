@@ -8,7 +8,6 @@ use rocket::fairing::AdHoc;
 use rocket::http::Method;
 use rocket_cors::{AllowedOrigins, CorsOptions};
 use rocket_okapi::openapi_get_routes;
-use rocket_okapi::rapidoc::{make_rapidoc, GeneralConfig, HideShowConfig, Layout, LayoutConfig, RapiDocConfig, RenderStyle, SchemaConfig, SchemaStyle};
 use rocket_okapi::redoc::{make_redoc, RedocConfig};
 use rocket_okapi::settings::UrlObject;
 use tokio::sync::Mutex;
@@ -197,48 +196,17 @@ pub async fn create_rocket() -> Rocket<Build> {
             }
 
             if docs_require_auth {
-                println!("📚 API Documentation: ENABLED with authentication required");
+                println!("📚 API Documentation: ENABLED with authentication required (Redoc only)");
                 // Mount protected documentation endpoints
                 rocket
-                    .mount("/api-docs", routes![protected_rapidoc])
-                    .mount("/redoc", routes![protected_redoc])
+                    .mount("/docs", routes![protected_redoc])
                     .mount("/api/openapi.json", routes![protected_openapi_spec])
             } else {
-                println!("📚 API Documentation: ENABLED (public access)");
-                // Mount public documentation endpoints
+                println!("📚 API Documentation: ENABLED (public access - Redoc only)");
+                // Mount public Redoc documentation
                 rocket
                     .mount(
-                        "/api-docs",
-                        make_rapidoc(&RapiDocConfig {
-                            general: GeneralConfig {
-                                spec_urls: vec![UrlObject::new("VaulTLS API", "/api/openapi.json")],
-                                ..Default::default()
-                            },
-                            layout: LayoutConfig {
-                                layout: Layout::Column,
-                                render_style: RenderStyle::Read,
-                                response_area_height: "400px".to_string(),
-                            },
-                            schema: SchemaConfig {
-                                schema_style: SchemaStyle::Tree,
-                                ..Default::default()
-                            },
-                            hide_show: HideShowConfig {
-                                allow_spec_url_load: true,
-                                allow_spec_file_load: false,
-                                allow_search: true,
-                                allow_try: true,
-                                allow_server_selection: true,
-                                show_header: true,
-                                show_info: true,
-                                show_components: true,
-                                ..Default::default()
-                            },
-                            ..Default::default()
-                        }),
-                    )
-                    .mount(
-                        "/redoc",
+                        "/docs",
                         make_redoc(&RedocConfig {
                             spec_url: "/api/openapi.json".to_string(),
                             title: Some("VaulTLS API Documentation".to_string()),

@@ -165,8 +165,7 @@ curl -X POST https://vaultls.company.com/api/tokens \
 
 ### API Documentation
 
-- **Interactive Docs**: `https://your-domain/api-docs` (RapiDoc)
-- **Reference Docs**: `https://your-domain/redoc` (Redoc)
+- **API Documentation**: `https://your-domain/docs` (Redoc)
 - **OpenAPI Spec**: `https://your-domain/api/openapi.json`
 
 ### Example API Usage
@@ -465,7 +464,7 @@ npm run test
 - ✅ Advanced Certificate Search (17 fields, 13 operators)
 - ✅ Batch Operations (revoke, restore, delete, renew)
 - ✅ Comprehensive Audit Logging and Reporting
-- ✅ OpenAPI 3.1 Documentation with RapiDoc/Redoc
+- ✅ OpenAPI 3.1 Documentation with Redoc
 - ✅ RFC 9457 Problem Details error responses
 - ✅ Multi-tenant architecture with complete isolation
 - ✅ Certificate chain validation and management

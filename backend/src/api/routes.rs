@@ -67,7 +67,7 @@ use crate::api::{
     fetch_settings, update_settings,
     
     // Protected Documentation
-    protected_rapidoc, protected_redoc, protected_openapi_spec,
+    protected_redoc, protected_openapi_spec,
 };
 
 /// API Version and Endpoint Organization
@@ -194,7 +194,6 @@ pub fn legacy_api_routes() -> Vec<Route> {
 /// These require authentication when VAULTLS_API_DOCS_REQUIRE_AUTH=true
 pub fn protected_docs_routes() -> Vec<Route> {
     openapi_get_routes![
-        protected_rapidoc,
         protected_redoc,
         protected_openapi_spec,
     ]
