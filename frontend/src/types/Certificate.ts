@@ -4,6 +4,11 @@ export enum CertificateType {
     CA = 2
 }
 
+export enum ClientCertificateType {
+    User = 0,
+    Device = 1,
+}
+
 export enum CertificateRenewMethod {
     None = 0,
     Notify = 1,
@@ -18,6 +23,7 @@ export interface Certificate {
     pkcs12_password: string;              // PKCS12 decryption password
     valid_until: string;                  // Expiration date of the certificate (UNIX timestamp in ms)
     certificate_type: CertificateType;    // Type of the certificate
+    client_certificate_type?: ClientCertificateType; // Only for Client certificates (User/Device)
     user_id: number;                      // User ID who owns the certificate
     renew_method: CertificateRenewMethod; // Method on what to do when the certificate is about to expire
 }

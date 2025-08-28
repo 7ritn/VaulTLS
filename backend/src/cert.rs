@@ -18,7 +18,7 @@ use passwords::PasswordGenerator;
 use rocket_okapi::JsonSchema;
 use serde::{Deserialize, Serialize};
 use crate::constants::CA_FILE_PATH;
-use crate::data::enums::{CertificateRenewMethod, CertificateType};
+use crate::data::enums::{CertificateRenewMethod, CertificateType, ClientCertificateType};
 use crate::data::enums::CertificateType::{Client, Server};
 use crate::ApiError;
 
@@ -30,6 +30,7 @@ pub struct Certificate {
     pub created_on: i64,
     pub valid_until: i64,
     pub certificate_type: CertificateType,
+    pub client_certificate_type: Option<ClientCertificateType>, // Only for Client certificates
     pub user_id: i64,
     pub renew_method: CertificateRenewMethod,
     pub tenant_id: String,
@@ -341,6 +342,7 @@ pub struct CaRotationResponse {
 pub struct CreateCertificateWithCaRequest {
     pub cert_name: String,
     pub cert_type: Option<CertificateType>,
+    pub client_cert_type: Option<ClientCertificateType>, // Required for Client certificates
     pub user_id: i64,
     pub validity_in_years: Option<u64>,
     pub dns_names: Option<Vec<String>>,
@@ -614,6 +616,14 @@ pub struct CertificateStatistics {
 pub struct CertificateTypeStats {
     pub server: i64,
     pub client: i64,
+    pub client_breakdown: ClientCertificateStats,
+}
+
+/// Client certificate breakdown by User/Device
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct ClientCertificateStats {
+    pub user: i64,
+    pub device: i64,
 }
 
 /// Algorithm usage statistics
@@ -1244,6 +1254,7 @@ impl CertificateBuilder {
             created_on: self.created_on,
             valid_until,
             certificate_type,
+            client_certificate_type: None, // Will be set by caller if needed
             pkcs12: pkcs12.to_der()?,
             pkcs12_password: self.pkcs12_password,
             ca_id,

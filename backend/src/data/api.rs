@@ -8,7 +8,7 @@ use rocket_okapi::okapi::schemars;
 use rocket_okapi::{okapi, JsonSchema, OpenApiError};
 use rocket_okapi::okapi::openapi3::{Responses, Response as OAResponse, MediaType, RefOr};
 use rocket_okapi::response::OpenApiResponderInner;
-use crate::data::enums::{CertificateRenewMethod, CertificateType, UserRole};
+use crate::data::enums::{CertificateRenewMethod, CertificateType, ClientCertificateType, UserRole};
 
 #[derive(Serialize, Deserialize, JsonSchema)]
 pub struct IsSetupResponse {
@@ -53,6 +53,7 @@ pub struct CreateUserCertificateRequest {
     pub system_generated_password: bool,
     pub pkcs12_password: Option<String>,
     pub cert_type: Option<CertificateType>,
+    pub client_cert_type: Option<ClientCertificateType>, // Required for Client certificates
     pub dns_names: Option<Vec<String>>,
     pub renew_method: Option<CertificateRenewMethod>
 }

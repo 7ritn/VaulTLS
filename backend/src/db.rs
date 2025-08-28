@@ -2754,6 +2754,18 @@ impl VaulTLSDB {
                 |row| row.get(0)
             )?;
 
+            let user_client_count: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM user_certificates WHERE tenant_id = ?1 AND type = 'Client' AND client_certificate_type = 'User'",
+                params![tenant_id],
+                |row| row.get(0)
+            ).unwrap_or(0);
+
+            let device_client_count: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM user_certificates WHERE tenant_id = ?1 AND type = 'Client' AND client_certificate_type = 'Device'",
+                params![tenant_id],
+                |row| row.get(0)
+            ).unwrap_or(0);
+
             // Recent activity
             let issued_last_7_days: i64 = conn.query_row(
                 "SELECT COUNT(*) FROM user_certificates WHERE tenant_id = ?1 AND created_on >= ?2",
@@ -2788,6 +2800,10 @@ impl VaulTLSDB {
                 by_type: crate::cert::CertificateTypeStats {
                     server: server_count,
                     client: client_count,
+                    client_breakdown: crate::cert::ClientCertificateStats {
+                        user: user_client_count,
+                        device: device_client_count,
+                    },
                 },
                 by_algorithm: Vec::new(), // TODO: Implement algorithm stats
                 by_ca: Vec::new(),        // TODO: Implement CA stats

@@ -614,6 +614,11 @@ components:
           type: string
           enum: [Server, Client]
           example: "Server"
+        client_certificate_type:
+          type: string
+          enum: [User, Device]
+          description: "Only applicable for Client certificates. Specifies whether the certificate is for User or Device authentication."
+          example: "User"
         user_id:
           type: integer
           example: 1

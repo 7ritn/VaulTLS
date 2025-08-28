@@ -369,9 +369,13 @@ pub(crate) async fn create_user_certificate(
     let mut cert = match payload.cert_type.unwrap_or_default() {
         CertificateType::Client => {
             let user = state.db.get_user(payload.user_id).await?;
-            cert_builder
+            let mut client_cert = cert_builder
                 .set_email_san(&user.email)?
-                .build_client()?
+                .build_client()?;
+
+            // Set client certificate type if specified
+            client_cert.client_certificate_type = payload.client_cert_type;
+            client_cert
         }
         CertificateType::Server => {
             let dns = payload.dns_names.clone().unwrap_or_default();
@@ -3176,16 +3180,26 @@ pub(crate) async fn create_user_certificate_legacy(
 
     let request = payload.into_inner();
 
+    // Validate client certificate type
+    if request.certificate_type == Some(CertificateType::Client) && request.client_cert_type.is_none() {
+        return Err(ApiError::BadRequest("client_cert_type is required for Client certificates".to_string()));
+    }
+
+    if request.certificate_type == Some(CertificateType::Server) && request.client_cert_type.is_some() {
+        return Err(ApiError::BadRequest("client_cert_type should not be specified for Server certificates".to_string()));
+    }
+
     // Convert legacy request to modern format
     let modern_request = CreateCertificateWithCaRequest {
-        name: request.name,
+        cert_name: request.name,
+        cert_type: request.certificate_type,
+        client_cert_type: request.client_cert_type,
         user_id: request.user_id,
-        certificate_type: request.certificate_type,
-        validity_years: request.validity_years,
+        validity_in_years: request.validity_years.map(|v| v as u64),
+        dns_names: request.dns_names,
+        pkcs12_password: request.pkcs12_password,
+        renew_method: request.renew_method,
         ca_selection: CaSelection::Auto,
-        profile_id: None,
-        sans: None,
-        metadata: None,
     };
 
     // Create certificate using modern implementation

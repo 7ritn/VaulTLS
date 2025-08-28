@@ -61,6 +61,44 @@ pub enum CertificateType {
     Server = 1
 }
 
+/// Client certificate classification for authentication purposes
+/// Only applies to Client certificates to distinguish between User and Device authentication
+#[derive(Serialize_repr, Deserialize_repr, JsonSchema, TryFromPrimitive, Clone, Debug, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum ClientCertificateType {
+    User = 0,
+    Device = 1,
+}
+
+impl FromSql for ClientCertificateType {
+    fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
+        match value {
+            ValueRef::Integer(i) => {
+                let value = i as u8;
+                ClientCertificateType::try_from(value)
+                    .map_err(|_| FromSqlError::InvalidType)
+            },
+            ValueRef::Text(s) => {
+                match s {
+                    b"User" => Ok(ClientCertificateType::User),
+                    b"Device" => Ok(ClientCertificateType::Device),
+                    _ => Err(FromSqlError::InvalidType),
+                }
+            },
+            _ => Err(FromSqlError::InvalidType),
+        }
+    }
+}
+
+impl ToSql for ClientCertificateType {
+    fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
+        match self {
+            ClientCertificateType::User => Ok(ToSqlOutput::from("User")),
+            ClientCertificateType::Device => Ok(ToSqlOutput::from("Device")),
+        }
+    }
+}
+
 impl FromSql for CertificateType {
     fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
         match value {
