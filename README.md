@@ -469,6 +469,10 @@ npm run test
 - ✅ RFC 9457 Problem Details error responses
 - ✅ Multi-tenant architecture with complete isolation
 - ✅ Certificate chain validation and management
+- ✅ Certificate Template System with variable substitution
+- ✅ Webhook Notifications for certificate events
+- ✅ HMAC signature verification for webhooks
+- ✅ Template-based certificate automation
 
 ### In Progress 🚧
 - 🚧 Frontend UI enhancements for new features
@@ -477,12 +481,13 @@ npm run test
 
 ### Planned 📋
 - 📋 Automatic certificate renewal workflows
-- 📋 Certificate template system
-- 📋 Webhook notifications for certificate events
 - 📋 ACME protocol support
 - 📋 Hardware Security Module (HSM) integration
 - 📋 Certificate transparency logging
 - 📋 Advanced user management and RBAC
+- 📋 Certificate lifecycle automation
+- 📋 Advanced monitoring and alerting
+- 📋 Certificate inventory management
 
 ## ⚙️ Configuration Reference
 
