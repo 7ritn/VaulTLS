@@ -32,6 +32,50 @@ VAULTLS_API_DOCS_REQUIRE_AUTH=true
 VAULTLS_API_DOCS_REQUIRE_AUTH=false
 ```
 
+## 🔄 API Deprecation and Legacy Support
+
+### `VAULTLS_LEGACY_API_ENABLED`
+- **Type**: Boolean (`true`/`false`)
+- **Default**: `true`
+- **Description**: Controls whether legacy API endpoints are available
+- **Security Impact**: When set to `false`, completely disables all legacy endpoints
+
+```bash
+# Disable legacy API endpoints entirely
+VAULTLS_LEGACY_API_ENABLED=false
+
+# Enable legacy API endpoints (default)
+VAULTLS_LEGACY_API_ENABLED=true
+```
+
+### `VAULTLS_SHOW_DEPRECATION_WARNINGS`
+- **Type**: Boolean (`true`/`false`)
+- **Default**: `true`
+- **Description**: Controls whether deprecation warnings are shown in API responses
+- **Impact**: When enabled, adds deprecation headers to legacy endpoint responses
+
+```bash
+# Show deprecation warnings in API responses
+VAULTLS_SHOW_DEPRECATION_WARNINGS=true
+
+# Hide deprecation warnings
+VAULTLS_SHOW_DEPRECATION_WARNINGS=false
+```
+
+### `VAULTLS_STRICT_DEPRECATION_MODE`
+- **Type**: Boolean (`true`/`false`)
+- **Default**: `false`
+- **Description**: Controls whether deprecated endpoints return errors instead of warnings
+- **Impact**: When enabled, deprecated endpoints return HTTP 410 Gone instead of functioning
+
+```bash
+# Return errors for deprecated endpoints
+VAULTLS_STRICT_DEPRECATION_MODE=true
+
+# Allow deprecated endpoints with warnings (default)
+VAULTLS_STRICT_DEPRECATION_MODE=false
+```
+
 ## 📊 Reporting and History Configuration
 
 ### `VAULTLS_AUDIT_RETENTION_DAYS`

@@ -7,3 +7,4 @@ mod audit_tests;
 mod integration_workflow_tests;
 mod template_tests;
 mod webhook_tests;
+mod unified_api_tests;

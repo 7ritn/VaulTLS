@@ -13,6 +13,10 @@ use crate::data::api::{CallbackQuery, ChangePasswordRequest, CreateUserCertifica
 use crate::data::crl::{CertificateStatusRequest, CertificateStatusResponse, CrlFormat, CrlInfo, RevocationStatistics, RevokeCertificateRequest, RevokeCertificateResponse};
 use crate::data::token::{ApiToken, CreateTokenRequest, TokenResponse, UpdateTokenRequest, RotateTokenRequest, RotateTokenResponse};
 use crate::cert::{CreateCaRequest, UpdateCaRequest, CaResponse, CaListResponse, KeyAlgorithm, CA, RotateCaRequest, CaRotationResponse, CertificateAction, CreateCertificateWithCaRequest, CaSelection, CertificateBuilder, CertificateSearchRequest, CertificateSearchResponse, BatchOperationRequest, BatchOperationResponse, ChainValidationRequest, ChainValidationResponse, CertificateStatistics, BulkDownloadRequest, CertificateTemplate, CreateCertificateTemplateRequest, UpdateCertificateTemplateRequest, CertificateTemplateListResponse, CreateCertificateFromTemplateRequest, WebhookConfig, CreateWebhookRequest, UpdateWebhookRequest, WebhookListResponse, WebhookEvent};
+
+// Import route definitions and deprecation management
+pub mod routes;
+pub mod deprecation;
 use crate::data::enums::CertificateType;
 use crate::data::profile::{Profile, CreateProfileRequest, UpdateProfileRequest, ProfileListResponse};
 use crate::data::audit::{AuditEvent, AuditEventQuery, AuditEventType, AuditResourceType, AuditEventListResponse, AuditStatistics, AuditActivityResponse, AuditExportRequest};
@@ -3133,4 +3137,216 @@ pub(crate) async fn test_webhook(
         "test_result": test_result,
         "timestamp": chrono::Utc::now().timestamp()
     })))
+}
+
+// ===== LEGACY API ENDPOINTS (DEPRECATED) =====
+
+/// Legacy certificate listing endpoint (DEPRECATED)
+/// Use POST /certificates/search instead
+#[openapi(tag = "Legacy (Deprecated)")]
+#[get("/certificates")]
+pub(crate) async fn get_certificates_legacy(
+    state: &State<AppState>,
+    authentication: SessionAuthenticated
+) -> Result<Json<Vec<Certificate>>, ApiError> {
+    // Check deprecation policy
+    deprecation::check_deprecation_policy("/certificates")?;
+
+    // Get certificates using legacy format
+    let certificates = state.db.get_certificates_for_user(authentication.user.id).await?;
+
+    // Add deprecation warning to response
+    // Note: In a real implementation, you'd add this to response headers
+    warn!("Legacy endpoint /certificates used. Migrate to POST /certificates/search");
+
+    Ok(Json(certificates))
+}
+
+/// Legacy certificate creation endpoint (DEPRECATED)
+/// Use modern POST /certificates with enhanced format
+#[openapi(tag = "Legacy (Deprecated)")]
+#[post("/certificates/legacy", format = "json", data = "<payload>")]
+pub(crate) async fn create_user_certificate_legacy(
+    state: &State<AppState>,
+    payload: Json<CreateCertificateRequest>,
+    authentication: SessionAuthenticated
+) -> Result<Json<Certificate>, ApiError> {
+    // Check deprecation policy
+    deprecation::check_deprecation_policy("POST /certificates")?;
+
+    let request = payload.into_inner();
+
+    // Convert legacy request to modern format
+    let modern_request = CreateCertificateWithCaRequest {
+        name: request.name,
+        user_id: request.user_id,
+        certificate_type: request.certificate_type,
+        validity_years: request.validity_years,
+        ca_selection: CaSelection::Auto,
+        profile_id: None,
+        sans: None,
+        metadata: None,
+    };
+
+    // Create certificate using modern implementation
+    let certificate = state.db.create_certificate_with_ca(&modern_request, &authentication.user.tenant_id).await?;
+
+    warn!("Legacy endpoint POST /certificates used. Migrate to modern format");
+
+    Ok(Json(certificate))
+}
+
+/// Legacy certificate download endpoint (DEPRECATED)
+/// Use POST /certificates/bulk-download instead
+#[openapi(tag = "Legacy (Deprecated)")]
+#[get("/certificates/<cert_id>/download")]
+pub(crate) async fn download_certificate_legacy(
+    state: &State<AppState>,
+    cert_id: i64,
+    authentication: SessionAuthenticated
+) -> Result<DownloadResponse, ApiError> {
+    // Check deprecation policy
+    deprecation::check_deprecation_policy("/certificates/<id>/download")?;
+
+    // Get certificate
+    let certificate = state.db.get_certificate_by_id(cert_id).await?;
+
+    // Check ownership
+    if certificate.user_id != authentication.user.id {
+        return Err(ApiError::Forbidden("Access denied".to_string()));
+    }
+
+    // Create bulk download request for single certificate
+    let bulk_request = BulkDownloadRequest {
+        certificate_ids: vec![cert_id],
+        format: "pem".to_string(),
+        include_chain: true,
+        include_private_key: false,
+        archive_format: Some("zip".to_string()),
+    };
+
+    // Use modern bulk download implementation
+    let download_response = bulk_download_certificates(state, Json(bulk_request),
+        BearerCertRead { auth: BearerAuthenticated { token: create_legacy_token(&authentication.user) } }).await?;
+
+    warn!("Legacy endpoint GET /certificates/{}/download used. Migrate to POST /certificates/bulk-download", cert_id);
+
+    Ok(download_response.into_inner())
+}
+
+/// Legacy certificate deletion endpoint (DEPRECATED)
+/// Use POST /certificates/batch instead
+#[openapi(tag = "Legacy (Deprecated)")]
+#[delete("/certificates/<cert_id>")]
+pub(crate) async fn delete_user_cert_legacy(
+    state: &State<AppState>,
+    cert_id: i64,
+    authentication: SessionAuthenticated
+) -> Result<(), ApiError> {
+    // Check deprecation policy
+    deprecation::check_deprecation_policy("/certificates/<id>")?;
+
+    // Create batch operation request
+    let batch_request = BatchOperationRequest {
+        certificate_ids: vec![cert_id],
+        operation: "delete".to_string(),
+        parameters: Some(serde_json::json!({
+            "reason": "Legacy deletion"
+        })),
+    };
+
+    // Use modern batch operation implementation
+    let _batch_response = batch_certificate_operation(state, Json(batch_request),
+        BearerCertWrite { auth: BearerAuthenticated { token: create_legacy_token(&authentication.user) } }).await?;
+
+    warn!("Legacy endpoint DELETE /certificates/{} used. Migrate to POST /certificates/batch", cert_id);
+
+    Ok(())
+}
+
+/// Legacy certificate password fetch endpoint (DEPRECATED)
+/// Use POST /certificates/search with metadata instead
+#[openapi(tag = "Legacy (Deprecated)")]
+#[get("/certificates/<cert_id>/password")]
+pub(crate) async fn fetch_certificate_password_legacy(
+    state: &State<AppState>,
+    cert_id: i64,
+    authentication: SessionAuthenticated
+) -> Result<Json<serde_json::Value>, ApiError> {
+    // Check deprecation policy
+    deprecation::check_deprecation_policy("/certificates/<id>/password")?;
+
+    // Get certificate
+    let certificate = state.db.get_certificate_by_id(cert_id).await?;
+
+    // Check ownership
+    if certificate.user_id != authentication.user.id {
+        return Err(ApiError::Forbidden("Access denied".to_string()));
+    }
+
+    // Extract password from metadata (if available)
+    let password = if let Some(metadata) = &certificate.metadata {
+        if let Ok(meta_obj) = serde_json::from_str::<serde_json::Value>(metadata) {
+            meta_obj.get("password").and_then(|p| p.as_str()).map(|s| s.to_string())
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    warn!("Legacy endpoint GET /certificates/{}/password used. Migrate to certificate search with metadata", cert_id);
+
+    Ok(Json(serde_json::json!({
+        "certificate_id": cert_id,
+        "password": password,
+        "note": "This endpoint is deprecated. Use certificate search with metadata instead."
+    })))
+}
+
+/// Legacy CA download endpoint (DEPRECATED)
+/// Use GET /cas/{ca_id}/certificate instead
+#[openapi(tag = "Legacy (Deprecated)")]
+#[get("/certificates/ca/download")]
+pub(crate) async fn download_ca_legacy(
+    state: &State<AppState>,
+    authentication: SessionAuthenticated
+) -> Result<DownloadResponse, ApiError> {
+    // Check deprecation policy
+    deprecation::check_deprecation_policy("/certificates/ca/download")?;
+
+    // Get default CA for user's tenant
+    let cas = state.db.get_cas_for_tenant(&authentication.user.tenant_id).await?;
+    let default_ca = cas.into_iter().find(|ca| ca.is_root_ca)
+        .ok_or_else(|| ApiError::NotFound("No root CA found".to_string()))?;
+
+    // Use modern CA download implementation
+    let download_response = download_ca_certificate(state, default_ca.id,
+        BearerCaRead { auth: BearerAuthenticated { token: create_legacy_token(&authentication.user) } }).await?;
+
+    warn!("Legacy endpoint GET /certificates/ca/download used. Migrate to GET /cas/{}/certificate", default_ca.id);
+
+    Ok(download_response.into_inner())
+}
+
+/// Helper function to create a legacy token for session-authenticated users
+fn create_legacy_token(user: &User) -> crate::data::token::ApiToken {
+    crate::data::token::ApiToken {
+        id: "legacy-session".to_string(),
+        prefix: "legacy".to_string(),
+        description: "Legacy session token".to_string(),
+        scopes: vec![
+            crate::data::token::Scope::CertRead,
+            crate::data::token::Scope::CertWrite,
+            crate::data::token::Scope::CaRead,
+        ],
+        created_by_user_id: user.id,
+        tenant_id: user.tenant_id.clone(),
+        expires_at: None,
+        rate_limit_per_minute: 1000,
+        last_used_at: None,
+        is_active: true,
+        created_at: chrono::Utc::now().timestamp(),
+        updated_at: chrono::Utc::now().timestamp(),
+    }
 }

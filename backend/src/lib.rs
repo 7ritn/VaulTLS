@@ -162,87 +162,23 @@ pub async fn create_rocket() -> Rocket<Build> {
     rocket::build()
         .configure(figment)
         .manage(app_state)
-        .mount(
-            "/api",
-            openapi_get_routes![
-                version,
-                api_docs,
-                get_certificates,
-                create_user_certificate,
-                download_ca,
-                download_certificate,
-                delete_user_cert,
-                fetch_certificate_password,
-                fetch_settings,
-                update_settings,
-                is_setup,
-                setup,
-                login,
-                change_password,
-                logout,
-                oidc_login,
-                oidc_callback,
-                get_current_user,
-                get_users,
-                create_user,
-                delete_user,
-                update_user,
-                revoke_certificate,
-                restore_certificate,
-                download_crl,
-                get_crl_info,
-                check_certificate_status,
-                get_revocation_statistics,
-                generate_crl,
-                create_api_token,
-                list_api_tokens,
-                get_api_token,
-                update_api_token,
-                rotate_api_token,
-                revoke_api_token,
-                delete_api_token,
-                create_ca,
-                list_cas,
-                get_ca,
-                update_ca,
-                delete_ca,
-                download_ca_certificate,
-                download_ca_chain,
-                rotate_ca_key,
-                create_certificate_with_ca,
-                get_available_cas,
-                create_profile,
-                list_profiles,
-                get_profile,
-                update_profile,
-                delete_profile,
-                search_certificates,
-                batch_certificate_operation,
-                get_certificate_chain,
-                validate_certificate_chain,
-                get_expiring_certificates,
-                get_certificate_statistics,
-                bulk_download_certificates,
-                get_audit_events,
-                search_audit_events,
-                get_audit_statistics,
-                get_audit_activity,
-                export_audit_events,
-                generate_compliance_report,
-                create_certificate_template,
-                list_certificate_templates,
-                get_certificate_template,
-                update_certificate_template,
-                delete_certificate_template,
-                create_certificate_from_template,
-                create_webhook,
-                list_webhooks,
-                get_webhook,
-                update_webhook,
-                delete_webhook,
-                test_webhook
-            ],
-        )
+        .mount("/api", crate::api::routes::modern_api_routes())
+        // Conditionally mount legacy routes for backward compatibility
+        .attach(rocket::fairing::AdHoc::on_ignite("Legacy API Routes", |rocket| async {
+            let legacy_enabled = std::env::var("VAULTLS_LEGACY_API_ENABLED")
+                .unwrap_or_else(|_| "true".to_string())
+                .parse::<bool>()
+                .unwrap_or(true);
+
+            if legacy_enabled {
+                println!("🔄 Legacy API Routes: ENABLED (VAULTLS_LEGACY_API_ENABLED=true)");
+                println!("⚠️  Warning: Legacy routes are deprecated and will be removed in v2.1");
+                rocket.mount("/api/legacy", crate::api::routes::legacy_api_routes())
+            } else {
+                println!("🚫 Legacy API Routes: DISABLED (VAULTLS_LEGACY_API_ENABLED=false)");
+                rocket
+            }
+        }))
         // Conditionally mount API documentation based on environment variables
         .attach(rocket::fairing::AdHoc::on_ignite("API Documentation", |rocket| async {
             let docs_enabled = std::env::var("VAULTLS_API_DOCS_ENABLED")
@@ -345,75 +281,5 @@ pub async fn create_test_rocket() -> Rocket<Build> {
     };
 
 
-    rocket::build()
-        .manage(app_state)
-        .mount(
-            "/",
-            openapi_get_routes![
-                version,
-                api_docs,
-                get_certificates,
-                create_user_certificate,
-                download_ca,
-                download_certificate,
-                delete_user_cert,
-                fetch_certificate_password,
-                fetch_settings,
-                update_settings,
-                is_setup,
-                setup,
-                login,
-                change_password,
-                logout,
-                oidc_login,
-                oidc_callback,
-                get_current_user,
-                get_users,
-                create_user,
-                delete_user,
-                update_user,
-                revoke_certificate,
-                restore_certificate,
-                download_crl,
-                get_crl_info,
-                check_certificate_status,
-                get_revocation_statistics,
-                generate_crl,
-                create_api_token,
-                list_api_tokens,
-                get_api_token,
-                update_api_token,
-                rotate_api_token,
-                revoke_api_token,
-                delete_api_token,
-                create_ca,
-                list_cas,
-                get_ca,
-                update_ca,
-                delete_ca,
-                download_ca_certificate,
-                download_ca_chain,
-                rotate_ca_key,
-                create_certificate_with_ca,
-                get_available_cas,
-                create_profile,
-                list_profiles,
-                get_profile,
-                update_profile,
-                delete_profile,
-                search_certificates,
-                batch_certificate_operation,
-                get_certificate_chain,
-                validate_certificate_chain,
-                get_expiring_certificates,
-                get_certificate_statistics,
-                bulk_download_certificates,
-                get_audit_events,
-                search_audit_events,
-                get_audit_statistics,
-                get_audit_activity,
-                export_audit_events,
-                generate_compliance_report
-            ],
-        )
+
 }
