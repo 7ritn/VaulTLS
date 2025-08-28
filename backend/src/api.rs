@@ -12,7 +12,7 @@ use crate::constants::VAULTLS_VERSION;
 use crate::data::api::{CallbackQuery, ChangePasswordRequest, CreateUserCertificateRequest, CreateUserRequest, DownloadResponse, IsSetupResponse, LoginRequest, SetupRequest};
 use crate::data::crl::{CertificateStatusRequest, CertificateStatusResponse, CrlFormat, CrlInfo, RevocationStatistics, RevokeCertificateRequest, RevokeCertificateResponse};
 use crate::data::token::{ApiToken, CreateTokenRequest, TokenResponse, UpdateTokenRequest, RotateTokenRequest, RotateTokenResponse};
-use crate::cert::{CreateCaRequest, UpdateCaRequest, CaResponse, CaListResponse, KeyAlgorithm, CA, RotateCaRequest, CaRotationResponse, CertificateAction, CreateCertificateWithCaRequest, CaSelection, CertificateBuilder, CertificateSearchRequest, CertificateSearchResponse, BatchOperationRequest, BatchOperationResponse, ChainValidationRequest, ChainValidationResponse, CertificateStatistics, BulkDownloadRequest};
+use crate::cert::{CreateCaRequest, UpdateCaRequest, CaResponse, CaListResponse, KeyAlgorithm, CA, RotateCaRequest, CaRotationResponse, CertificateAction, CreateCertificateWithCaRequest, CaSelection, CertificateBuilder, CertificateSearchRequest, CertificateSearchResponse, BatchOperationRequest, BatchOperationResponse, ChainValidationRequest, ChainValidationResponse, CertificateStatistics, BulkDownloadRequest, CertificateTemplate, CreateCertificateTemplateRequest, UpdateCertificateTemplateRequest, CertificateTemplateListResponse, CreateCertificateFromTemplateRequest, WebhookConfig, CreateWebhookRequest, UpdateWebhookRequest, WebhookListResponse, WebhookEvent};
 use crate::data::enums::CertificateType;
 use crate::data::profile::{Profile, CreateProfileRequest, UpdateProfileRequest, ProfileListResponse};
 use crate::data::audit::{AuditEvent, AuditEventQuery, AuditEventType, AuditResourceType, AuditEventListResponse, AuditStatistics, AuditActivityResponse, AuditExportRequest};
@@ -2564,4 +2564,573 @@ pub(crate) async fn protected_openapi_spec(
     };
 
     rocket::serde::json::Json(spec)
+}
+
+// ===== CERTIFICATE TEMPLATE ENDPOINTS =====
+
+#[openapi(tag = "Certificate Templates")]
+#[post("/templates", format = "json", data = "<payload>")]
+/// Create a new certificate template. Requires cert.write scope.
+pub(crate) async fn create_certificate_template(
+    state: &State<AppState>,
+    payload: Json<CreateCertificateTemplateRequest>,
+    authentication: BearerCertWrite
+) -> Result<Json<CertificateTemplate>, ApiError> {
+    let request = payload.into_inner();
+
+    // Validate request
+    if request.name.trim().is_empty() {
+        return Err(ApiError::BadRequest("Template name cannot be empty".to_string()));
+    }
+
+    if request.default_validity_years < 1 || request.default_validity_years > 10 {
+        return Err(ApiError::BadRequest("Validity years must be between 1 and 10".to_string()));
+    }
+
+    // Check if template name already exists for this tenant
+    if let Ok(_) = state.db.get_template_by_name(&request.name, &authentication.auth.token.tenant_id).await {
+        return Err(ApiError::resource_already_exists("Template", &request.name));
+    }
+
+    // Validate profile exists
+    let _profile = state.db.get_profile_by_id(&request.profile_id).await?;
+
+    // Create template
+    let template = CertificateTemplate {
+        id: uuid::Uuid::new_v4().to_string(),
+        name: request.name.clone(),
+        description: request.description,
+        certificate_type: request.certificate_type,
+        profile_id: request.profile_id,
+        default_validity_years: request.default_validity_years,
+        default_key_algorithm: request.default_key_algorithm,
+        san_template: request.san_template,
+        metadata_template: request.metadata_template,
+        tenant_id: authentication.auth.token.tenant_id.clone(),
+        created_at: chrono::Utc::now().timestamp(),
+    };
+
+    // Insert into database
+    state.db.insert_certificate_template(&template).await?;
+
+    // Log audit event
+    let _ = state.db.log_audit_event(
+        "template.create",
+        Some(authentication.auth.token.created_by_user_id),
+        Some(&authentication.auth.token.tenant_id),
+        Some(&template.id),
+        Some(&format!("Created certificate template: {}", request.name)),
+    ).await;
+
+    Ok(Json(template))
+}
+
+#[openapi(tag = "Certificate Templates")]
+#[get("/templates?<page>&<per_page>")]
+/// List certificate templates for the current tenant. Requires cert.read scope.
+pub(crate) async fn list_certificate_templates(
+    state: &State<AppState>,
+    page: Option<i32>,
+    per_page: Option<i32>,
+    authentication: BearerCertRead
+) -> Result<Json<CertificateTemplateListResponse>, ApiError> {
+    let page = page.unwrap_or(1).max(1);
+    let per_page = per_page.unwrap_or(20).min(100).max(1);
+
+    // Get templates for tenant
+    let templates = state.db.get_templates_for_tenant(&authentication.auth.token.tenant_id).await?;
+
+    // Apply pagination
+    let total = templates.len() as i64;
+    let start = ((page - 1) * per_page) as usize;
+    let end = (start + per_page as usize).min(templates.len());
+    let paginated_templates = templates[start..end].to_vec();
+
+    let response = CertificateTemplateListResponse {
+        templates: paginated_templates,
+        total,
+        page,
+        per_page,
+        has_more: end < templates.len(),
+    };
+
+    Ok(Json(response))
+}
+
+#[openapi(tag = "Certificate Templates")]
+#[get("/templates/<template_id>")]
+/// Get certificate template details. Requires cert.read scope.
+pub(crate) async fn get_certificate_template(
+    state: &State<AppState>,
+    template_id: String,
+    authentication: BearerCertRead
+) -> Result<Json<CertificateTemplate>, ApiError> {
+    // Get template
+    let template = state.db.get_certificate_template_by_id(&template_id).await?;
+
+    // Check tenant access
+    if template.tenant_id != authentication.auth.token.tenant_id {
+        return Err(ApiError::tenant_access_denied());
+    }
+
+    Ok(Json(template))
+}
+
+#[openapi(tag = "Certificate Templates")]
+#[patch("/templates/<template_id>", format = "json", data = "<payload>")]
+/// Update certificate template. Requires cert.write scope.
+pub(crate) async fn update_certificate_template(
+    state: &State<AppState>,
+    template_id: String,
+    payload: Json<UpdateCertificateTemplateRequest>,
+    authentication: BearerCertWrite
+) -> Result<Json<CertificateTemplate>, ApiError> {
+    let request = payload.into_inner();
+
+    // Get existing template
+    let mut template = state.db.get_certificate_template_by_id(&template_id).await?;
+
+    // Check tenant access
+    if template.tenant_id != authentication.auth.token.tenant_id {
+        return Err(ApiError::tenant_access_denied());
+    }
+
+    // Update fields
+    if let Some(name) = request.name {
+        if name.trim().is_empty() {
+            return Err(ApiError::BadRequest("Template name cannot be empty".to_string()));
+        }
+
+        // Check if new name conflicts with existing template
+        if name != template.name {
+            if let Ok(_) = state.db.get_template_by_name(&name, &authentication.auth.token.tenant_id).await {
+                return Err(ApiError::resource_already_exists("Template", &name));
+            }
+        }
+
+        template.name = name;
+    }
+
+    if let Some(description) = request.description {
+        template.description = description;
+    }
+
+    if let Some(certificate_type) = request.certificate_type {
+        template.certificate_type = certificate_type;
+    }
+
+    if let Some(profile_id) = request.profile_id {
+        // Validate profile exists
+        let _profile = state.db.get_profile_by_id(&profile_id).await?;
+        template.profile_id = profile_id;
+    }
+
+    if let Some(validity_years) = request.default_validity_years {
+        if validity_years < 1 || validity_years > 10 {
+            return Err(ApiError::BadRequest("Validity years must be between 1 and 10".to_string()));
+        }
+        template.default_validity_years = validity_years;
+    }
+
+    if let Some(key_algorithm) = request.default_key_algorithm {
+        template.default_key_algorithm = key_algorithm;
+    }
+
+    if let Some(san_template) = request.san_template {
+        template.san_template = Some(san_template);
+    }
+
+    if let Some(metadata_template) = request.metadata_template {
+        template.metadata_template = Some(metadata_template);
+    }
+
+    // Update in database
+    state.db.update_certificate_template(&template).await?;
+
+    // Log audit event
+    let _ = state.db.log_audit_event(
+        "template.update",
+        Some(authentication.auth.token.created_by_user_id),
+        Some(&authentication.auth.token.tenant_id),
+        Some(&template.id),
+        Some(&format!("Updated certificate template: {}", template.name)),
+    ).await;
+
+    Ok(Json(template))
+}
+
+#[openapi(tag = "Certificate Templates")]
+#[delete("/templates/<template_id>")]
+/// Delete certificate template. Requires cert.write scope.
+pub(crate) async fn delete_certificate_template(
+    state: &State<AppState>,
+    template_id: String,
+    authentication: BearerCertWrite
+) -> Result<(), ApiError> {
+    // Get template to check ownership
+    let template = state.db.get_certificate_template_by_id(&template_id).await?;
+
+    // Check tenant access
+    if template.tenant_id != authentication.auth.token.tenant_id {
+        return Err(ApiError::tenant_access_denied());
+    }
+
+    // Check if template is in use
+    let usage_count = state.db.get_certificate_count_for_template(&template_id).await?;
+    if usage_count > 0 {
+        return Err(ApiError::Conflict(
+            format!("Cannot delete template '{}' as it is used by {} certificates", template.name, usage_count)
+        ));
+    }
+
+    // Delete from database
+    state.db.delete_certificate_template(&template_id).await?;
+
+    // Log audit event
+    let _ = state.db.log_audit_event(
+        "template.delete",
+        Some(authentication.auth.token.created_by_user_id),
+        Some(&authentication.auth.token.tenant_id),
+        Some(&template.id),
+        Some(&format!("Deleted certificate template: {}", template.name)),
+    ).await;
+
+    Ok(())
+}
+
+#[openapi(tag = "Certificate Templates")]
+#[post("/templates/<template_id>/certificates", format = "json", data = "<payload>")]
+/// Create certificate from template. Requires cert.write scope.
+pub(crate) async fn create_certificate_from_template(
+    state: &State<AppState>,
+    template_id: String,
+    payload: Json<CreateCertificateFromTemplateRequest>,
+    authentication: BearerCertWrite
+) -> Result<Json<Certificate>, ApiError> {
+    let request = payload.into_inner();
+
+    // Get template
+    let template = state.db.get_certificate_template_by_id(&template_id).await?;
+
+    // Check tenant access
+    if template.tenant_id != authentication.auth.token.tenant_id {
+        return Err(ApiError::tenant_access_denied());
+    }
+
+    // Process template variables and create certificate
+    let processed_san = if let Some(san_template) = &template.san_template {
+        if let Some(variables) = &request.template_variables {
+            state.db.process_template_variables(san_template, variables).await?
+        } else {
+            san_template.clone()
+        }
+    } else {
+        String::new()
+    };
+
+    // Create certificate using template settings
+    let validity_years = request.validity_years.unwrap_or(template.default_validity_years);
+
+    // Build certificate request from template
+    let cert_request = CreateCertificateWithCaRequest {
+        name: request.name,
+        user_id: request.user_id,
+        certificate_type: template.certificate_type.clone(),
+        validity_years,
+        ca_selection: request.ca_selection.unwrap_or(CaSelection::Auto),
+        profile_id: Some(template.profile_id.clone()),
+        sans: if processed_san.is_empty() { None } else { Some(processed_san) },
+        metadata: template.metadata_template.clone(),
+    };
+
+    // Create the certificate
+    let certificate = state.db.create_certificate_with_ca(&cert_request, &authentication.auth.token.tenant_id).await?;
+
+    // Log audit event
+    let _ = state.db.log_audit_event(
+        "certificate.create_from_template",
+        Some(authentication.auth.token.created_by_user_id),
+        Some(&authentication.auth.token.tenant_id),
+        Some(&certificate.id.to_string()),
+        Some(&format!("Created certificate '{}' from template '{}'", certificate.name, template.name)),
+    ).await;
+
+    // Trigger webhook notification
+    let _ = state.webhook_service.trigger_certificate_event(
+        WebhookEvent::CertificateCreated,
+        &certificate,
+        &authentication.auth.token.tenant_id
+    ).await;
+
+    Ok(Json(certificate))
+}
+
+// ===== WEBHOOK ENDPOINTS =====
+
+#[openapi(tag = "Webhooks")]
+#[post("/webhooks", format = "json", data = "<payload>")]
+/// Create a new webhook configuration. Requires admin scope.
+pub(crate) async fn create_webhook(
+    state: &State<AppState>,
+    payload: Json<CreateWebhookRequest>,
+    authentication: BearerTokenAdmin
+) -> Result<Json<WebhookConfig>, ApiError> {
+    let request = payload.into_inner();
+
+    // Validate request
+    if request.name.trim().is_empty() {
+        return Err(ApiError::BadRequest("Webhook name cannot be empty".to_string()));
+    }
+
+    if !request.url.starts_with("http://") && !request.url.starts_with("https://") {
+        return Err(ApiError::BadRequest("Webhook URL must be a valid HTTP/HTTPS URL".to_string()));
+    }
+
+    if request.events.is_empty() {
+        return Err(ApiError::BadRequest("At least one webhook event must be specified".to_string()));
+    }
+
+    // Check if webhook name already exists for this tenant
+    if let Ok(_) = state.db.get_webhook_by_name(&request.name, &authentication.auth.token.tenant_id).await {
+        return Err(ApiError::resource_already_exists("Webhook", &request.name));
+    }
+
+    // Create webhook
+    let webhook = WebhookConfig {
+        id: uuid::Uuid::new_v4().to_string(),
+        name: request.name.clone(),
+        url: request.url,
+        events: request.events,
+        secret: request.secret,
+        headers: request.headers,
+        timeout_seconds: request.timeout_seconds.unwrap_or(30),
+        retry_attempts: request.retry_attempts.unwrap_or(3),
+        is_active: true,
+        tenant_id: authentication.auth.token.tenant_id.clone(),
+        created_at: chrono::Utc::now().timestamp(),
+        last_triggered: None,
+        success_count: 0,
+        failure_count: 0,
+    };
+
+    // Insert into database
+    state.db.insert_webhook(&webhook).await?;
+
+    // Log audit event
+    let _ = state.db.log_audit_event(
+        "webhook.create",
+        Some(authentication.auth.token.created_by_user_id),
+        Some(&authentication.auth.token.tenant_id),
+        Some(&webhook.id),
+        Some(&format!("Created webhook: {}", request.name)),
+    ).await;
+
+    Ok(Json(webhook))
+}
+
+#[openapi(tag = "Webhooks")]
+#[get("/webhooks?<page>&<per_page>")]
+/// List webhook configurations for the current tenant. Requires admin scope.
+pub(crate) async fn list_webhooks(
+    state: &State<AppState>,
+    page: Option<i32>,
+    per_page: Option<i32>,
+    authentication: BearerTokenAdmin
+) -> Result<Json<WebhookListResponse>, ApiError> {
+    let page = page.unwrap_or(1).max(1);
+    let per_page = per_page.unwrap_or(20).min(100).max(1);
+
+    // Get webhooks for tenant
+    let webhooks = state.db.get_webhooks_for_tenant(&authentication.auth.token.tenant_id).await?;
+
+    // Apply pagination
+    let total = webhooks.len() as i64;
+    let start = ((page - 1) * per_page) as usize;
+    let end = (start + per_page as usize).min(webhooks.len());
+    let paginated_webhooks = webhooks[start..end].to_vec();
+
+    let response = WebhookListResponse {
+        webhooks: paginated_webhooks,
+        total,
+        page,
+        per_page,
+        has_more: end < webhooks.len(),
+    };
+
+    Ok(Json(response))
+}
+
+#[openapi(tag = "Webhooks")]
+#[get("/webhooks/<webhook_id>")]
+/// Get webhook configuration details. Requires admin scope.
+pub(crate) async fn get_webhook(
+    state: &State<AppState>,
+    webhook_id: String,
+    authentication: BearerTokenAdmin
+) -> Result<Json<WebhookConfig>, ApiError> {
+    // Get webhook
+    let webhook = state.db.get_webhook_by_id(&webhook_id).await?;
+
+    // Check tenant access
+    if webhook.tenant_id != authentication.auth.token.tenant_id {
+        return Err(ApiError::tenant_access_denied());
+    }
+
+    Ok(Json(webhook))
+}
+
+#[openapi(tag = "Webhooks")]
+#[patch("/webhooks/<webhook_id>", format = "json", data = "<payload>")]
+/// Update webhook configuration. Requires admin scope.
+pub(crate) async fn update_webhook(
+    state: &State<AppState>,
+    webhook_id: String,
+    payload: Json<UpdateWebhookRequest>,
+    authentication: BearerTokenAdmin
+) -> Result<Json<WebhookConfig>, ApiError> {
+    let request = payload.into_inner();
+
+    // Get existing webhook
+    let mut webhook = state.db.get_webhook_by_id(&webhook_id).await?;
+
+    // Check tenant access
+    if webhook.tenant_id != authentication.auth.token.tenant_id {
+        return Err(ApiError::tenant_access_denied());
+    }
+
+    // Update fields
+    if let Some(name) = request.name {
+        if name.trim().is_empty() {
+            return Err(ApiError::BadRequest("Webhook name cannot be empty".to_string()));
+        }
+
+        // Check if new name conflicts with existing webhook
+        if name != webhook.name {
+            if let Ok(_) = state.db.get_webhook_by_name(&name, &authentication.auth.token.tenant_id).await {
+                return Err(ApiError::resource_already_exists("Webhook", &name));
+            }
+        }
+
+        webhook.name = name;
+    }
+
+    if let Some(url) = request.url {
+        if !url.starts_with("http://") && !url.starts_with("https://") {
+            return Err(ApiError::BadRequest("Webhook URL must be a valid HTTP/HTTPS URL".to_string()));
+        }
+        webhook.url = url;
+    }
+
+    if let Some(events) = request.events {
+        if events.is_empty() {
+            return Err(ApiError::BadRequest("At least one webhook event must be specified".to_string()));
+        }
+        webhook.events = events;
+    }
+
+    if let Some(secret) = request.secret {
+        webhook.secret = Some(secret);
+    }
+
+    if let Some(headers) = request.headers {
+        webhook.headers = Some(headers);
+    }
+
+    if let Some(timeout_seconds) = request.timeout_seconds {
+        if timeout_seconds < 1 || timeout_seconds > 300 {
+            return Err(ApiError::BadRequest("Timeout must be between 1 and 300 seconds".to_string()));
+        }
+        webhook.timeout_seconds = timeout_seconds;
+    }
+
+    if let Some(retry_attempts) = request.retry_attempts {
+        if retry_attempts < 0 || retry_attempts > 10 {
+            return Err(ApiError::BadRequest("Retry attempts must be between 0 and 10".to_string()));
+        }
+        webhook.retry_attempts = retry_attempts;
+    }
+
+    if let Some(is_active) = request.is_active {
+        webhook.is_active = is_active;
+    }
+
+    // Update in database
+    state.db.update_webhook(&webhook).await?;
+
+    // Log audit event
+    let _ = state.db.log_audit_event(
+        "webhook.update",
+        Some(authentication.auth.token.created_by_user_id),
+        Some(&authentication.auth.token.tenant_id),
+        Some(&webhook.id),
+        Some(&format!("Updated webhook: {}", webhook.name)),
+    ).await;
+
+    Ok(Json(webhook))
+}
+
+#[openapi(tag = "Webhooks")]
+#[delete("/webhooks/<webhook_id>")]
+/// Delete webhook configuration. Requires admin scope.
+pub(crate) async fn delete_webhook(
+    state: &State<AppState>,
+    webhook_id: String,
+    authentication: BearerTokenAdmin
+) -> Result<(), ApiError> {
+    // Get webhook to check ownership
+    let webhook = state.db.get_webhook_by_id(&webhook_id).await?;
+
+    // Check tenant access
+    if webhook.tenant_id != authentication.auth.token.tenant_id {
+        return Err(ApiError::tenant_access_denied());
+    }
+
+    // Delete from database
+    state.db.delete_webhook(&webhook_id).await?;
+
+    // Log audit event
+    let _ = state.db.log_audit_event(
+        "webhook.delete",
+        Some(authentication.auth.token.created_by_user_id),
+        Some(&authentication.auth.token.tenant_id),
+        Some(&webhook.id),
+        Some(&format!("Deleted webhook: {}", webhook.name)),
+    ).await;
+
+    Ok(())
+}
+
+#[openapi(tag = "Webhooks")]
+#[post("/webhooks/<webhook_id>/test")]
+/// Test webhook configuration by sending a test event. Requires admin scope.
+pub(crate) async fn test_webhook(
+    state: &State<AppState>,
+    webhook_id: String,
+    authentication: BearerTokenAdmin
+) -> Result<Json<serde_json::Value>, ApiError> {
+    // Get webhook
+    let webhook = state.db.get_webhook_by_id(&webhook_id).await?;
+
+    // Check tenant access
+    if webhook.tenant_id != authentication.auth.token.tenant_id {
+        return Err(ApiError::tenant_access_denied());
+    }
+
+    // Send test webhook
+    let test_result = state.webhook_service.send_test_webhook(&webhook).await?;
+
+    // Log audit event
+    let _ = state.db.log_audit_event(
+        "webhook.test",
+        Some(authentication.auth.token.created_by_user_id),
+        Some(&authentication.auth.token.tenant_id),
+        Some(&webhook.id),
+        Some(&format!("Tested webhook: {}", webhook.name)),
+    ).await;
+
+    Ok(Json(serde_json::json!({
+        "webhook_id": webhook.id,
+        "test_result": test_result,
+        "timestamp": chrono::Utc::now().timestamp()
+    })))
 }

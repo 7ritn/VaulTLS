@@ -709,6 +709,261 @@ pub struct CreateCertificateFromTemplateRequest {
     pub user_id: i64,
     pub template_variables: Option<serde_json::Value>, // For SAN template substitution
     pub validity_years: Option<i32>, // Override template default
+    pub ca_selection: Option<CaSelection>, // Override template CA
+}
+
+/// Certificate template creation request
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct CreateCertificateTemplateRequest {
+    pub name: String,
+    pub description: String,
+    pub certificate_type: CertificateType,
+    pub profile_id: String,
+    pub default_validity_years: i32,
+    pub default_key_algorithm: String,
+    pub san_template: Option<String>, // Template with placeholders like {{hostname}}.{{domain}}
+    pub metadata_template: Option<serde_json::Value>,
+    pub ca_selection: Option<CaSelection>,
+    pub auto_renewal: Option<bool>,
+    pub notification_settings: Option<TemplateNotificationSettings>,
+}
+
+/// Update certificate template request
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct UpdateCertificateTemplateRequest {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub certificate_type: Option<CertificateType>,
+    pub profile_id: Option<String>,
+    pub default_validity_years: Option<i32>,
+    pub default_key_algorithm: Option<String>,
+    pub san_template: Option<String>,
+    pub metadata_template: Option<serde_json::Value>,
+    pub ca_selection: Option<CaSelection>,
+    pub auto_renewal: Option<bool>,
+    pub notification_settings: Option<TemplateNotificationSettings>,
+}
+
+/// Template notification settings
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct TemplateNotificationSettings {
+    pub notify_on_creation: bool,
+    pub notify_on_expiration: bool,
+    pub notify_on_renewal: bool,
+    pub notification_days_before_expiry: i32,
+    pub webhook_urls: Vec<String>,
+    pub email_recipients: Vec<String>,
+}
+
+/// Certificate template list response
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct CertificateTemplateListResponse {
+    pub templates: Vec<CertificateTemplate>,
+    pub total: i64,
+    pub page: i32,
+    pub per_page: i32,
+    pub has_more: bool,
+}
+
+/// Template variable definition
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct TemplateVariable {
+    pub name: String,
+    pub description: String,
+    pub required: bool,
+    pub default_value: Option<String>,
+    pub validation_regex: Option<String>,
+    pub example: Option<String>,
+}
+
+/// Certificate template for standardized certificate creation
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct CertificateTemplate {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub certificate_type: CertificateType,
+    pub profile_id: String,
+    pub default_validity_years: i32,
+    pub default_key_algorithm: String,
+    pub san_template: Option<String>,
+    pub metadata_template: Option<serde_json::Value>,
+    pub tenant_id: String,
+    pub created_at: i64,
+}
+
+// ===== WEBHOOK NOTIFICATIONS =====
+
+/// Webhook configuration
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct WebhookConfig {
+    pub id: String,
+    pub name: String,
+    pub url: String,
+    pub events: Vec<WebhookEvent>,
+    pub secret: Option<String>, // For HMAC signature verification
+    pub headers: Option<serde_json::Value>, // Custom headers
+    pub timeout_seconds: i32,
+    pub retry_attempts: i32,
+    pub is_active: bool,
+    pub tenant_id: String,
+    pub created_at: i64,
+    pub last_triggered: Option<i64>,
+    pub success_count: i64,
+    pub failure_count: i64,
+}
+
+/// Webhook event types
+#[derive(Debug, Serialize, Deserialize, JsonSchema, Clone)]
+#[serde(rename_all = "snake_case")]
+pub enum WebhookEvent {
+    CertificateCreated,
+    CertificateRevoked,
+    CertificateExpiring,
+    CertificateRenewed,
+    CertificateDeleted,
+    CaCreated,
+    CaRotated,
+    CaRevoked,
+    ProfileCreated,
+    ProfileUpdated,
+    ProfileDeleted,
+    AuditThreshold,
+    SystemAlert,
+}
+
+/// Webhook payload for certificate events
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct WebhookPayload {
+    pub event: WebhookEvent,
+    pub timestamp: i64,
+    pub tenant_id: String,
+    pub webhook_id: String,
+    pub data: WebhookEventData,
+    pub signature: Option<String>, // HMAC signature if secret is configured
+}
+
+/// Webhook event data
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(untagged)]
+pub enum WebhookEventData {
+    Certificate(CertificateEventData),
+    Ca(CaEventData),
+    Profile(ProfileEventData),
+    Audit(AuditEventData),
+    System(SystemEventData),
+}
+
+/// Certificate event data for webhooks
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct CertificateEventData {
+    pub certificate_id: i64,
+    pub certificate_name: String,
+    pub certificate_type: String,
+    pub serial_number: String,
+    pub subject: String,
+    pub issuer: String,
+    pub valid_until: i64,
+    pub status: String,
+    pub user_id: i64,
+    pub ca_id: i64,
+    pub profile_id: Option<String>,
+    pub metadata: Option<serde_json::Value>,
+}
+
+/// CA event data for webhooks
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct CaEventData {
+    pub ca_id: i64,
+    pub ca_name: String,
+    pub subject: String,
+    pub valid_until: i64,
+    pub is_root_ca: bool,
+    pub parent_ca_id: Option<i64>,
+    pub key_algorithm: String,
+    pub created_by_user_id: i64,
+}
+
+/// Profile event data for webhooks
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct ProfileEventData {
+    pub profile_id: String,
+    pub profile_name: String,
+    pub certificate_type: String,
+    pub default_days: i32,
+    pub max_days: i32,
+    pub eku: Vec<String>,
+    pub key_usage: Vec<String>,
+}
+
+/// Audit event data for webhooks
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct AuditEventData {
+    pub threshold_type: String,
+    pub threshold_value: i64,
+    pub current_value: i64,
+    pub time_period: String,
+    pub description: String,
+}
+
+/// System event data for webhooks
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct SystemEventData {
+    pub alert_type: String,
+    pub severity: String,
+    pub message: String,
+    pub details: Option<serde_json::Value>,
+}
+
+/// Webhook creation request
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct CreateWebhookRequest {
+    pub name: String,
+    pub url: String,
+    pub events: Vec<WebhookEvent>,
+    pub secret: Option<String>,
+    pub headers: Option<serde_json::Value>,
+    pub timeout_seconds: Option<i32>,
+    pub retry_attempts: Option<i32>,
+}
+
+/// Webhook update request
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct UpdateWebhookRequest {
+    pub name: Option<String>,
+    pub url: Option<String>,
+    pub events: Option<Vec<WebhookEvent>>,
+    pub secret: Option<String>,
+    pub headers: Option<serde_json::Value>,
+    pub timeout_seconds: Option<i32>,
+    pub retry_attempts: Option<i32>,
+    pub is_active: Option<bool>,
+}
+
+/// Webhook list response
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct WebhookListResponse {
+    pub webhooks: Vec<WebhookConfig>,
+    pub total: i64,
+    pub page: i32,
+    pub per_page: i32,
+    pub has_more: bool,
+}
+
+/// Webhook delivery log
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct WebhookDelivery {
+    pub id: String,
+    pub webhook_id: String,
+    pub event: WebhookEvent,
+    pub payload: WebhookPayload,
+    pub response_status: Option<i32>,
+    pub response_body: Option<String>,
+    pub error_message: Option<String>,
+    pub attempt_number: i32,
+    pub delivered_at: i64,
+    pub duration_ms: i64,
+    pub success: bool,
 }
 
 pub struct CertificateBuilder {

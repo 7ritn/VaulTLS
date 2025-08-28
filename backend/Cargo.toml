@@ -49,6 +49,9 @@ base64 = "0.22"
 regex = "1.0"
 subtle = "2.5"
 hex = "0.4"
+reqwest = { version = "0.11", features = ["json"] }
+hmac = "0.12"
+sha2 = "0.10"
 
 [dev-dependencies]
 x509-parser = "0.17"

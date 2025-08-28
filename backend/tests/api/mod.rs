@@ -5,3 +5,5 @@ mod profile_tests;
 mod certificate_search_tests;
 mod audit_tests;
 mod integration_workflow_tests;
+mod template_tests;
+mod webhook_tests;

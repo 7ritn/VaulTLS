@@ -15,7 +15,8 @@ pub(crate) struct AppState {
     pub(crate) db: VaulTLSDB,
     pub(crate) settings: Settings,
     pub(crate) oidc: Arc<Mutex<Option<OidcAuth>>>,
-    pub(crate) mailer: Arc<Mutex<Option<Mailer>>>
+    pub(crate) mailer: Arc<Mutex<Option<Mailer>>>,
+    pub(crate) webhook_service: crate::webhook::WebhookService,
 }
 
 #[derive(Deserialize, Serialize, JsonSchema, Debug, Clone)]

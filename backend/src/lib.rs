@@ -33,6 +33,7 @@ mod helper;
 mod auth;
 pub mod constants;
 mod api;
+mod webhook;
 mod notification;
 
 type ApiError = data::error::ApiError;
@@ -125,11 +126,14 @@ pub async fn create_rocket() -> Rocket<Build> {
     
     let mailer = Arc::new(Mutex::new(mailer));
 
+    let webhook_service = crate::webhook::WebhookService::new(db.clone());
+
     let app_state = AppState {
         db: db.clone(),
         settings,
         oidc: Arc::new(Mutex::new(oidc)),
-        mailer: mailer.clone()
+        mailer: mailer.clone(),
+        webhook_service,
     };
 
     tokio::spawn(async move {
@@ -224,7 +228,19 @@ pub async fn create_rocket() -> Rocket<Build> {
                 get_audit_statistics,
                 get_audit_activity,
                 export_audit_events,
-                generate_compliance_report
+                generate_compliance_report,
+                create_certificate_template,
+                list_certificate_templates,
+                get_certificate_template,
+                update_certificate_template,
+                delete_certificate_template,
+                create_certificate_from_template,
+                create_webhook,
+                list_webhooks,
+                get_webhook,
+                update_webhook,
+                delete_webhook,
+                test_webhook
             ],
         )
         // Conditionally mount API documentation based on environment variables

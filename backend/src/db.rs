@@ -3111,4 +3111,349 @@ impl VaulTLSDB {
 
         Ok(report_data.into_bytes())
     }
+
+    // ===== CERTIFICATE TEMPLATE OPERATIONS =====
+
+    /// Insert certificate template
+    pub(crate) async fn insert_certificate_template(&self, template: &crate::cert::CertificateTemplate) -> Result<()> {
+        let template_json = serde_json::to_string(template)?;
+
+        db_do!(self.pool, |conn: &Connection| {
+            Ok(conn.execute(
+                "INSERT INTO certificate_templates (id, name, description, certificate_type, profile_id, default_validity_years, default_key_algorithm, san_template, metadata_template, tenant_id, created_at, template_data) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                params![
+                    template.id,
+                    template.name,
+                    template.description,
+                    template.certificate_type.to_string(),
+                    template.profile_id,
+                    template.default_validity_years,
+                    template.default_key_algorithm,
+                    template.san_template,
+                    template.metadata_template.as_ref().map(|m| serde_json::to_string(m).unwrap_or_default()),
+                    template.tenant_id,
+                    template.created_at,
+                    template_json
+                ]
+            ).map(|_| ())?)
+        })
+    }
+
+    /// Get certificate template by ID
+    pub(crate) async fn get_certificate_template_by_id(&self, template_id: &str) -> Result<crate::cert::CertificateTemplate> {
+        let template_id = template_id.to_string();
+
+        db_do!(self.pool, |conn: &Connection| {
+            let template_json: String = conn.query_row(
+                "SELECT template_data FROM certificate_templates WHERE id = ?1",
+                params![template_id],
+                |row| row.get(0)
+            )?;
+
+            Ok(serde_json::from_str(&template_json)?)
+        })
+    }
+
+    /// Get certificate template by name
+    pub(crate) async fn get_template_by_name(&self, name: &str, tenant_id: &str) -> Result<crate::cert::CertificateTemplate> {
+        let name = name.to_string();
+        let tenant_id = tenant_id.to_string();
+
+        db_do!(self.pool, |conn: &Connection| {
+            let template_json: String = conn.query_row(
+                "SELECT template_data FROM certificate_templates WHERE name = ?1 AND tenant_id = ?2",
+                params![name, tenant_id],
+                |row| row.get(0)
+            )?;
+
+            Ok(serde_json::from_str(&template_json)?)
+        })
+    }
+
+    /// Get templates for tenant
+    pub(crate) async fn get_templates_for_tenant(&self, tenant_id: &str) -> Result<Vec<crate::cert::CertificateTemplate>> {
+        let tenant_id = tenant_id.to_string();
+
+        db_do!(self.pool, |conn: &Connection| {
+            let mut stmt = conn.prepare(
+                "SELECT template_data FROM certificate_templates WHERE tenant_id = ?1 ORDER BY name"
+            )?;
+
+            let rows = stmt.query_map(params![tenant_id], |row| {
+                let template_json: String = row.get(0)?;
+                Ok(serde_json::from_str(&template_json).unwrap())
+            })?;
+
+            let mut templates = Vec::new();
+            for template in rows {
+                templates.push(template?);
+            }
+            Ok(templates)
+        })
+    }
+
+    /// Update certificate template
+    pub(crate) async fn update_certificate_template(&self, template: &crate::cert::CertificateTemplate) -> Result<()> {
+        let template_json = serde_json::to_string(template)?;
+
+        db_do!(self.pool, |conn: &Connection| {
+            Ok(conn.execute(
+                "UPDATE certificate_templates SET name = ?1, description = ?2, certificate_type = ?3, profile_id = ?4, default_validity_years = ?5, default_key_algorithm = ?6, san_template = ?7, metadata_template = ?8, template_data = ?9 WHERE id = ?10",
+                params![
+                    template.name,
+                    template.description,
+                    template.certificate_type.to_string(),
+                    template.profile_id,
+                    template.default_validity_years,
+                    template.default_key_algorithm,
+                    template.san_template,
+                    template.metadata_template.as_ref().map(|m| serde_json::to_string(m).unwrap_or_default()),
+                    template_json,
+                    template.id
+                ]
+            ).map(|_| ())?)
+        })
+    }
+
+    /// Delete certificate template
+    pub(crate) async fn delete_certificate_template(&self, template_id: &str) -> Result<()> {
+        let template_id = template_id.to_string();
+
+        db_do!(self.pool, |conn: &Connection| {
+            Ok(conn.execute(
+                "DELETE FROM certificate_templates WHERE id = ?1",
+                params![template_id]
+            ).map(|_| ())?)
+        })
+    }
+
+    /// Get certificate count for template
+    pub(crate) async fn get_certificate_count_for_template(&self, template_id: &str) -> Result<i64> {
+        let template_id = template_id.to_string();
+
+        db_do!(self.pool, |conn: &Connection| {
+            Ok(conn.query_row(
+                "SELECT COUNT(*) FROM user_certificates WHERE template_id = ?1",
+                params![template_id],
+                |row| row.get(0)
+            )?)
+        })
+    }
+
+    /// Process template variables
+    pub(crate) async fn process_template_variables(&self, template: &str, variables: &serde_json::Value) -> Result<String> {
+        let mut result = template.to_string();
+
+        if let Some(vars) = variables.as_object() {
+            for (key, value) in vars {
+                let placeholder = format!("{{{{{}}}}}", key);
+                if let Some(value_str) = value.as_str() {
+                    result = result.replace(&placeholder, value_str);
+                }
+            }
+        }
+
+        Ok(result)
+    }
+
+    // ===== WEBHOOK OPERATIONS =====
+
+    /// Insert webhook configuration
+    pub(crate) async fn insert_webhook(&self, webhook: &crate::cert::WebhookConfig) -> Result<()> {
+        let webhook_json = serde_json::to_string(webhook)?;
+        let events_json = serde_json::to_string(&webhook.events)?;
+
+        db_do!(self.pool, |conn: &Connection| {
+            Ok(conn.execute(
+                "INSERT INTO webhooks (id, name, url, events, secret, headers, timeout_seconds, retry_attempts, is_active, tenant_id, created_at, last_triggered, success_count, failure_count, webhook_data) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+                params![
+                    webhook.id,
+                    webhook.name,
+                    webhook.url,
+                    events_json,
+                    webhook.secret,
+                    webhook.headers.as_ref().map(|h| serde_json::to_string(h).unwrap_or_default()),
+                    webhook.timeout_seconds,
+                    webhook.retry_attempts,
+                    webhook.is_active,
+                    webhook.tenant_id,
+                    webhook.created_at,
+                    webhook.last_triggered,
+                    webhook.success_count,
+                    webhook.failure_count,
+                    webhook_json
+                ]
+            ).map(|_| ())?)
+        })
+    }
+
+    /// Get webhook by ID
+    pub(crate) async fn get_webhook_by_id(&self, webhook_id: &str) -> Result<crate::cert::WebhookConfig> {
+        let webhook_id = webhook_id.to_string();
+
+        db_do!(self.pool, |conn: &Connection| {
+            let webhook_json: String = conn.query_row(
+                "SELECT webhook_data FROM webhooks WHERE id = ?1",
+                params![webhook_id],
+                |row| row.get(0)
+            )?;
+
+            Ok(serde_json::from_str(&webhook_json)?)
+        })
+    }
+
+    /// Get webhook by name
+    pub(crate) async fn get_webhook_by_name(&self, name: &str, tenant_id: &str) -> Result<crate::cert::WebhookConfig> {
+        let name = name.to_string();
+        let tenant_id = tenant_id.to_string();
+
+        db_do!(self.pool, |conn: &Connection| {
+            let webhook_json: String = conn.query_row(
+                "SELECT webhook_data FROM webhooks WHERE name = ?1 AND tenant_id = ?2",
+                params![name, tenant_id],
+                |row| row.get(0)
+            )?;
+
+            Ok(serde_json::from_str(&webhook_json)?)
+        })
+    }
+
+    /// Get webhooks for tenant
+    pub(crate) async fn get_webhooks_for_tenant(&self, tenant_id: &str) -> Result<Vec<crate::cert::WebhookConfig>> {
+        let tenant_id = tenant_id.to_string();
+
+        db_do!(self.pool, |conn: &Connection| {
+            let mut stmt = conn.prepare(
+                "SELECT webhook_data FROM webhooks WHERE tenant_id = ?1 ORDER BY name"
+            )?;
+
+            let rows = stmt.query_map(params![tenant_id], |row| {
+                let webhook_json: String = row.get(0)?;
+                Ok(serde_json::from_str(&webhook_json).unwrap())
+            })?;
+
+            let mut webhooks = Vec::new();
+            for webhook in rows {
+                webhooks.push(webhook?);
+            }
+            Ok(webhooks)
+        })
+    }
+
+    /// Get webhooks for specific event
+    pub(crate) async fn get_webhooks_for_event(&self, event: &crate::cert::WebhookEvent, tenant_id: &str) -> Result<Vec<crate::cert::WebhookConfig>> {
+        let tenant_id = tenant_id.to_string();
+        let event_str = format!("{:?}", event);
+
+        db_do!(self.pool, |conn: &Connection| {
+            let mut stmt = conn.prepare(
+                "SELECT webhook_data FROM webhooks WHERE tenant_id = ?1 AND is_active = 1 AND events LIKE '%' || ?2 || '%'"
+            )?;
+
+            let rows = stmt.query_map(params![tenant_id, event_str], |row| {
+                let webhook_json: String = row.get(0)?;
+                Ok(serde_json::from_str(&webhook_json).unwrap())
+            })?;
+
+            let mut webhooks = Vec::new();
+            for webhook in rows {
+                let webhook = webhook?;
+                // Double-check that the webhook actually listens to this event
+                if webhook.events.contains(event) {
+                    webhooks.push(webhook);
+                }
+            }
+            Ok(webhooks)
+        })
+    }
+
+    /// Update webhook configuration
+    pub(crate) async fn update_webhook(&self, webhook: &crate::cert::WebhookConfig) -> Result<()> {
+        let webhook_json = serde_json::to_string(webhook)?;
+        let events_json = serde_json::to_string(&webhook.events)?;
+
+        db_do!(self.pool, |conn: &Connection| {
+            Ok(conn.execute(
+                "UPDATE webhooks SET name = ?1, url = ?2, events = ?3, secret = ?4, headers = ?5, timeout_seconds = ?6, retry_attempts = ?7, is_active = ?8, last_triggered = ?9, success_count = ?10, failure_count = ?11, webhook_data = ?12 WHERE id = ?13",
+                params![
+                    webhook.name,
+                    webhook.url,
+                    events_json,
+                    webhook.secret,
+                    webhook.headers.as_ref().map(|h| serde_json::to_string(h).unwrap_or_default()),
+                    webhook.timeout_seconds,
+                    webhook.retry_attempts,
+                    webhook.is_active,
+                    webhook.last_triggered,
+                    webhook.success_count,
+                    webhook.failure_count,
+                    webhook_json,
+                    webhook.id
+                ]
+            ).map(|_| ())?)
+        })
+    }
+
+    /// Delete webhook
+    pub(crate) async fn delete_webhook(&self, webhook_id: &str) -> Result<()> {
+        let webhook_id = webhook_id.to_string();
+
+        db_do!(self.pool, |conn: &Connection| {
+            Ok(conn.execute(
+                "DELETE FROM webhooks WHERE id = ?1",
+                params![webhook_id]
+            ).map(|_| ())?)
+        })
+    }
+
+    /// Log webhook delivery
+    pub(crate) async fn log_webhook_delivery(&self, delivery: &crate::cert::WebhookDelivery) -> Result<()> {
+        let delivery_json = serde_json::to_string(delivery)?;
+        let payload_json = serde_json::to_string(&delivery.payload)?;
+
+        db_do!(self.pool, |conn: &Connection| {
+            Ok(conn.execute(
+                "INSERT INTO webhook_deliveries (id, webhook_id, event, payload, response_status, response_body, error_message, attempt_number, delivered_at, duration_ms, success, delivery_data) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                params![
+                    delivery.id,
+                    delivery.webhook_id,
+                    format!("{:?}", delivery.event),
+                    payload_json,
+                    delivery.response_status,
+                    delivery.response_body,
+                    delivery.error_message,
+                    delivery.attempt_number,
+                    delivery.delivered_at,
+                    delivery.duration_ms,
+                    delivery.success,
+                    delivery_json
+                ]
+            ).map(|_| ())?)
+        })
+    }
+
+    /// Increment webhook success count
+    pub(crate) async fn increment_webhook_success(&self, webhook_id: &str) -> Result<()> {
+        let webhook_id = webhook_id.to_string();
+        let now = chrono::Utc::now().timestamp();
+
+        db_do!(self.pool, |conn: &Connection| {
+            Ok(conn.execute(
+                "UPDATE webhooks SET success_count = success_count + 1, last_triggered = ?1 WHERE id = ?2",
+                params![now, webhook_id]
+            ).map(|_| ())?)
+        })
+    }
+
+    /// Increment webhook failure count
+    pub(crate) async fn increment_webhook_failure(&self, webhook_id: &str) -> Result<()> {
+        let webhook_id = webhook_id.to_string();
+
+        db_do!(self.pool, |conn: &Connection| {
+            Ok(conn.execute(
+                "UPDATE webhooks SET failure_count = failure_count + 1 WHERE id = ?1",
+                params![webhook_id]
+            ).map(|_| ())?)
+        })
+    }
 }
