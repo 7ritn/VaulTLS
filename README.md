@@ -1,47 +1,210 @@
 ![VaulTLS Logo](https://github.com/7ritn/VaulTLS/blob/main/assets/logoText.png)
 
-VaulTLS is a modern solution for managing mTLS (mutual TLS) certificates with ease.
-It provides a centralized platform for generating, managing, and distributing client (and server) TLS certificates for your home lab.
+VaulTLS is an enterprise-grade solution for managing mTLS (mutual TLS) certificates with advanced automation, comprehensive audit logging, and powerful API capabilities. It provides a centralized platform for generating, managing, and distributing client and server TLS certificates for organizations of all sizes.
 
-The main reason why I developed VaulTLS was that I didn't like messing with shell scripts and OpenSSL.
-I also did not have an overview about the expiration of individual certificates.
+Originally developed to eliminate the complexity of shell scripts and OpenSSL management while providing clear visibility into certificate expiration, VaulTLS has evolved into a comprehensive certificate management platform with enterprise features.
 
-## Features
+## 🚀 Features
 
-- 🔒 mTLS client and CA certificate management
-- 📱 Modern web interface for certificate management
-- 🔐 OpenID Connect authentication support
-- 📨 Email notifications for certificate expiration
-- 🚀 RESTful API for automation
-- 🛠 Docker/Podman container support
-- ⚡ Built with Rust (backend) and Vue.js (frontend) for performance and reliability
+### 🔒 **Certificate Management**
+- **Multi-CA Support** - Hierarchical certificate authority management with root and intermediate CAs
+- **Certificate Profiles** - Policy-driven certificate issuance with EKU, key usage, and SAN validation rules
+- **Advanced Search** - Search certificates with 17 fields and 13 operators (eq, ne, like, in, between, etc.)
+- **Batch Operations** - Bulk revoke, restore, delete, renew, and download operations
+- **Certificate Chain Validation** - Automatic chain building and validation
+- **Expiration Monitoring** - Proactive certificate expiration tracking and alerts
+
+### 🔐 **Security & Authentication**
+- **Bearer Token Authentication** - HMAC-SHA256 signed API tokens with granular scopes
+- **Multi-Tenant Architecture** - Complete tenant isolation for enterprise deployments
+- **Scope-Based Authorization** - 13 granular permission scopes (cert.read, cert.write, ca.keyop, etc.)
+- **OpenID Connect Support** - Integration with enterprise identity providers
+- **RFC 9457 Error Responses** - Standardized Problem Details error format
+
+### 📊 **Audit & Compliance**
+- **Comprehensive Audit Logging** - Track all certificate operations with 16+ audit fields
+- **Advanced Reporting** - Statistics, analytics, and compliance reports
+- **Audit Search & Export** - Complex audit queries with CSV/PDF export capabilities
+- **Activity Timeline** - Real-time operational visibility with user correlation
+- **Data Retention Controls** - Configurable audit retention for regulatory compliance
+
+### 🛠 **API & Integration**
+- **RESTful API** - Complete API coverage for all certificate operations
+- **OpenAPI 3.1 Documentation** - Interactive docs with RapiDoc and Redoc
+- **Bearer Token Management** - API token lifecycle with rotation and revocation
+- **Webhook Support** - Real-time notifications for certificate events
+- **Rate Limiting** - Configurable API rate limits for performance protection
+
+### 📱 **User Experience**
+- **Modern Web Interface** - Vue.js frontend with responsive design
+- **Certificate Statistics** - Comprehensive dashboards and analytics
+- **Bulk Download** - ZIP archives with multiple certificate formats
+- **Search & Filter** - Advanced filtering with saved searches
+- **Email Notifications** - Certificate expiration and event notifications
 
 ## Screenshots
 ![WebUI Overview](https://github.com/7ritn/VaulTLS/blob/main/assets/screenshot_overview.jpg)
 ![WebUI Users](https://github.com/7ritn/VaulTLS/blob/main/assets/screenshot_user.jpg)
 
-## Installation
-Installation is managed through a Container. The app *needs* to be behind a reverse proxy for TLS handling.
-`VAULTLS_API_SECRET` is required and should be a 256-bit base64 encoded string (`openssl rand -base64 32`).
+## 🐳 Installation
+
+VaulTLS is deployed as a container and requires a reverse proxy for TLS termination. The `VAULTLS_API_SECRET` is required and should be a cryptographically secure 32+ character string.
+
+### Basic Installation
 
 ```bash
 podman run -d \
   --name vaultls \
   -p 5173:80 \
   -v vaultls-data:/app/data \
-  -e VAULTLS_API_SECRET="[VAULTLS_API_SECRET]" \
+  -e VAULTLS_API_SECRET="your-secure-32-character-secret-key-here" \
   -e VAULTLS_URL="https://vaultls.example.com/" \
   ghcr.io/7ritn/vaultls:latest
 ```
 
-### Encrypting the Database
-By specifying the `VAULTLS_DB_SECRET` environmental variable, the database is encrypted. Data is retained. It is not possible to go back.
+### Production Installation with Security Controls
 
-### Specifying log level
-The default log level is moderate. If a different one is desired, please specify it using the `VAULTLS_LOG_LEVEL` environmental variable.
-For bug reports, a trace log report is desirable. Be aware that the trace does contain secrets.
+```bash
+podman run -d \
+  --name vaultls \
+  -p 5173:80 \
+  -v vaultls-data:/app/data \
+  -v vaultls-config:/app/config \
+  -e VAULTLS_API_SECRET="$(openssl rand -base64 32)" \
+  -e VAULTLS_URL="https://vaultls.company.com/" \
+  -e VAULTLS_API_DOCS_ENABLED=false \
+  -e VAULTLS_API_DOCS_REQUIRE_AUTH=true \
+  -e VAULTLS_AUDIT_RETENTION_DAYS=2555 \
+  -e VAULTLS_RATE_LIMIT_PER_MINUTE=1000 \
+  -e VAULTLS_LOG_LEVEL=info \
+  ghcr.io/7ritn/vaultls:latest
+```
 
-### Setting up OIDC
+### 🔐 Security Configuration
+
+#### Database Encryption
+Specify `VAULTLS_DB_SECRET` to encrypt the database. **Warning**: This is irreversible.
+
+```bash
+-e VAULTLS_DB_SECRET="$(openssl rand -base64 32)"
+```
+
+#### API Documentation Security
+Control API documentation access for production environments:
+
+```bash
+# Disable API documentation entirely
+-e VAULTLS_API_DOCS_ENABLED=false
+
+# Require Bearer token authentication for API docs
+-e VAULTLS_API_DOCS_REQUIRE_AUTH=true
+```
+
+#### Audit and Compliance
+Configure audit retention and export limits:
+
+```bash
+-e VAULTLS_AUDIT_RETENTION_DAYS=2555        # 7 years retention
+-e VAULTLS_AUDIT_EXPORT_MAX_RECORDS=100000  # Export limits
+-e VAULTLS_CERTIFICATE_HISTORY_ENABLED=true # Full history tracking
+```
+
+### 📝 Logging Configuration
+Set log levels for different environments:
+
+```bash
+# Development
+-e VAULTLS_LOG_LEVEL=debug
+
+# Production
+-e VAULTLS_LOG_LEVEL=info
+
+# Troubleshooting (contains secrets - use carefully)
+-e VAULTLS_LOG_LEVEL=trace
+```
+
+## 🔑 API Authentication
+
+VaulTLS provides comprehensive API access through Bearer token authentication with granular scope-based permissions.
+
+### Creating API Tokens
+
+1. **Web Interface**: Navigate to Settings → API Tokens
+2. **API Endpoint**: `POST /api/tokens` with admin authentication
+
+```bash
+# Create an API token with certificate management scopes
+curl -X POST https://vaultls.company.com/api/tokens \
+  -H "Authorization: Bearer admin-token" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "description": "Certificate Management Token",
+    "scopes": ["cert.read", "cert.write", "ca.read"],
+    "expires_at": null,
+    "rate_limit_per_minute": 1000
+  }'
+```
+
+### Available Scopes
+
+| Scope | Description |
+|-------|-------------|
+| `cert.read` | View certificates and search |
+| `cert.write` | Create, update, and batch operations |
+| `cert.revoke` | Revoke and restore certificates |
+| `ca.read` | View certificate authorities |
+| `ca.write` | Create and update CAs |
+| `ca.keyop` | CA key operations and signing |
+| `profile.read` | View certificate profiles |
+| `profile.write` | Create and update profiles |
+| `token.read` | View API tokens |
+| `token.write` | Create and update tokens |
+| `token.admin` | Full token management |
+| `audit.read` | View audit logs and reports |
+| `admin.tenant` | Tenant administration |
+
+### API Documentation
+
+- **Interactive Docs**: `https://your-domain/api-docs` (RapiDoc)
+- **Reference Docs**: `https://your-domain/redoc` (Redoc)
+- **OpenAPI Spec**: `https://your-domain/api/openapi.json`
+
+### Example API Usage
+
+```bash
+# Search certificates
+curl -X POST https://vaultls.company.com/api/certificates/search \
+  -H "Authorization: Bearer your-token" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "filters": [
+      {"field": "status", "operator": "eq", "value": "active"},
+      {"field": "valid_until", "operator": "lt", "value": 1735689600}
+    ],
+    "sort": [{"field": "valid_until", "direction": "asc"}],
+    "page": 1,
+    "per_page": 50
+  }'
+
+# Batch revoke certificates
+curl -X POST https://vaultls.company.com/api/certificates/batch \
+  -H "Authorization: Bearer your-token" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "certificate_ids": [1, 2, 3],
+    "operation": "revoke",
+    "parameters": {
+      "revocation_reason": 1,
+      "revocation_note": "Security incident"
+    }
+  }'
+
+# Get audit statistics
+curl -X GET https://vaultls.company.com/api/audit/statistics?days=30 \
+  -H "Authorization: Bearer your-token"
+```
+
+## 🔐 Setting up OIDC
 To set up OIDC you need to create a new client in your authentication provider. For Authelia a configuration could look like this
 ```yaml
 - client_id: "[client_id]"
@@ -179,7 +342,192 @@ If you choose `verify_if_given`, you can still block clients for apps that you w
 abort @blocked
 ```
 
-## Roadmap
-- Allow user details to be updated
-- Generate new certificates automatically if the old one expires soon
-- Improve testing
+## 📊 Enterprise Features
+
+### Certificate Profiles
+Define reusable certificate policies with validation rules:
+
+```json
+{
+  "name": "Server Certificate Profile",
+  "eku": ["serverAuth"],
+  "key_usage": ["digitalSignature", "keyEncipherment"],
+  "san_rules": {
+    "dns_names": [
+      {"pattern": "*.company.com", "required": false, "max_count": 5}
+    ]
+  },
+  "default_days": 365,
+  "max_days": 730,
+  "key_alg_options": ["RSA-2048", "RSA-4096", "ECDSA-P256"]
+}
+```
+
+### Advanced Certificate Search
+Search certificates with powerful filtering:
+
+- **17 Searchable Fields**: name, commonName, serialNumber, issuer, subject, status, etc.
+- **13 Operators**: eq, ne, lt, gt, like, in, between, contains, startsWith, endsWith
+- **Complex Queries**: Multiple filters with AND/OR logic
+- **Sorting**: Multi-field sorting with ascending/descending order
+
+### Audit & Compliance
+Comprehensive audit logging for regulatory compliance:
+
+- **Complete Audit Trail**: All certificate operations tracked
+- **Advanced Reporting**: Statistics, analytics, and compliance reports
+- **Data Export**: CSV/PDF export for external analysis
+- **Retention Controls**: Configurable data retention policies
+- **Activity Timeline**: Real-time operational visibility
+
+### Multi-Tenant Architecture
+Enterprise-ready multi-tenant support:
+
+- **Complete Tenant Isolation**: Data, certificates, and audit logs
+- **Tenant-Specific Policies**: Custom certificate profiles per tenant
+- **Granular Access Control**: Scope-based permissions per tenant
+- **Audit Separation**: Tenant-isolated audit trails
+
+## 🛠 Development
+
+To run VaulTLS in development mode, you'll need to set up both the backend (Rust) and frontend (Vue.js) components.
+
+### Prerequisites
+
+- Rust (latest stable version)
+- Node.js (v18 or later)
+- SQLite
+
+### Backend Setup
+
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/7ritn/VaulTLS.git
+   cd VaulTLS
+   ```
+
+2. Set up environment variables:
+   ```bash
+   export VAULTLS_API_SECRET="dev-secret-key-32-characters-long-123"
+   export VAULTLS_DATABASE_URL="./dev.db"
+   export VAULTLS_MAIL_HOST="localhost"
+   export VAULTLS_MAIL_PORT="1025"
+   export VAULTLS_MAIL_FROM="dev@vaultls.local"
+   export VAULTLS_API_DOCS_ENABLED="true"
+   export VAULTLS_API_DOCS_REQUIRE_AUTH="false"
+   export VAULTLS_LOG_LEVEL="debug"
+   ```
+
+3. Run the backend:
+   ```bash
+   cd backend
+   cargo run
+   ```
+
+### Frontend Setup
+
+1. Install dependencies:
+   ```bash
+   cd frontend
+   npm install
+   ```
+
+2. Start the development server:
+   ```bash
+   npm run dev
+   ```
+
+The application will be available at `http://localhost:5173` with the backend API at `http://localhost:8000`.
+
+### Testing
+
+Run the comprehensive test suite:
+
+```bash
+# Backend tests
+cd backend
+cargo test
+
+# Integration tests
+cargo test --test integration_tests
+
+# Frontend tests
+cd frontend
+npm run test
+```
+
+## 🗺 Roadmap
+
+### Completed ✅
+- ✅ Bearer Token Authentication with granular scopes
+- ✅ Multi-CA Support with hierarchical management
+- ✅ Certificate Profiles with policy enforcement
+- ✅ Advanced Certificate Search (17 fields, 13 operators)
+- ✅ Batch Operations (revoke, restore, delete, renew)
+- ✅ Comprehensive Audit Logging and Reporting
+- ✅ OpenAPI 3.1 Documentation with RapiDoc/Redoc
+- ✅ RFC 9457 Problem Details error responses
+- ✅ Multi-tenant architecture with complete isolation
+- ✅ Certificate chain validation and management
+
+### In Progress 🚧
+- 🚧 Frontend UI enhancements for new features
+- 🚧 Certificate analytics dashboard
+- 🚧 Advanced audit visualization
+
+### Planned 📋
+- 📋 Automatic certificate renewal workflows
+- 📋 Certificate template system
+- 📋 Webhook notifications for certificate events
+- 📋 ACME protocol support
+- 📋 Hardware Security Module (HSM) integration
+- 📋 Certificate transparency logging
+- 📋 Advanced user management and RBAC
+
+## ⚙️ Configuration Reference
+
+For complete environment variable configuration options, see [docs/configuration/environment-variables.md](docs/configuration/environment-variables.md).
+
+### Key Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `VAULTLS_API_SECRET` | *Required* | 32+ character secret for Bearer token signing |
+| `VAULTLS_API_DOCS_ENABLED` | `true` | Enable/disable API documentation |
+| `VAULTLS_API_DOCS_REQUIRE_AUTH` | `false` | Require Bearer token for API docs |
+| `VAULTLS_AUDIT_RETENTION_DAYS` | `2555` | Audit log retention period (7 years) |
+| `VAULTLS_RATE_LIMIT_PER_MINUTE` | `1000` | Default API rate limit |
+| `VAULTLS_LOG_LEVEL` | `info` | Logging level (trace, debug, info, warn, error) |
+
+## 🤝 Contributing
+
+We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
+
+### Development Workflow
+
+1. Fork the repository
+2. Create a feature branch from `development`
+3. Make your changes with tests
+4. Submit a pull request to `development`
+
+### Code Quality
+
+- All new features must include comprehensive tests
+- Follow Rust and Vue.js best practices
+- Maintain API documentation with OpenAPI specs
+- Include audit logging for all certificate operations
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🙏 Acknowledgments
+
+- Built with [Rocket](https://rocket.rs/) (Rust web framework)
+- Frontend powered by [Vue.js](https://vuejs.org/)
+- Certificate management using [OpenSSL](https://www.openssl.org/)
+- API documentation with [RapiDoc](https://rapidocweb.com/) and [Redoc](https://redocly.github.io/redoc/)
+
+---
+
+**VaulTLS** - Enterprise Certificate Management Made Simple 🔒
