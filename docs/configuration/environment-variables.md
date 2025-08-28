@@ -21,11 +21,11 @@ VAULTLS_API_DOCS_ENABLED=true
 ### `VAULTLS_API_DOCS_REQUIRE_AUTH`
 - **Type**: Boolean (`true`/`false`)
 - **Default**: `false`
-- **Description**: Controls whether API documentation requires Bearer token authentication
+- **Description**: Controls whether API documentation (Redoc) requires Bearer token authentication
 - **Security Impact**: When set to `true`, requires valid Bearer token to access documentation
 
 ```bash
-# Require authentication for API docs
+# Require authentication for API docs (Redoc)
 VAULTLS_API_DOCS_REQUIRE_AUTH=true
 
 # Allow public access to API docs (default)

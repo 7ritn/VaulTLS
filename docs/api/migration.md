@@ -353,7 +353,7 @@ curl -v https://vaultls.company.com/api/certificates
 ## Support and Resources
 
 - **Migration Examples**: [GitHub Examples](https://github.com/7ritn/VaulTLS/tree/main/examples/api-migration)
-- **API Documentation**: [Interactive Docs](/api-docs)
+- **API Documentation**: [Redoc Documentation](/docs)
 - **Support Forum**: [GitHub Discussions](https://github.com/7ritn/VaulTLS/discussions)
 - **Issue Tracker**: [GitHub Issues](https://github.com/7ritn/VaulTLS/issues)
 
