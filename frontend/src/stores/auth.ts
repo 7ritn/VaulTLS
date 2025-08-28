@@ -10,10 +10,29 @@ export const useAuthStore = defineStore('auth', {
         isAuthenticated: false as boolean,
         current_user: null as User | null,
         error: null as string | null,
+        bearerToken: null as string | null,
+        tokenExpiresAt: null as string | null,
+        loading: false as boolean,
     }),
     getters: {
         isAdmin(state): boolean {
             return state.current_user?.role === UserRole.Admin;
+        },
+        isTokenValid(state): boolean {
+            if (!state.bearerToken || !state.tokenExpiresAt) return false;
+            return new Date(state.tokenExpiresAt) > new Date();
+        },
+        userInitials(state): string {
+            if (!state.current_user?.name) return 'U';
+            return state.current_user.name
+                .split(' ')
+                .map(n => n[0])
+                .join('')
+                .toUpperCase()
+                .slice(0, 2);
+        },
+        user(state): User | null {
+            return state.current_user;
         }
     },
     actions: {
@@ -130,10 +149,82 @@ export const useAuthStore = defineStore('auth', {
                 this.error = null;
                 await logout()
                 this.setAuthentication(false);
+
+                // Clear bearer token state
+                this.bearerToken = null;
+                this.tokenExpiresAt = null;
+                localStorage.removeItem('vaultls_token');
+                localStorage.removeItem('vaultls_token_expires');
             } catch (err) {
                 // Can't fail
                 this.error = 'Failed to logout.';
                 console.error(err);
+            }
+        },
+
+        // Login with API token (modern API)
+        async loginWithToken(token: string) {
+            this.loading = true;
+            this.error = null;
+
+            try {
+                // Set token temporarily to make authenticated request
+                this.bearerToken = token;
+
+                // Verify token and get user info using modern API
+                const response = await fetch('/api/auth/me', {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json',
+                    },
+                });
+
+                if (!response.ok) {
+                    throw new Error('Invalid token');
+                }
+
+                const userData = await response.json();
+                this.current_user = userData;
+                this.setAuthentication(true);
+
+                // Store token
+                localStorage.setItem('vaultls_token', token);
+
+                return true;
+            } catch (err: any) {
+                this.bearerToken = null;
+                this.error = err.message || 'Invalid token';
+                return false;
+            } finally {
+                this.loading = false;
+            }
+        },
+
+        // Check for stored bearer token on init
+        async checkBearerToken() {
+            const storedToken = localStorage.getItem('vaultls_token');
+            if (storedToken) {
+                const success = await this.loginWithToken(storedToken);
+                if (!success) {
+                    localStorage.removeItem('vaultls_token');
+                }
+                return success;
+            }
+            return false;
+        },
+
+        // Enhanced init method
+        async init() {
+            // First try bearer token
+            const tokenSuccess = await this.checkBearerToken();
+            if (tokenSuccess) {
+                return;
+            }
+
+            // Fallback to session-based auth
+            this.isAuthenticated = localStorage.getItem('is_authenticated') === 'true';
+            if (this.isAuthenticated) {
+                await this.fetchCurrentUser();
             }
         },
     },
