@@ -43,6 +43,6 @@ derive_deref = "1.1"
 parking_lot = "0.12"
 
 [dev-dependencies]
-x509-parser = "0.17"
+x509-parser = "0.18"
 rustls = { version = "0.23.29", features = ["aws-lc-rs"] }
 tokio-rustls = "0.26.1"
