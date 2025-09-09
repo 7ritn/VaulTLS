@@ -28,7 +28,7 @@
     "@vue/tsconfig": "^0.7.0",
     "npm-run-all2": "^7.0.2",
     "typescript": "~5.9.2",
-    "vite": "^7.0.6",
+    "vite": "^7.1.5",
     "vite-plugin-vue-devtools": "^8.0.0",
     "vue-tsc": "^3.0.4"
   }
