@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use crate::ApiError;
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use rocket::http::Status;
@@ -8,6 +9,9 @@ use const_format::concatcp;
 use rocket_okapi::r#gen::OpenApiGenerator;
 use rocket_okapi::okapi::openapi3::{Object, SecurityRequirement, SecurityScheme, SecuritySchemeData};
 use rocket_okapi::request::{OpenApiFromRequest, RequestHeaderInput};
+use uuid::Uuid;
+use once_cell::sync::Lazy;
+use parking_lot::RwLock;
 use crate::data::enums::UserRole;
 use crate::data::objects::AppState;
 
@@ -42,6 +46,10 @@ macro_rules! impl_openapi_auth {
     };
 }
 
+static JTI_STORE: Lazy<RwLock<HashSet<String>>> = Lazy::new(|| {
+    RwLock::new(HashSet::new())
+});
+
 /// Struct for Rocket guard
 pub struct Authenticated {
     pub claims: Claims,
@@ -54,6 +62,7 @@ pub struct AuthenticatedPrivileged {
 /// JWT claims
 #[derive(Serialize, Deserialize, Debug)]
 pub(crate) struct Claims {
+    pub(crate) jti: String,
     pub(crate) id: i64,
     pub(crate) role: UserRole,
     pub(crate) exp: usize
@@ -101,22 +110,36 @@ pub(crate) fn authenticate_auth_token(request: &Request<'_>) -> Option<Claims> {
     let decoding_key = DecodingKey::from_secret(&jwt_key);
     let validation = Validation::default();
 
-    decode::<Claims>(&token, &decoding_key, &validation).ok().map(|v| v.claims)
+    let claims = decode::<Claims>(&token, &decoding_key, &validation).ok()?.claims;
+
+    match JTI_STORE.read().contains(&claims.jti) {
+        true => Some(claims),
+        false => None
+    }
 }
 
 /// Generate JWT Token for authentication
 pub(crate) fn generate_token(jwt_key: &[u8], user_id: i64, user_role: UserRole) -> Result<String, ApiError> {
     let expires = SystemTime::now() + Duration::from_secs(60 * 60 /* 1 hour */);
     let expires_unix = expires.duration_since(UNIX_EPOCH).unwrap().as_secs() as usize;
+    let jti = Uuid::new_v4().to_string();
+
     let claims = Claims {
+        jti: jti.clone(),
         exp: expires_unix,
         id: user_id,
         role: user_role
     };
+
+    JTI_STORE.write().insert(jti);
 
     encode(
         &Header::default(),
         &claims,
         &EncodingKey::from_secret(jwt_key),
     ).map_err(|_| ApiError::Other("Failed to generate JWT".to_string()))
+}
+
+pub(crate) fn invalidate_token(jti: &str) {
+    JTI_STORE.write().remove(jti);
 }

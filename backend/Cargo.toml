@@ -41,8 +41,9 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 derive_deref = "1.1"
 parking_lot = "0.12"
+uuid = { version = "1.18", features = ["v4"] }
 
 [dev-dependencies]
-x509-parser = "0.17"
+x509-parser = "0.18.0"
 rustls = { version = "0.23.29", features = ["aws-lc-rs"] }
 tokio-rustls = "0.26.1"

@@ -6,7 +6,7 @@ use rocket::http::{Cookie, CookieJar, SameSite};
 use tracing::{trace, debug, info, warn};
 use crate::auth::oidc_auth::OidcAuth;
 use crate::auth::password_auth::Password;
-use crate::auth::session_auth::{generate_token, Authenticated, AuthenticatedPrivileged};
+use crate::auth::session_auth::{generate_token, invalidate_token, Authenticated, AuthenticatedPrivileged};
 use crate::cert::{get_password, get_pem, save_ca, Certificate, CertificateBuilder};
 use crate::constants::VAULTLS_VERSION;
 use crate::data::api::{CallbackQuery, ChangePasswordRequest, CreateUserCertificateRequest, CreateUserRequest, DownloadResponse, IsSetupResponse, LoginRequest, SetupRequest};
@@ -173,9 +173,11 @@ pub(crate) async fn change_password(
 #[post("/auth/logout")]
 /// Endpoint to logout.
 pub(crate) async fn logout(
-    jar: &CookieJar<'_>
+    jar: &CookieJar<'_>,
+    authentication: Authenticated
 ) -> Result<(), ApiError> {
-    jar.remove_private(Cookie::build(("name", "auth_token")));
+    invalidate_token(&authentication.claims.jti);
+    jar.remove_private("auth_token");
     Ok(())
 }
 
