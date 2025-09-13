@@ -174,9 +174,11 @@ pub(crate) async fn change_password(
 /// Endpoint to logout.
 pub(crate) async fn logout(
     jar: &CookieJar<'_>,
-    authentication: Authenticated
+    authentication: Option<Authenticated>
 ) -> Result<(), ApiError> {
-    invalidate_token(&authentication.claims.jti);
+    if let Some(authentication) = authentication {
+        invalidate_token(&authentication.claims.jti);
+    }
     jar.remove_private("auth_token");
     Ok(())
 }
