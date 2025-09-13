@@ -179,8 +179,8 @@ impl VaulTLSDB {
     ) -> Result<i64> {
         db_do!(self.pool, |conn: &Connection| {
             conn.execute(
-                "INSERT INTO ca_certificates (created_on, valid_until, certificate, key) VALUES (?1, ?2, ?3, ?4)",
-                params![ca.created_on, ca.valid_until, ca.cert, ca.key],
+                "INSERT INTO ca_certificates (name, created_on, valid_until, certificate, key) VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![ca.name, ca.created_on, ca.valid_until, ca.cert, ca.key],
             )?;
 
             Ok(conn.last_insert_rowid())
@@ -190,17 +190,37 @@ impl VaulTLSDB {
     /// Retrieve the most recent CA entry from the database
     pub(crate) async fn get_current_ca(&self) -> Result<CA> {
         db_do!(self.pool, |conn: &Connection| {
-            let mut stmt = conn.prepare("SELECT * FROM ca_certificates ORDER BY id DESC LIMIT 1")?;
+            let mut stmt = conn.prepare("SELECT id, name, created_on, valid_until, certificate, key FROM ca_certificates ORDER BY id DESC LIMIT 1")?;
 
             stmt.query_row([], |row| {
                 Ok(CA{
                     id: row.get(0)?,
-                    created_on: row.get(1)?,
-                    valid_until: row.get(2)?,
-                    cert: row.get(3)?,
-                    key: row.get(4)?
+                    name: row.get(1).unwrap_or_default(),
+                    created_on: row.get(2)?,
+                    valid_until: row.get(3)?,
+                    cert: row.get(4)?,
+                    key: row.get(5)?
                 })
             }).map_err(|_| anyhow!("VaulTLS has not been set-up yet"))
+        })
+    }
+
+    /// Retrieve all CA certificates from the database
+    pub(crate) async fn get_all_ca(&self) -> Result<Vec<CA>> {
+        db_do!(self.pool, |conn: &Connection| {
+            let mut stmt = conn.prepare("SELECT id, name, created_on, valid_until, certificate, key FROM ca_certificates ORDER BY id DESC")?;
+            let query = stmt.query([])?;
+            Ok(query.map(|row| {
+                Ok(CA{
+                    id: row.get(0)?,
+                    name: row.get(1).unwrap_or_default(),
+                    created_on: row.get(2)?,
+                    valid_until: row.get(3)?,
+                    cert: row.get(4)?,
+                    key: row.get(5)?
+                })
+            })
+            .collect()?)
         })
     }
 

@@ -17,7 +17,8 @@ use openssl::x509::X509Builder;
 use passwords::PasswordGenerator;
 use rocket_okapi::JsonSchema;
 use serde::{Deserialize, Serialize};
-use crate::constants::CA_FILE_PATH;
+use tracing::info;
+use crate::constants::{CA_DIR_PATH, CA_FILE_PATTERN, CA_TLS_FILE_PATH};
 use crate::data::enums::{CertificateRenewMethod, CertificateType};
 use crate::data::enums::CertificateType::{Client, Server};
 use crate::ApiError;
@@ -43,6 +44,7 @@ pub struct Certificate {
 #[derive(Clone, Serialize, Deserialize, JsonSchema, Debug)]
 pub struct CA {
     pub id: i64,
+    pub name: String,
     pub created_on: i64,
     pub valid_until: i64,
     #[serde(skip)]
@@ -192,6 +194,7 @@ impl CertificateBuilder {
 
         Ok(CA{
             id: -1,
+            name,
             created_on: self.created_on,
             valid_until,
             cert: cert.to_der()?,
@@ -335,7 +338,19 @@ pub(crate) fn get_pem(ca: &CA) -> Result<Vec<u8>, ErrorStack> {
 /// Saves the CA certificate to a file for filesystem access.
 pub(crate) fn save_ca(ca: &CA) -> Result<(), ApiError> {
     let pem = get_pem(ca)?;
-    fs::write(CA_FILE_PATH, pem).map_err(|e| ApiError::Other(e.to_string()))?;
+    let ca_id_file_path = CA_FILE_PATTERN.replace("{}", &ca.id.to_string());
+    fs::write(ca_id_file_path, pem.clone()).map_err(|e| ApiError::Other(e.to_string()))?;
+    fs::write(CA_TLS_FILE_PATH, pem).map_err(|e| ApiError::Other(e.to_string()))?;
+    Ok(())
+}
+
+pub(crate) fn migrate_ca_storage() -> Result<()> {
+    if fs::exists("ca.cert").is_ok() {
+        info!("Migrating CA storage to separate directory");
+        fs::create_dir(CA_DIR_PATH)?;
+        fs::rename("ca.cert", CA_TLS_FILE_PATH)?;
+        fs::copy(CA_TLS_FILE_PATH, CA_FILE_PATTERN.replace("{}", "0"))?;
+    }
     Ok(())
 }
 

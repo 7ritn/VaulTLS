@@ -9,7 +9,7 @@ use crate::auth::password_auth::Password;
 use crate::auth::session_auth::{generate_token, invalidate_token, Authenticated, AuthenticatedPrivileged};
 use crate::cert::{get_password, get_pem, save_ca, Certificate, CertificateBuilder};
 use crate::constants::VAULTLS_VERSION;
-use crate::data::api::{CallbackQuery, ChangePasswordRequest, CreateUserCertificateRequest, CreateUserRequest, DownloadResponse, IsSetupResponse, LoginRequest, SetupRequest};
+use crate::data::api::{CallbackQuery, ChangePasswordRequest, CreateCARequest, CreateUserCertificateRequest, CreateUserRequest, DownloadResponse, IsSetupResponse, LoginRequest, SetupRequest};
 use crate::data::enums::{CertificateType, PasswordRule, UserRole};
 use crate::data::error::ApiError;
 use crate::data::objects::{AppState, User};
@@ -264,6 +264,21 @@ pub(crate) async fn get_certificates(
     Ok(Json(certificates))
 }
 
+#[openapi(tag = "Certificates")]
+#[post("/certificates/ca", format = "json", data = "<payload>")]
+/// Create a new certificate. Requires admin role.
+pub(crate) async fn create_ca(
+    state: &State<AppState>,
+    payload: Json<CreateCARequest>,
+    _authentication: AuthenticatedPrivileged
+) -> Result<Json<i64>, ApiError> {
+    let ca = CertificateBuilder::new()?
+        .set_name(&payload.ca_name)?
+        .set_valid_until(payload.validity_in_years)?
+        .build_ca()?;
+    save_ca(&ca)?;
+    Ok(Json(state.db.insert_ca(ca).await?))
+}
 #[openapi(tag = "Certificates")]
 #[post("/certificates", format = "json", data = "<payload>")]
 /// Create a new certificate. Requires admin role.

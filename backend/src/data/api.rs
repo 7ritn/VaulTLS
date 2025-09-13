@@ -45,6 +45,12 @@ pub struct CallbackQuery {
 }
 
 #[derive(Serialize, Deserialize, JsonSchema)]
+pub struct CreateCARequest {
+    pub ca_name: String,
+    pub validity_in_years: u64
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
 pub struct CreateUserCertificateRequest {
     pub cert_name: String,
     pub validity_in_years: Option<u64>,
