@@ -7,7 +7,7 @@ use tracing::{trace, debug, info, warn};
 use crate::auth::oidc_auth::OidcAuth;
 use crate::auth::password_auth::Password;
 use crate::auth::session_auth::{generate_token, invalidate_token, Authenticated, AuthenticatedPrivileged};
-use crate::cert::{get_password, get_pem, save_ca, Certificate, CertificateBuilder};
+use crate::cert::{get_password, get_pem, save_ca, Certificate, CertificateBuilder, CA};
 use crate::constants::VAULTLS_VERSION;
 use crate::data::api::{CallbackQuery, ChangePasswordRequest, CreateCARequest, CreateUserCertificateRequest, CreateUserRequest, DownloadResponse, IsSetupResponse, LoginRequest, SetupRequest};
 use crate::data::enums::{CertificateType, PasswordRule, UserRole};
@@ -261,6 +261,16 @@ pub(crate) async fn get_certificates(
         UserRole::Admin => None
     };
     let certificates = state.db.get_all_user_cert(user_id).await?;
+    Ok(Json(certificates))
+}
+
+#[openapi(tag = "Certificates")]
+#[get("/certificates/ca")]
+/// Get all CAs. Does not require authentication.
+pub(crate) async fn get_all_ca(
+    state: &State<AppState>
+) -> Result<Json<Vec<CA>>, ApiError> {
+    let certificates = state.db.get_all_ca().await?;
     Ok(Json(certificates))
 }
 
