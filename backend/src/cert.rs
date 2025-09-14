@@ -336,9 +336,10 @@ pub(crate) fn get_pem(ca: &CA) -> Result<Vec<u8>, ErrorStack> {
 }
 
 /// Saves the CA certificate to a file for filesystem access.
-pub(crate) fn save_ca(ca: &CA) -> Result<(), ApiError> {
+pub(crate) fn save_ca(ca: &CA) -> Result<()> {
     let pem = get_pem(ca)?;
     let ca_id_file_path = CA_FILE_PATTERN.replace("{}", &ca.id.to_string());
+    fs::create_dir_all(CA_DIR_PATH)?;
     fs::write(ca_id_file_path, pem.clone()).map_err(|e| ApiError::Other(e.to_string()))?;
     fs::write(CA_TLS_FILE_PATH, pem).map_err(|e| ApiError::Other(e.to_string()))?;
     Ok(())

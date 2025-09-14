@@ -79,12 +79,12 @@ pub(crate) async fn setup(
 
     state.db.insert_user(user).await?;
 
-    let ca = CertificateBuilder::new()?
+    let mut ca = CertificateBuilder::new()?
         .set_name(&setup_req.ca_name)?
         .set_valid_until(setup_req.ca_validity_in_years)?
         .build_ca()?;
+    ca = state.db.insert_ca(ca).await?;
     save_ca(&ca)?;
-    state.db.insert_ca(ca).await?;
 
     info!("VaulTLS was successfully set up.");
 
@@ -282,12 +282,13 @@ pub(crate) async fn create_ca(
     payload: Json<CreateCARequest>,
     _authentication: AuthenticatedPrivileged
 ) -> Result<Json<i64>, ApiError> {
-    let ca = CertificateBuilder::new()?
+    let mut ca = CertificateBuilder::new()?
         .set_name(&payload.ca_name)?
         .set_valid_until(payload.validity_in_years)?
         .build_ca()?;
+    ca = state.db.insert_ca(ca).await?;
     save_ca(&ca)?;
-    Ok(Json(state.db.insert_ca(ca).await?))
+    Ok(Json(ca.id))
 }
 #[openapi(tag = "Certificates")]
 #[post("/certificates", format = "json", data = "<payload>")]
@@ -310,7 +311,7 @@ pub(crate) async fn create_user_certificate(
         payload.system_generated_password
     };
 
-    let ca = state.db.get_current_ca().await?;
+    let ca = state.db.get_ca(None).await?;
     let pkcs12_password = get_password(use_random_password, &payload.pkcs12_password);
     let cert_builder = CertificateBuilder::new()?
         .set_name(&payload.cert_name)?
@@ -363,12 +364,24 @@ pub(crate) async fn create_user_certificate(
 #[openapi(tag = "Certificates")]
 #[get("/certificates/ca/download")]
 /// Download the current CA certificate.
-pub(crate) async fn download_ca(
+pub(crate) async fn download_current_ca(
     state: &State<AppState>
 ) -> Result<DownloadResponse, ApiError> {
-    let ca = state.db.get_current_ca().await?;
+    let ca = state.db.get_ca(None).await?;
     let pem = get_pem(&ca)?;
     Ok(DownloadResponse::new(pem, "ca_certificate.pem"))
+}
+
+#[openapi(tag = "Certificates")]
+#[get("/certificates/ca/<id>/download")]
+/// Download a CA certificate identified by id.
+pub(crate) async fn download_ca(
+    state: &State<AppState>,
+    id: i64
+) -> Result<DownloadResponse, ApiError> {
+    let ca = state.db.get_ca(Some(id)).await?;
+    let pem = get_pem(&ca)?;
+    Ok(DownloadResponse::new(pem, &format!("ca_{}.pem", ca.id)))
 }
 
 #[openapi(tag = "Certificates")]

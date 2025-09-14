@@ -60,7 +60,7 @@ async fn handle_expiry(cert: &Certificate, db: &VaulTLSDB, mailer_mutex: Arc<Mut
         }
         CertificateRenewMethod::Renew | CertificateRenewMethod::RenewAndNotify => {
             info!("Renewing certificate {} for user {}.", cert.name, user.name);
-            let ca = db.get_current_ca().await?;
+            let ca = db.get_ca(None).await?;
 
             let cert_builder = CertificateBuilder::try_from(cert)?
                 .set_ca(&ca)?;

@@ -175,33 +175,41 @@ impl VaulTLSDB {
     /// Adds id to the Certificate struct
     pub(crate) async fn insert_ca(
         &self,
-        ca: CA
-    ) -> Result<i64> {
+        mut ca: CA
+    ) -> Result<CA> {
         db_do!(self.pool, |conn: &Connection| {
             conn.execute(
                 "INSERT INTO ca_certificates (name, created_on, valid_until, certificate, key) VALUES (?1, ?2, ?3, ?4, ?5)",
                 params![ca.name, ca.created_on, ca.valid_until, ca.cert, ca.key],
             )?;
-
-            Ok(conn.last_insert_rowid())
+            ca.id = conn.last_insert_rowid();
+            Ok(ca)
         })
     }
 
-    /// Retrieve the most recent CA entry from the database
-    pub(crate) async fn get_current_ca(&self) -> Result<CA> {
+    /// Retrieve a CA entry from the database. If no ID is specified, the most recent is returned.
+    pub(crate) async fn get_ca(&self, ca_id: Option<i64>) -> Result<CA> {
         db_do!(self.pool, |conn: &Connection| {
-            let mut stmt = conn.prepare("SELECT id, name, created_on, valid_until, certificate, key FROM ca_certificates ORDER BY id DESC LIMIT 1")?;
+            let query = match ca_id {
+                None => "SELECT id, name, created_on, valid_until, certificate, key FROM ca_certificates ORDER BY id DESC LIMIT 1",
+                Some(_) => "SELECT id, name, created_on, valid_until, certificate, key FROM ca_certificates WHERE id = ?1"
+            };
 
-            stmt.query_row([], |row| {
-                Ok(CA{
-                    id: row.get(0)?,
-                    name: row.get(1).unwrap_or_default(),
-                    created_on: row.get(2)?,
-                    valid_until: row.get(3)?,
-                    cert: row.get(4)?,
-                    key: row.get(5)?
-                })
-            }).map_err(|_| anyhow!("VaulTLS has not been set-up yet"))
+            let mut stmt = conn.prepare(query)?;
+            let mut rows = match ca_id {
+                Some(ca_id) => stmt.query(params![ca_id])?,
+                None => stmt.query([])?,
+            };
+
+            let row = rows.next()?.ok_or_else(|| anyhow!("No CA found"))?;
+            Ok(CA {
+                id: row.get(0)?,
+                name: row.get(1).unwrap_or_default(),
+                created_on: row.get(2)?,
+                valid_until: row.get(3)?,
+                cert: row.get(4)?,
+                key: row.get(5)?
+            })
         })
     }
 
