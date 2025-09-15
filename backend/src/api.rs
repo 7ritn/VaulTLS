@@ -425,6 +425,22 @@ pub(crate) async fn fetch_certificate_password(
 }
 
 #[openapi(tag = "Certificates")]
+#[delete("/certificates/ca/<id>")]
+/// Delete a CA. Requires admin role.
+pub(crate) async fn delete_ca(
+    state: &State<AppState>,
+    id: i64,
+    _authentication: AuthenticatedPrivileged
+) -> Result<(), ApiError> {
+    let related_cert_count = state.db.count_user_certs_by_ca_id(id).await?;
+    if related_cert_count > 0 {
+        return Err(ApiError::BadRequest("The CA still has user certificates attached to it.".to_string()));
+    }
+    state.db.delete_ca(id).await?;
+    Ok(())
+}
+
+#[openapi(tag = "Certificates")]
 #[delete("/certificates/<id>")]
 /// Delete a user-owned certificate. Requires admin role.
 pub(crate) async fn delete_user_cert(

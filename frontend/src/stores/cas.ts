@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import type {CA, CARequirements} from '@/types/CA';
-import {createCA, downloadCAByID, fetchCAs} from "@/api/cas.ts";
+import {createCA, deleteCA, downloadCAByID, fetchCAs} from "@/api/cas.ts";
 
 export const useCAStore = defineStore('ca', {
     state: () => ({
@@ -57,6 +57,21 @@ export const useCAStore = defineStore('ca', {
                 await this.fetchCAs();
             } catch (err) {
                 this.error = 'Failed to create the CA.';
+                console.error(err);
+            } finally {
+                this.loading = false;
+            }
+        },
+
+        // Delete a CA by ID and fetch the updated list
+        async deleteCA(id: number): Promise<void> {
+            this.loading = true;
+            this.error = null;
+            try {
+                await deleteCA(id);
+                await this.fetchCAs();
+            } catch (err) {
+                this.error = 'Failed to delete the CA.';
                 console.error(err);
             } finally {
                 this.loading = false;

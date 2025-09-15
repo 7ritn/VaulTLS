@@ -16,3 +16,7 @@ export const createCA = async (certReq: CARequirements): Promise<number> => {
 export const downloadCAByID = async (id: number): Promise<void> => {
     return await ApiClient.download(`/certificates/ca/${id}/download`);
 };
+
+export const deleteCA = async (id: number): Promise<void> => {
+    await ApiClient.delete<void>(`/certificates/ca/${id}`);
+};

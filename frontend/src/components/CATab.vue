@@ -28,6 +28,14 @@
               >
                 Download
               </button>
+              <button
+                  :id="'DeleteButton-' + ca.id"
+                  v-if="authStore.isAdmin"
+                  class="btn btn-danger btn-sm flex-grow-1"
+                  @click="confirmDeletion(ca)"
+              >
+                Delete
+              </button>
             </div>
           </td>
         </tr>
@@ -103,13 +111,44 @@
         </div>
       </div>
     </div>
+
+    <!-- Delete Confirmation Modal -->
+    <div
+        v-if="isDeleteModalVisible"
+        class="modal show d-block"
+        tabindex="-1"
+        style="background: rgba(0, 0, 0, 0.5)"
+    >
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Delete Certificate</h5>
+            <button type="button" class="btn-close" @click="closeDeleteModal"></button>
+          </div>
+          <div class="modal-body">
+            <p>
+              Are you sure you want to delete the CA
+              <strong>{{ caToDelete?.name }}</strong>?
+            </p>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" @click="closeDeleteModal">
+              Cancel
+            </button>
+            <button type="button" class="btn btn-danger" @click="deleteCA">
+              Delete
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import {computed, onMounted, reactive, ref} from 'vue';
-import {useCAStore} from '@/stores/ca';
-import type {CARequirements} from '@/types/CA';
+import {useCAStore} from '@/stores/cas';
+import type {CA, CARequirements} from '@/types/CA';
 import {useAuthStore} from '@/stores/auth';
 
 // stores
@@ -121,7 +160,9 @@ const cas = computed(() => caStore.cas);
 const loading = computed(() => caStore.loading);
 const error = computed(() => caStore.error);
 
+const isDeleteModalVisible = ref(false);
 const isCreateModalVisible = ref(false);
+const caToDelete = ref<CA | null>(null);
 
 const caReq = reactive<CARequirements>({
   ca_name: '',
@@ -145,6 +186,23 @@ const closeCreateModal = () => {
 const createCA = async () => {
   await caStore.createCA(caReq);
   closeCreateModal();
+};
+
+const confirmDeletion = (cert: CA) => {
+  caToDelete.value = cert;
+  isDeleteModalVisible.value = true;
+};
+
+const closeDeleteModal = () => {
+  caToDelete.value = null;
+  isDeleteModalVisible.value = false;
+};
+
+const deleteCA = async () => {
+  if (caToDelete.value) {
+    await caStore.deleteCA(caToDelete.value.id);
+    closeDeleteModal();
+  }
 };
 
 const downloadCA = async (caId: number) => {

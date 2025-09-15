@@ -187,6 +187,16 @@ impl VaulTLSDB {
         })
     }
 
+    /// Delete a CA from the database
+    pub(crate) async fn delete_ca(&self, id: i64) -> Result<()> {
+        db_do!(self.pool, |conn: &Connection| {
+            Ok(conn.execute(
+                "DELETE FROM ca_certificates WHERE id=?1",
+                params![id]
+            ).map(|_| ())?)
+        })
+    }
+
     /// Retrieve a CA entry from the database. If no ID is specified, the most recent is returned.
     pub(crate) async fn get_ca(&self, ca_id: Option<i64>) -> Result<CA> {
         db_do!(self.pool, |conn: &Connection| {
@@ -231,6 +241,18 @@ impl VaulTLSDB {
             .collect()?)
         })
     }
+
+    /// Count user certificates that have a specific CA ID
+    pub(crate) async fn count_user_certs_by_ca_id(&self, ca_id: i64) -> Result<i64> {
+        db_do!(self.pool, |conn: &Connection| {
+            Ok(conn.query_row(
+                "SELECT COUNT(*) FROM user_certificates WHERE ca_id = ?1",
+                params![ca_id],
+                |row| row.get(0)
+            )?)
+        })
+    }
+
 
     /// Retrieve all user certificates from the database
     /// If user_id is Some, only certificates for that user are returned

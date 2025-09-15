@@ -304,7 +304,7 @@ import {useAuthStore} from "@/stores/auth.ts";
 import {useUserStore} from "@/stores/users.ts";
 import {useSettingsStore} from "@/stores/settings.ts";
 import {PasswordRule} from "@/types/Settings.ts";
-import {useCAStore} from "@/stores/ca.ts";
+import {useCAStore} from "@/stores/cas.ts";
 
 // stores
 const certificateStore = useCertificateStore();
