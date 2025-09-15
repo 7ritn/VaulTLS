@@ -316,7 +316,7 @@ pub(crate) async fn create_user_certificate(
 
     let cert_validity_in_years = payload.validity_in_years.unwrap_or(1);
     let cert_validity_timestamp = crate::cert::get_timestamp(cert_validity_in_years)?;
-    if cert_validity_timestamp.0 < ca.valid_until {
+    if cert_validity_timestamp.0 > ca.valid_until {
         if payload.ca_id.is_none() {
             ca = CertificateBuilder::try_from_ca(&ca)?;
             ca = state.db.insert_ca(ca).await?;

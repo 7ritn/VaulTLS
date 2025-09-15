@@ -238,8 +238,8 @@ impl VaulTLSDB {
     pub(crate) async fn get_all_user_cert(&self, user_id: Option<i64>) -> Result<Vec<Certificate>> {
         db_do!(self.pool, |conn: &Connection| {
             let query = match user_id {
-                Some(_) => "SELECT id, name, created_on, valid_until, pkcs12, pkcs12_password, user_id, type, renew_method FROM user_certificates WHERE user_id = ?1",
-                None => "SELECT id, name, created_on, valid_until, pkcs12, pkcs12_password, user_id, type, renew_method FROM user_certificates"
+                Some(_) => "SELECT id, name, created_on, valid_until, pkcs12, pkcs12_password, user_id, type, renew_method, ca_id FROM user_certificates WHERE user_id = ?1",
+                None => "SELECT id, name, created_on, valid_until, pkcs12, pkcs12_password, user_id, type, renew_method, ca_id FROM user_certificates"
             };
             let mut stmt = conn.prepare(query)?;
             let rows = match user_id {
@@ -257,7 +257,7 @@ impl VaulTLSDB {
                     user_id: row.get(6)?,
                     certificate_type: row.get(7)?,
                     renew_method: row.get(8)?,
-                    ..Default::default()
+                    ca_id: row.get(9)?
                 })
             })
             .collect()?)

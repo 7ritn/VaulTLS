@@ -163,6 +163,21 @@
                 </option>
               </select>
             </div>
+            <div class="mb-3" v-if="availableCAs.length > 1">
+              <label for="caId" class="form-label">Certificate Authority</label>
+              <select
+                  id="caId"
+                  v-model="certReq.ca_id"
+                  class="form-control"
+                  required
+              >
+                <option :value="undefined" disabled>Select a CA</option>
+                <option v-for="ca in availableCAs" :key="ca.id" :value="ca.id">
+                  {{ ca.name }} (ID: {{ ca.id }})
+                </option>
+              </select>
+            </div>
+
             <div class="mb-3">
               <label for="validity" class="form-label">Validity (years)</label>
               <input
@@ -289,12 +304,14 @@ import {useAuthStore} from "@/stores/auth.ts";
 import {useUserStore} from "@/stores/users.ts";
 import {useSettingsStore} from "@/stores/settings.ts";
 import {PasswordRule} from "@/types/Settings.ts";
+import {useCAStore} from "@/stores/ca.ts";
 
 // stores
 const certificateStore = useCertificateStore();
 const authStore = useAuthStore();
 const userStore = useUserStore();
 const settingStore = useSettingsStore();
+const caStore = useCAStore();
 
 // local state
 const shownCerts = ref(new Set<number>());
@@ -322,10 +339,15 @@ const certReq = reactive<CertificateRequirements>({
   cert_type: CertificateType.Client,
   dns_names: [''],
   renew_method: CertificateRenewMethod.None,
+  ca_id: undefined
 });
 
 const isMailValid = computed(() => {
   return (settings.value?.mail.smtp_host.length ?? 0) > 0 && (settings.value?.mail.smtp_port ?? 0) > 0;
+});
+
+const availableCAs = computed(() => {
+  return Array.from(caStore.cas.values()).sort((a, b) => b.id - a.id); // Sort by ID descending
 });
 
 watch(passwordRule, (newVal) => {
@@ -342,6 +364,8 @@ onMounted(async () => {
 
 const showGenerateModal = async () => {
   await userStore.fetchUsers();
+  await caStore.fetchCAs();
+
   isGenerateModalVisible.value = true;
 };
 
@@ -352,6 +376,7 @@ const closeGenerateModal = () => {
   certReq.validity_in_years = 1;
   certReq.pkcs12_password = '';
   certReq.notify_user = false;
+  certReq.ca_id = undefined;
 };
 
 const createCertificate = async () => {

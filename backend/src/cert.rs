@@ -368,7 +368,7 @@ pub(crate) fn migrate_ca_storage() -> Result<()> {
             info!("Migrating CA storage to separate directory");
             fs::create_dir(CA_DIR_PATH)?;
             fs::rename("ca.cert", CA_TLS_FILE_PATH)?;
-            fs::copy(CA_TLS_FILE_PATH, CA_FILE_PATTERN.replace("{}", "0"))?;
+            fs::copy(CA_TLS_FILE_PATH, CA_FILE_PATTERN.replace("{}", "1"))?;
         }
 }
     Ok(())
