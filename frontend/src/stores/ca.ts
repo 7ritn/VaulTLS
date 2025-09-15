@@ -2,7 +2,7 @@ import { defineStore } from 'pinia';
 import type {CA, CARequirements} from '@/types/CA';
 import {createCA, downloadCAByID, fetchCAs} from "@/api/cas.ts";
 
-export const useCertificateStore = defineStore('certificate', {
+export const useCAStore = defineStore('ca', {
     state: () => ({
         cas: new Map<number, CA>(),
         loading: false,

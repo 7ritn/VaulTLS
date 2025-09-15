@@ -6,6 +6,6 @@ export interface CA {
 }
 
 export interface CARequirements {
-    name: string;                         // CA name
+    ca_name: string;                         // CA name
     validity_in_years: number             // Validity of CA in years
 }
