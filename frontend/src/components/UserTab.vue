@@ -28,13 +28,15 @@
             <td :id="'UserMail-' + user.id">{{ user.email }}</td>
             <td :id="'UserRole-' + user.id">{{ UserRole[user.role] }}</td>
             <td>
-              <button
-                :id="'UserDeletebutton-' + user.id"
-                class="btn btn-danger btn-sm"
-                @click="confirmDeleteUser(user)"
-              >
-                Delete
-              </button>
+              <div class="d-flex flex-sm-row flex-column gap-1">
+                <button
+                    :id="'UserDeletebutton-' + user.id"
+                    class="btn btn-danger btn-sm flex-grow-1"
+                    @click="confirmDeleteUser(user)"
+                >
+                  Delete
+                </button>
+              </div>
             </td>
           </tr>
         </tbody>
