@@ -370,7 +370,7 @@ pub(crate) fn migrate_ca_storage() -> Result<()> {
             fs::rename("ca.cert", CA_TLS_FILE_PATH)?;
             fs::copy(CA_TLS_FILE_PATH, CA_FILE_PATTERN.replace("{}", "1"))?;
         }
-}
+    }
     Ok(())
 }
 

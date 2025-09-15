@@ -10,7 +10,7 @@ export const useCAStore = defineStore('ca', {
     }),
 
     actions: {
-        // Fetch certificates and update the state
+        // Fetch CAs and update the state
         async fetchCAs(): Promise<void> {
             this.loading = true;
             this.error = null;

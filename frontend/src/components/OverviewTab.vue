@@ -8,12 +8,12 @@
           <tr>
             <th v-if="authStore.isAdmin">User</th>
             <th>Name</th>
-            <th class="d-none d-lg-table-cell">Type</th>
-            <th class="d-none d-lg-table-cell">Created on</th>
+            <th class="d-none d-md-table-cell">Type</th>
+            <th class="d-none d-md-table-cell">Created on</th>
             <th>Valid until</th>
             <th>Password</th>
-            <th class="d-none d-lg-table-cell">Renew Method</th>
-            <th class="d-none d-lg-table-cell">CA ID</th>
+            <th class="d-none d-md-table-cell">Renew Method</th>
+            <th class="d-none d-md-table-cell">CA ID</th>
             <th>Actions</th>
           </tr>
         </thead>

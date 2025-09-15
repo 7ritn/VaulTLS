@@ -268,7 +268,8 @@ pub(crate) async fn get_certificates(
 #[get("/certificates/ca")]
 /// Get all CAs. Does not require authentication.
 pub(crate) async fn get_all_ca(
-    state: &State<AppState>
+    state: &State<AppState>,
+    _authentication: Authenticated
 ) -> Result<Json<Vec<CA>>, ApiError> {
     let certificates = state.db.get_all_ca().await?;
     Ok(Json(certificates))

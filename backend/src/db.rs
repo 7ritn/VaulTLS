@@ -207,8 +207,8 @@ impl VaulTLSDB {
 
             let mut stmt = conn.prepare(query)?;
             let mut rows = match ca_id {
-                Some(ca_id) => stmt.query(params![ca_id])?,
                 None => stmt.query([])?,
+                Some(ca_id) => stmt.query(params![ca_id])?
             };
 
             let row = rows.next()?.ok_or_else(|| anyhow!("No CA found"))?;
