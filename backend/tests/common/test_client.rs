@@ -5,7 +5,7 @@ use rocket::http::{ContentType, Status};
 use rocket::local::asynchronous::Client;
 use std::ops::{Deref, DerefMut};
 use serde_json::Value;
-use vaultls::cert::Certificate;
+use vaultls::cert::{Certificate, CA};
 use vaultls::create_test_rocket;
 use vaultls::data::api::{CreateUserCertificateRequest, CreateUserRequest, LoginRequest, SetupRequest};
 use vaultls::data::enums::{CertificateRenewMethod, CertificateType, UserRole};
@@ -212,8 +212,15 @@ impl VaulTLSClient {
         Ok(cert.to_der()?)
     }
 
-    pub(crate) async fn download_ca(&self) -> Result<Pem> {
+    pub(crate) async fn download_current_ca(&self) -> Result<Pem> {
         let x509_pem = self.download_cert("ca").await?;
+        Ok(Pem::iter_from_buffer(&x509_pem)
+            .nth(0)
+            .expect("No PEM block found")?)
+    }
+
+    pub(crate) async fn download_ca_by_id(&self, id: i64) -> Result<Pem> {
+        let x509_pem = self.download_cert(&format!("ca/{}", id)).await?;
         Ok(Pem::iter_from_buffer(&x509_pem)
             .nth(0)
             .expect("No PEM block found")?)
@@ -239,5 +246,15 @@ impl VaulTLSClient {
         assert_eq!(response.status(), Status::Ok);
 
         Ok(())
+    }
+
+    pub(crate) async fn get_all_ca(&self) -> Result<Vec<CA>> {
+        let request = self
+            .get("/certificates/ca");
+        let response = request.dispatch().await;
+        assert_eq!(response.status(), Status::Ok);
+        assert_eq!(response.content_type(), Some(ContentType::JSON));
+
+        Ok(serde_json::from_str(&response.into_string().await.unwrap())?)
     }
 }

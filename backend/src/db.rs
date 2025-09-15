@@ -216,7 +216,7 @@ impl VaulTLSDB {
     /// Retrieve all CA certificates from the database
     pub(crate) async fn get_all_ca(&self) -> Result<Vec<CA>> {
         db_do!(self.pool, |conn: &Connection| {
-            let mut stmt = conn.prepare("SELECT id, name, created_on, valid_until, certificate, key FROM ca_certificates ORDER BY id DESC")?;
+            let mut stmt = conn.prepare("SELECT id, name, created_on, valid_until, certificate, key FROM ca_certificates ORDER BY id ASC")?;
             let query = stmt.query([])?;
             Ok(query.map(|row| {
                 Ok(CA{
