@@ -311,11 +311,25 @@ pub(crate) async fn create_user_certificate(
         payload.system_generated_password
     };
 
-    let ca = state.db.get_ca(None).await?;
+    let mut ca = state.db.get_ca(payload.ca_id).await
+        .map_err(|_| ApiError::BadRequest(format!("The CA id {:?} does not exist", payload.ca_id)))?;
+
+    let cert_validity_in_years = payload.validity_in_years.unwrap_or(1);
+    let cert_validity_timestamp = crate::cert::get_timestamp(cert_validity_in_years)?;
+    if cert_validity_timestamp.0 > ca.valid_until {
+        if payload.ca_id.is_none() {
+            ca = CertificateBuilder::try_from_ca(&ca)?;
+            ca = state.db.insert_ca(ca).await?;
+            save_ca(&ca)?;
+        } else {
+            return Err(ApiError::BadRequest("The CA to be used would expire before the certificate".to_string()))
+        }
+    }
+
     let pkcs12_password = get_password(use_random_password, &payload.pkcs12_password);
     let cert_builder = CertificateBuilder::new()?
         .set_name(&payload.cert_name)?
-        .set_valid_until(payload.validity_in_years.unwrap_or(1))?
+        .set_valid_until(cert_validity_in_years)?
         .set_renew_method(payload.renew_method.unwrap_or_default())?
         .set_pkcs12_password(&pkcs12_password)?
         .set_ca(&ca)?

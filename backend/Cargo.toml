@@ -11,6 +11,9 @@ path = "src/main.rs"
 name = "vaultls"
 path = "src/lib.rs"
 
+[features]
+test-mode = []
+
 [dependencies]
 rocket = { version = "0.5", features = ["json", "secrets"] }
 rocket_cors = "0.6"

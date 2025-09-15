@@ -82,7 +82,7 @@ async fn test_privilege_escalation() -> Result<()> {
 #[tokio::test]
 async fn test_cert_private_key_protection() -> Result<()> {
     let client = VaulTLSClient::new_authenticated().await;
-    client.create_client_cert(None, None).await?;
+    client.create_client_cert(None, None, None).await?;
     client.create_user().await?;
     client.switch_user().await?;
     let request = client
@@ -120,7 +120,7 @@ async fn test_enforce_random_cert_password() -> Result<()> {
     settings["common"]["password_rule"] = Value::Number(2.into());
     client.put_settings(settings).await?;
 
-    client.create_client_cert(None, Some(TEST_PASSWORD.to_string())).await?;
+    client.create_client_cert(None, Some(TEST_PASSWORD.to_string()), None).await?;
 
     let request = client
         .get("/certificates/1/password");
@@ -140,7 +140,7 @@ async fn test_enforce_cert_password() -> Result<()> {
     settings["common"]["password_rule"] = Value::Number(1.into());
     client.put_settings(settings).await?;
 
-    client.create_client_cert(None, Some("  ".to_string())).await?;
+    client.create_client_cert(None, Some("  ".to_string()), None).await?;
 
     let request = client
         .get("/certificates/1/password");
@@ -156,7 +156,7 @@ async fn test_enforce_cert_password() -> Result<()> {
 async fn access_deleted_users_certs() -> Result<()> {
     let client = VaulTLSClient::new_authenticated().await;
     client.create_user().await?;
-    client.create_client_cert(Some(2), None).await?;
+    client.create_client_cert(Some(2), None, None).await?;
     client.delete("/users/2").dispatch().await;
 
     let request = client
