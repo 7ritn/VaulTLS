@@ -33,12 +33,11 @@ pub struct Certificate {
     pub certificate_type: CertificateType,
     pub user_id: i64,
     pub renew_method: CertificateRenewMethod,
+    pub ca_id: i64,
     #[serde(skip)]
     pub pkcs12: Vec<u8>,
     #[serde(skip)]
-    pub pkcs12_password: String,
-    #[serde(skip)]
-    pub ca_id: i64,
+    pub pkcs12_password: String
 }
 
 #[derive(Clone, Serialize, Deserialize, JsonSchema, Debug)]
