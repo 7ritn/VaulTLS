@@ -14,6 +14,7 @@ use tracing::{debug, info, trace};
 use tracing_subscriber::EnvFilter;
 use crate::api::*;
 use crate::auth::oidc_auth::OidcAuth;
+use crate::cert::migrate_ca_storage;
 use crate::constants::{API_PORT, DB_FILE_PATH, VAULTLS_VERSION};
 use crate::data::objects::AppState;
 use crate::db::VaulTLSDB;
@@ -113,6 +114,9 @@ pub async fn create_rocket() -> Rocket<Build> {
         true => info!("Mail notifications are active."),
         false => info!("Mail notifications are inactive.")
     }
+    
+    // Migrate certs
+    migrate_ca_storage().expect("Failed migrating CA storage paths");
 
     let rocket_secret = get_secret("VAULTLS_API_SECRET").expect("Failed to get VAULTLS_API_SECRET");
     trace!("Rocket secret: {}", rocket_secret);
@@ -157,10 +161,14 @@ pub async fn create_rocket() -> Rocket<Build> {
             openapi_get_routes![
                 version,
                 get_certificates,
+                create_ca,
                 create_user_certificate,
+                get_all_ca,
+                download_current_ca,
                 download_ca,
                 download_certificate,
                 delete_user_cert,
+                delete_ca,
                 fetch_certificate_password,
                 fetch_settings,
                 update_settings,
@@ -235,9 +243,13 @@ pub async fn create_test_rocket() -> Rocket<Build> {
                 version,
                 get_certificates,
                 create_user_certificate,
+                create_ca,
+                get_all_ca,
+                download_current_ca,
                 download_ca,
                 download_certificate,
                 delete_user_cert,
+                delete_ca,
                 fetch_certificate_password,
                 fetch_settings,
                 update_settings,

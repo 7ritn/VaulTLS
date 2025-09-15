@@ -85,7 +85,7 @@ def test_certificates(page):
     assert "password" in page.locator("#PasswordInput-1").input_value()
     assert count_table_data_rows(page) == 1
 
-    time.sleep(1)
+    page.wait_for_timeout(1000)
     wait_for_email("VaulTLS: A new certificate is available")
 
 def test_renewal_remind(page):
@@ -101,7 +101,7 @@ def test_renewal_remind(page):
     page.select_option("#renewMethod", "1")
     page.click("button:has-text('Create Certificate')")
 
-    time.sleep(5)
+    page.wait_for_timeout(5000)
     wait_for_email("VaulTLS: A certificate is about to expire")
     assert count_table_data_rows(page) == 2
 
@@ -118,10 +118,11 @@ def test_renewal_renew_notify(page):
     page.select_option("#renewMethod", "3")
     page.click("button:has-text('Create Certificate')")
 
-    time.sleep(5)
+    page.wait_for_timeout(5000)
 
     wait_for_email("VaulTLS: A certificate was renewed")
     page.reload()
+    page.wait_for_timeout(1000)
     assert count_table_data_rows(page) == 4
 
 def test_users(page):
@@ -147,3 +148,51 @@ def test_oidc(context):
     page.click("#openid-consent-accept")
     page.wait_for_url("**/overview**")
     assert "Certificates" in page.locator("h1").inner_text()
+
+def test_create_ca_and_certificate_with_ca_verification(page):
+    """Test that creates a new CA, then a certificate using that CA, and verifies the correct CA was used"""
+    page.goto("http://127.0.0.1/ca")
+    page.wait_for_url("**/ca")
+    assert "Certificate Authorities" in page.locator("h1").inner_text()
+
+    initial_ca_count = count_table_data_rows(page)
+    
+    # Create new CA
+    page.click("#CreateCAButton")
+    page.fill("#caName", "Test CA 2")
+    page.fill("#validity", "5")
+    page.click("button:has-text('Create CA')")
+    
+    # Wait for CA creation and verify it was created
+    page.wait_for_timeout(2000)
+    assert count_table_data_rows(page) == initial_ca_count + 1
+    
+    # Get the ID of the newly created CA
+    new_ca_id_element = page.locator("tbody tr").last.locator("td[id^='CaId-']")
+    new_ca_id = new_ca_id_element.inner_text()
+    
+    # Navigate to certificates tab and create a certificate using the new CA
+    page.goto("http://127.0.0.1/overview")
+    page.wait_for_url("**/overview")
+
+    # Get initial certificate count
+    initial_cert_count = count_table_data_rows(page)
+    
+    # Create new certificate using the specific CA
+    page.click("button:has-text('Create New Certificate')")
+    page.fill("#certName", "test_cert_with_new_ca")
+    page.select_option("#userId", "1")
+    page.fill("#certPassword", "password")
+    
+    # Select the newly created CA
+    page.select_option("#caId", new_ca_id)
+    
+    page.click("button:has-text('Create Certificate')")
+
+    page.wait_for_timeout(1000)
+    
+    # Step 3: Verify the certificate was created and uses the correct CA
+    assert count_table_data_rows(page) == initial_cert_count + 1
+
+    new_ca_id_element = page.locator("tbody tr").last.locator("td[id^='CaId-']").inner_text()
+    assert new_ca_id_element == new_ca_id

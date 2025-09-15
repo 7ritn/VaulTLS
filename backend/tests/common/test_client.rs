@@ -5,9 +5,9 @@ use rocket::http::{ContentType, Status};
 use rocket::local::asynchronous::Client;
 use std::ops::{Deref, DerefMut};
 use serde_json::Value;
-use vaultls::cert::Certificate;
+use vaultls::cert::{Certificate, CA};
 use vaultls::create_test_rocket;
-use vaultls::data::api::{CreateUserCertificateRequest, CreateUserRequest, LoginRequest, SetupRequest};
+use vaultls::data::api::{CreateCARequest, CreateUserCertificateRequest, CreateUserRequest, LoginRequest, SetupRequest};
 use vaultls::data::enums::{CertificateRenewMethod, CertificateType, UserRole};
 use x509_parser::pem::Pem;
 use vaultls::data::objects::User;
@@ -45,7 +45,7 @@ impl VaulTLSClient {
             name: TEST_USER_NAME.to_string(),
             email: TEST_USER_EMAIL.to_string(),
             ca_name: TEST_CA_NAME.to_string(),
-            ca_validity_in_years: 1,
+            ca_validity_in_years: 2,
             password: Some(TEST_PASSWORD.to_string()),
         };
 
@@ -68,7 +68,7 @@ impl VaulTLSClient {
 
     pub(crate) async fn new_with_cert() -> Self {
         let client = Self::new_authenticated().await;
-        client.create_client_cert(None, Some(TEST_PASSWORD.to_string())).await.unwrap();
+        client.create_client_cert(None, Some(TEST_PASSWORD.to_string()), None).await.unwrap();
         client
     }
 
@@ -79,7 +79,7 @@ impl VaulTLSClient {
         client
     }
 
-    pub(crate) async fn create_client_cert(&self, user_id: Option<i64>, password: Option<String>) -> Result<Certificate> {
+    pub(crate) async fn create_client_cert(&self, user_id: Option<i64>, password: Option<String>, ca_id: Option<i64>) -> Result<Certificate> {
         let cert_req = CreateUserCertificateRequest {
             cert_name: TEST_CLIENT_CERT_NAME.to_string(),
             validity_in_years: Some(1),
@@ -90,6 +90,7 @@ impl VaulTLSClient {
             cert_type: None,
             dns_names: None,
             renew_method: Some(CertificateRenewMethod::Renew),
+            ca_id,
         };
 
         let request = self
@@ -114,6 +115,7 @@ impl VaulTLSClient {
             cert_type: Some(CertificateType::Server),
             dns_names: Some(vec![TEST_SERVER_CERT_DNS_NAME.to_string()]),
             renew_method: None,
+            ca_id: None,
         };
 
         let request = self
@@ -212,8 +214,15 @@ impl VaulTLSClient {
         Ok(cert.to_der()?)
     }
 
-    pub(crate) async fn download_ca(&self) -> Result<Pem> {
+    pub(crate) async fn download_current_ca(&self) -> Result<Pem> {
         let x509_pem = self.download_cert("ca").await?;
+        Ok(Pem::iter_from_buffer(&x509_pem)
+            .nth(0)
+            .expect("No PEM block found")?)
+    }
+
+    pub(crate) async fn download_ca_by_id(&self, id: i64) -> Result<Pem> {
+        let x509_pem = self.download_cert(&format!("ca/{}", id)).await?;
         Ok(Pem::iter_from_buffer(&x509_pem)
             .nth(0)
             .expect("No PEM block found")?)
@@ -236,6 +245,32 @@ impl VaulTLSClient {
             .body(serde_json::to_string(&settings)?);
         let response = request.dispatch().await;
 
+        assert_eq!(response.status(), Status::Ok);
+
+        Ok(())
+    }
+
+    pub(crate) async fn get_all_ca(&self) -> Result<Vec<CA>> {
+        let request = self
+            .get("/certificates/ca");
+        let response = request.dispatch().await;
+        assert_eq!(response.status(), Status::Ok);
+        assert_eq!(response.content_type(), Some(ContentType::JSON));
+
+        Ok(serde_json::from_str(&response.into_string().await.unwrap())?)
+    }
+
+    pub(crate) async fn create_second_ca(&self) -> Result<()> {
+        let data = CreateCARequest {
+            ca_name: TEST_SECOND_CA_NAME.to_string(),
+            validity_in_years: 15
+        };
+
+        let request = self
+            .post("/certificates/ca")
+            .header(ContentType::JSON)
+            .body(serde_json::to_string(&data)?);
+        let response = request.dispatch().await;
         assert_eq!(response.status(), Status::Ok);
 
         Ok(())

@@ -8,11 +8,12 @@
           <tr>
             <th v-if="authStore.isAdmin">User</th>
             <th>Name</th>
-            <th class="d-none d-sm-table-cell">Type</th>
-            <th class="d-none d-sm-table-cell">Created on</th>
+            <th class="d-none d-md-table-cell">Type</th>
+            <th class="d-none d-md-table-cell">Created on</th>
             <th>Valid until</th>
             <th>Password</th>
-            <th class="d-none d-sm-table-cell">Renew Method</th>
+            <th class="d-none d-md-table-cell">Renew Method</th>
+            <th class="d-none d-md-table-cell">CA ID</th>
             <th>Actions</th>
           </tr>
         </thead>
@@ -20,8 +21,8 @@
           <tr v-for="cert in certificates.values()" :key="cert.id">
             <td :id="'UserId-' + cert.id" v-if="authStore.isAdmin">{{ userStore.idToName(cert.user_id) }}</td>
             <td :id="'CertName-' + cert.id" >{{ cert.name }}</td>
-            <td :id="'CertType-' + cert.id" class="d-none d-sm-table-cell">{{ CertificateType[cert.certificate_type] }}</td>
-            <td :id="'CreatedOn-' + cert.id" class="d-none d-sm-table-cell">{{ new Date(cert.created_on).toLocaleDateString() }}</td>
+            <td :id="'CertType-' + cert.id" class="d-none d-md-table-cell">{{ CertificateType[cert.certificate_type] }}</td>
+            <td :id="'CreatedOn-' + cert.id" class="d-none d-md-table-cell">{{ new Date(cert.created_on).toLocaleDateString() }}</td>
             <td :id="'ValidUntil-' + cert.id" >{{ new Date(cert.valid_until).toLocaleDateString() }}</td>
             <td :id="'Password-' + cert.id"  class="password-cell">
               <div class="d-flex align-items-center">
@@ -48,7 +49,8 @@
                 />
               </div>
             </td>
-            <td :id="'RenewMethod-' + cert.id" class="d-none d-sm-table-cell">{{ CertificateRenewMethod[cert.renew_method] }}</td>
+            <td :id="'RenewMethod-' + cert.id" class="d-none d-md-table-cell">{{ CertificateRenewMethod[cert.renew_method] }}</td>
+            <td :id="'CaId-' + cert.id" class="d-none d-md-table-cell">{{ cert.ca_id }}</td>
             <td>
               <div class="d-flex flex-sm-row flex-column gap-1">
                 <button
@@ -72,14 +74,6 @@
         </tbody>
       </table>
     </div>
-
-    <button
-        id="DownloadCAButton"
-        class="btn btn-primary mx-1"
-        @click="downloadCA"
-    >
-      Get CA certificate
-    </button>
 
     <button
         id="CreateCertificateButton"
@@ -169,6 +163,21 @@
                 </option>
               </select>
             </div>
+            <div class="mb-3" v-if="availableCAs.length > 1">
+              <label for="caId" class="form-label">Certificate Authority</label>
+              <select
+                  id="caId"
+                  v-model="certReq.ca_id"
+                  class="form-control"
+                  required
+              >
+                <option :value="undefined" disabled>Select a CA</option>
+                <option v-for="ca in availableCAs" :key="ca.id" :value="ca.id">
+                  {{ ca.name }} (ID: {{ ca.id }})
+                </option>
+              </select>
+            </div>
+
             <div class="mb-3">
               <label for="validity" class="form-label">Validity (years)</label>
               <input
@@ -295,13 +304,14 @@ import {useAuthStore} from "@/stores/auth.ts";
 import {useUserStore} from "@/stores/users.ts";
 import {useSettingsStore} from "@/stores/settings.ts";
 import {PasswordRule} from "@/types/Settings.ts";
-import {downloadCA} from "@/api/certificates.ts";
+import {useCAStore} from "@/stores/cas.ts";
 
 // stores
 const certificateStore = useCertificateStore();
 const authStore = useAuthStore();
 const userStore = useUserStore();
 const settingStore = useSettingsStore();
+const caStore = useCAStore();
 
 // local state
 const shownCerts = ref(new Set<number>());
@@ -329,10 +339,15 @@ const certReq = reactive<CertificateRequirements>({
   cert_type: CertificateType.Client,
   dns_names: [''],
   renew_method: CertificateRenewMethod.None,
+  ca_id: undefined
 });
 
 const isMailValid = computed(() => {
   return (settings.value?.mail.smtp_host.length ?? 0) > 0 && (settings.value?.mail.smtp_port ?? 0) > 0;
+});
+
+const availableCAs = computed(() => {
+  return Array.from(caStore.cas.values()).sort((a, b) => b.id - a.id); // Sort by ID descending
 });
 
 watch(passwordRule, (newVal) => {
@@ -349,6 +364,8 @@ onMounted(async () => {
 
 const showGenerateModal = async () => {
   await userStore.fetchUsers();
+  await caStore.fetchCAs();
+
   isGenerateModalVisible.value = true;
 };
 
@@ -359,6 +376,7 @@ const closeGenerateModal = () => {
   certReq.validity_in_years = 1;
   certReq.pkcs12_password = '';
   certReq.notify_user = false;
+  certReq.ca_id = undefined;
 };
 
 const createCertificate = async () => {

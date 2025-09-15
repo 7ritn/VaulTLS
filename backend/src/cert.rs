@@ -17,9 +17,11 @@ use openssl::x509::X509Builder;
 use passwords::PasswordGenerator;
 use rocket_okapi::JsonSchema;
 use serde::{Deserialize, Serialize};
-use crate::constants::CA_FILE_PATH;
+use tracing::info;
+use crate::constants::{CA_DIR_PATH, CA_FILE_PATTERN, CA_TLS_FILE_PATH};
 use crate::data::enums::{CertificateRenewMethod, CertificateType};
 use crate::data::enums::CertificateType::{Client, Server};
+#[cfg(not(feature = "test-mode"))]
 use crate::ApiError;
 
 #[derive(Default, Clone, Serialize, Deserialize, JsonSchema, Debug)]
@@ -32,17 +34,17 @@ pub struct Certificate {
     pub certificate_type: CertificateType,
     pub user_id: i64,
     pub renew_method: CertificateRenewMethod,
+    pub ca_id: i64,
     #[serde(skip)]
     pub pkcs12: Vec<u8>,
     #[serde(skip)]
-    pub pkcs12_password: String,
-    #[serde(skip)]
-    pub ca_id: i64,
+    pub pkcs12_password: String
 }
 
 #[derive(Clone, Serialize, Deserialize, JsonSchema, Debug)]
 pub struct CA {
     pub id: i64,
+    pub name: String,
     pub created_on: i64,
     pub valid_until: i64,
     #[serde(skip)]
@@ -103,6 +105,15 @@ impl CertificateBuilder {
             .set_pkcs12_password(&old_cert.pkcs12_password)?
             .set_renew_method(old_cert.renew_method)?
             .set_user_id(old_cert.user_id)
+    }
+
+    pub fn try_from_ca(old_ca: &CA) -> Result<CA> {
+        let validity_in_years = ((old_ca.valid_until - old_ca.created_on) / 1000 / 60 / 60 / 24 / 365).max(1);
+
+        Self::new()?
+            .set_name(&old_ca.name)?
+            .set_valid_until(validity_in_years as u64)?
+            .build_ca()
 
     }
 
@@ -192,6 +203,7 @@ impl CertificateBuilder {
 
         Ok(CA{
             id: -1,
+            name,
             created_on: self.created_on,
             valid_until,
             cert: cert.to_der()?,
@@ -309,7 +321,7 @@ fn generate_serial_number() -> Result<Asn1Integer, ErrorStack> {
 }
 
 /// Returns the current UNIX timestamp in milliseconds and an OpenSSL Asn1Time object.
-fn get_timestamp(from_now_in_years: u64) -> Result<(i64, Asn1Time), ErrorStack> {
+pub(crate) fn get_timestamp(from_now_in_years: u64) -> Result<(i64, Asn1Time), ErrorStack> {
     let time = SystemTime::now() + std::time::Duration::from_secs(60 * 60 * 24 * 365 * from_now_in_years);
     let time_unix = time.duration_since(UNIX_EPOCH).unwrap().as_millis() as i64;
     let time_openssl = Asn1Time::days_from_now(365 * from_now_in_years as u32)?;
@@ -332,13 +344,37 @@ pub(crate) fn get_pem(ca: &CA) -> Result<Vec<u8>, ErrorStack> {
     cert.to_pem()
 }
 
+
 /// Saves the CA certificate to a file for filesystem access.
-pub(crate) fn save_ca(ca: &CA) -> Result<(), ApiError> {
+#[cfg(not(feature = "test-mode"))]
+pub(crate) fn save_ca(ca: &CA) -> Result<()> {
     let pem = get_pem(ca)?;
-    fs::write(CA_FILE_PATH, pem).map_err(|e| ApiError::Other(e.to_string()))?;
+    let ca_id_file_path = CA_FILE_PATTERN.replace("{}", &ca.id.to_string());
+    fs::create_dir_all(CA_DIR_PATH)?;
+    fs::write(ca_id_file_path, pem.clone()).map_err(|e| ApiError::Other(e.to_string()))?;
+    fs::write(CA_TLS_FILE_PATH, pem).map_err(|e| ApiError::Other(e.to_string()))?;
     Ok(())
 }
 
+#[cfg(feature = "test-mode")]
+pub(crate) fn save_ca(_ca: &CA) -> Result<()> {
+    Ok(())
+}
+
+/// Migrates the Certificate Authority (CA) storage to a separate directory.
+pub(crate) fn migrate_ca_storage() -> Result<()> {
+    if let Ok(exists) = fs::exists("ca.cert") {
+        if exists {
+            info!("Migrating CA storage to separate directory");
+            fs::create_dir(CA_DIR_PATH)?;
+            fs::rename("ca.cert", CA_TLS_FILE_PATH)?;
+            fs::copy(CA_TLS_FILE_PATH, CA_FILE_PATTERN.replace("{}", "1"))?;
+        }
+    }
+    Ok(())
+}
+
+/// Extract DNS names stored in X509 certificate
 pub(crate) fn get_dns_names(cert: &Certificate) -> Result<Vec<String>, anyhow::Error> {
     let encrypted_p12 = Pkcs12::from_der(&cert.pkcs12)?;
     let Some(cert) = encrypted_p12.parse2(&cert.pkcs12_password)?.cert else { return Err(anyhow::anyhow!("No certificate found in PKCS#12"))};

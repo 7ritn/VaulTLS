@@ -18,13 +18,13 @@ use serde_json::Value;
 use tokio::io::{duplex, AsyncReadExt, AsyncWriteExt};
 use tokio::time::sleep;
 use tokio_rustls::{TlsAcceptor, TlsConnector};
-use vaultls::cert::Certificate;
+use vaultls::cert::{Certificate, CA};
 use vaultls::data::enums::{CertificateRenewMethod, CertificateType, UserRole};
 use vaultls::data::objects::User;
 use x509_parser::asn1_rs::FromDer;
 use x509_parser::prelude::X509Certificate;
 use vaultls::constants::ARGON2;
-use vaultls::data::api::{IsSetupResponse, SetupRequest};
+use vaultls::data::api::{CreateUserCertificateRequest, IsSetupResponse, SetupRequest};
 
 #[tokio::test]
 async fn test_version() -> Result<()>{
@@ -64,7 +64,13 @@ async fn test_is_setup() -> Result<()> {
 #[tokio::test]
 async fn test_ca_download() -> Result<()>{
     let client = VaulTLSClient::new_setup().await;
-    let ca_pem = client.download_ca().await?;
+
+    let old_cas: Vec<CA> = client.get_all_ca().await?;
+    assert_eq!(old_cas.len(), 1);
+
+    let ca_by_id_pem = client.download_ca_by_id(1).await?;
+    let ca_pem = client.download_current_ca().await?;
+    assert_eq!(ca_pem, ca_by_id_pem);
     let ca_x509 = ca_pem.parse_x509()?;
 
     assert_eq!(ca_x509.subject.to_string(), concatcp!("CN=", TEST_CA_NAME).to_string());
@@ -133,7 +139,7 @@ async fn test_login_hash() -> Result<()> {
 #[tokio::test]
 async fn test_create_client_certificate() -> Result<()> {
     let client = VaulTLSClient::new_authenticated().await;
-    let cert = client.create_client_cert(None, None).await?;
+    let cert = client.create_client_cert(None, None, None).await?;
 
     let now = get_timestamp(0);
     let valid_until = get_timestamp(1);
@@ -145,6 +151,7 @@ async fn test_create_client_certificate() -> Result<()> {
     assert_eq!(cert.certificate_type, CertificateType::Client);
     assert_eq!(cert.user_id, 1);
     assert_eq!(cert.renew_method , CertificateRenewMethod::Renew);
+    assert_eq!(cert.ca_id, 1);
     Ok(())
 }
 
@@ -320,10 +327,10 @@ async fn test_delete_user() -> Result<()> {
     let client = VaulTLSClient::new_authenticated().await;
     client.create_user().await?;
 
-        let request = client
-            .delete("/users/2");
-        let response = request.dispatch().await;
-        assert_eq!(response.status(), Status::Ok);
+    let request = client
+        .delete("/users/2");
+    let response = request.dispatch().await;
+    assert_eq!(response.status(), Status::Ok);
 
     Ok(())
 }
@@ -332,7 +339,7 @@ async fn test_delete_user() -> Result<()> {
 async fn test_create_cert_for_second_user() -> Result<()> {
     let client = VaulTLSClient::new_authenticated().await;
     client.create_user().await?;
-    client.create_client_cert(Some(2), Some(TEST_PASSWORD.to_string())).await?;
+    client.create_client_cert(Some(2), Some(TEST_PASSWORD.to_string()), None).await?;
     client.switch_user().await?;
     let cert_der = client.download_cert_as_p12("1").await?;
     let (_, cert_x509) = X509Certificate::from_der(&cert_der)?;
@@ -341,6 +348,81 @@ async fn test_create_cert_for_second_user() -> Result<()> {
 
     let xku = cert_x509.subject_alternative_name()?.expect("No subject alternative name");
     assert_eq!(xku.value.general_names[0].to_string(), formatcp!("RFC822Name({})", TEST_SECOND_USER_EMAIL));
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_create_new_ca() -> Result<()> {
+    let client = VaulTLSClient::new_authenticated().await;
+    client.create_second_ca().await?;
+    let new_cas: Vec<CA> = client.get_all_ca().await?;
+
+    let now = get_timestamp(0);
+    let valid_until = get_timestamp(15);
+
+    assert_eq!(new_cas.len(), 2);
+    assert_eq!(new_cas[1].name, TEST_SECOND_CA_NAME.to_string());
+    assert_eq!(new_cas[1].id, 2);
+    assert!(now > new_cas[1].created_on && new_cas[1].created_on > now - 10000 /* 10 seconds */);
+    assert!(valid_until > new_cas[1].valid_until && new_cas[1].valid_until > valid_until - 10000 /* 10 seconds */);
+
+    let ca_by_id_pem = client.download_ca_by_id(2).await?;
+    let ca_pem = client.download_current_ca().await?;
+    assert_eq!(ca_pem, ca_by_id_pem);
+    let ca_x509 = ca_pem.parse_x509()?;
+
+    assert_eq!(ca_x509.subject.to_string(), concatcp!("CN=", TEST_SECOND_CA_NAME).to_string());
+
+    let bc = ca_x509.basic_constraints()?.expect("No basic constraints");
+    assert!(bc.value.ca);
+
+    let old_ca = client.download_ca_by_id(1).await?;
+    let old_ca_x509 = old_ca.parse_x509()?;
+    assert_eq!(old_ca_x509.subject.to_string(), concatcp!("CN=", TEST_CA_NAME).to_string());
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_create_certificate_with_second_ca() -> Result<()> {
+    let client = VaulTLSClient::new_authenticated().await;
+    client.create_second_ca().await?;
+    let certificate = client.create_client_cert(None, None, None).await?;
+    assert_eq!(certificate.ca_id, 2);
+
+    let certificate = client.create_client_cert(None, None, Some(1)).await?;
+    assert_eq!(certificate.ca_id, 1);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_create_certificate_with_short_lived_ca() -> Result<()> {
+    let client = VaulTLSClient::new_authenticated().await;
+
+    let cert_req = CreateUserCertificateRequest {
+        cert_name: TEST_CLIENT_CERT_NAME.to_string(),
+        validity_in_years: Some(2),
+        user_id: 1,
+        notify_user: None,
+        system_generated_password: false,
+        pkcs12_password: None,
+        cert_type: None,
+        dns_names: None,
+        renew_method: Some(CertificateRenewMethod::Renew),
+        ca_id: None,
+    };
+
+    let request = client
+        .post("/certificates")
+        .header(ContentType::JSON)
+        .body(serde_json::to_string(&cert_req)?);
+    let response = request.dispatch().await;
+
+    let certificate: Certificate = serde_json::from_str(&response.into_string().await.unwrap())?;
+
+    assert_eq!(certificate.ca_id, 2);
 
     Ok(())
 }

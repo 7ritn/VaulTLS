@@ -85,7 +85,7 @@ If no user is found a new one is created.
 Users can only see certificates created for them. Only admins can create new certificates.
 User certificates can be downloaded through the web interface.
 
-The CA certificate to be integrated with your reverse proxy is available as a file at /app/data/ca.cert 
+The current CA certificate to be integrated with your reverse proxy is available as a file at /app/data/ca/ca.cert 
 and as download via the API endpoint /api/certificates/ca/download.
 
 Further API documentation is available at the endpoint /api

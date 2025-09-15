@@ -10,4 +10,5 @@ export interface CertificateRequirements {
     cert_type: CertificateType;
     dns_names: string[];
     renew_method: CertificateRenewMethod;
+    ca_id?: number;
 }

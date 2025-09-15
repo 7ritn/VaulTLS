@@ -7,9 +7,9 @@ use tracing::{trace, debug, info, warn};
 use crate::auth::oidc_auth::OidcAuth;
 use crate::auth::password_auth::Password;
 use crate::auth::session_auth::{generate_token, invalidate_token, Authenticated, AuthenticatedPrivileged};
-use crate::cert::{get_password, get_pem, save_ca, Certificate, CertificateBuilder};
+use crate::cert::{get_password, get_pem, save_ca, Certificate, CertificateBuilder, CA};
 use crate::constants::VAULTLS_VERSION;
-use crate::data::api::{CallbackQuery, ChangePasswordRequest, CreateUserCertificateRequest, CreateUserRequest, DownloadResponse, IsSetupResponse, LoginRequest, SetupRequest};
+use crate::data::api::{CallbackQuery, ChangePasswordRequest, CreateCARequest, CreateUserCertificateRequest, CreateUserRequest, DownloadResponse, IsSetupResponse, LoginRequest, SetupRequest};
 use crate::data::enums::{CertificateType, PasswordRule, UserRole};
 use crate::data::error::ApiError;
 use crate::data::objects::{AppState, User};
@@ -79,12 +79,12 @@ pub(crate) async fn setup(
 
     state.db.insert_user(user).await?;
 
-    let ca = CertificateBuilder::new()?
+    let mut ca = CertificateBuilder::new()?
         .set_name(&setup_req.ca_name)?
         .set_valid_until(setup_req.ca_validity_in_years)?
         .build_ca()?;
+    ca = state.db.insert_ca(ca).await?;
     save_ca(&ca)?;
-    state.db.insert_ca(ca).await?;
 
     info!("VaulTLS was successfully set up.");
 
@@ -265,6 +265,33 @@ pub(crate) async fn get_certificates(
 }
 
 #[openapi(tag = "Certificates")]
+#[get("/certificates/ca")]
+/// Get all CAs. Does not require authentication.
+pub(crate) async fn get_all_ca(
+    state: &State<AppState>,
+    _authentication: Authenticated
+) -> Result<Json<Vec<CA>>, ApiError> {
+    let certificates = state.db.get_all_ca().await?;
+    Ok(Json(certificates))
+}
+
+#[openapi(tag = "Certificates")]
+#[post("/certificates/ca", format = "json", data = "<payload>")]
+/// Create a new certificate. Requires admin role.
+pub(crate) async fn create_ca(
+    state: &State<AppState>,
+    payload: Json<CreateCARequest>,
+    _authentication: AuthenticatedPrivileged
+) -> Result<Json<i64>, ApiError> {
+    let mut ca = CertificateBuilder::new()?
+        .set_name(&payload.ca_name)?
+        .set_valid_until(payload.validity_in_years)?
+        .build_ca()?;
+    ca = state.db.insert_ca(ca).await?;
+    save_ca(&ca)?;
+    Ok(Json(ca.id))
+}
+#[openapi(tag = "Certificates")]
 #[post("/certificates", format = "json", data = "<payload>")]
 /// Create a new certificate. Requires admin role.
 pub(crate) async fn create_user_certificate(
@@ -285,11 +312,25 @@ pub(crate) async fn create_user_certificate(
         payload.system_generated_password
     };
 
-    let ca = state.db.get_current_ca().await?;
+    let mut ca = state.db.get_ca(payload.ca_id).await
+        .map_err(|_| ApiError::BadRequest(format!("The CA id {:?} does not exist", payload.ca_id)))?;
+
+    let cert_validity_in_years = payload.validity_in_years.unwrap_or(1);
+    let cert_validity_timestamp = crate::cert::get_timestamp(cert_validity_in_years)?;
+    if cert_validity_timestamp.0 > ca.valid_until {
+        if payload.ca_id.is_none() {
+            ca = CertificateBuilder::try_from_ca(&ca)?;
+            ca = state.db.insert_ca(ca).await?;
+            save_ca(&ca)?;
+        } else {
+            return Err(ApiError::BadRequest("The CA to be used would expire before the certificate".to_string()))
+        }
+    }
+
     let pkcs12_password = get_password(use_random_password, &payload.pkcs12_password);
     let cert_builder = CertificateBuilder::new()?
         .set_name(&payload.cert_name)?
-        .set_valid_until(payload.validity_in_years.unwrap_or(1))?
+        .set_valid_until(cert_validity_in_years)?
         .set_renew_method(payload.renew_method.unwrap_or_default())?
         .set_pkcs12_password(&pkcs12_password)?
         .set_ca(&ca)?
@@ -338,12 +379,24 @@ pub(crate) async fn create_user_certificate(
 #[openapi(tag = "Certificates")]
 #[get("/certificates/ca/download")]
 /// Download the current CA certificate.
-pub(crate) async fn download_ca(
+pub(crate) async fn download_current_ca(
     state: &State<AppState>
 ) -> Result<DownloadResponse, ApiError> {
-    let ca = state.db.get_current_ca().await?;
+    let ca = state.db.get_ca(None).await?;
     let pem = get_pem(&ca)?;
     Ok(DownloadResponse::new(pem, "ca_certificate.pem"))
+}
+
+#[openapi(tag = "Certificates")]
+#[get("/certificates/ca/<id>/download")]
+/// Download a CA certificate identified by id.
+pub(crate) async fn download_ca(
+    state: &State<AppState>,
+    id: i64
+) -> Result<DownloadResponse, ApiError> {
+    let ca = state.db.get_ca(Some(id)).await?;
+    let pem = get_pem(&ca)?;
+    Ok(DownloadResponse::new(pem, &format!("ca_{}.pem", ca.id)))
 }
 
 #[openapi(tag = "Certificates")]
@@ -370,6 +423,22 @@ pub(crate) async fn fetch_certificate_password(
     let (user_id, pkcs12_password) = state.db.get_user_cert_pkcs12_password(id).await?;
     if user_id != authentication.claims.id && authentication.claims.role != UserRole::Admin { return Err(ApiError::Forbidden(None)) }
     Ok(Json(pkcs12_password))
+}
+
+#[openapi(tag = "Certificates")]
+#[delete("/certificates/ca/<id>")]
+/// Delete a CA. Requires admin role.
+pub(crate) async fn delete_ca(
+    state: &State<AppState>,
+    id: i64,
+    _authentication: AuthenticatedPrivileged
+) -> Result<(), ApiError> {
+    let related_cert_count = state.db.count_user_certs_by_ca_id(id).await?;
+    if related_cert_count > 0 {
+        return Err(ApiError::BadRequest("The CA still has user certificates attached to it.".to_string()));
+    }
+    state.db.delete_ca(id).await?;
+    Ok(())
 }
 
 #[openapi(tag = "Certificates")]

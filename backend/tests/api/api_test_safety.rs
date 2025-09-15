@@ -1,6 +1,7 @@
-use crate::common::constants::{TEST_PASSWORD, TEST_USER_EMAIL};
+use crate::common::constants::{TEST_CA_NAME, TEST_PASSWORD, TEST_USER_EMAIL};
 use crate::common::test_client::VaulTLSClient;
 use anyhow::Result;
+use const_format::concatcp;
 use rocket::http::{ContentType, Cookie, Status};
 use serde_json::Value;
 use vaultls::data::api::{CreateUserRequest, LoginRequest};
@@ -82,7 +83,7 @@ async fn test_privilege_escalation() -> Result<()> {
 #[tokio::test]
 async fn test_cert_private_key_protection() -> Result<()> {
     let client = VaulTLSClient::new_authenticated().await;
-    client.create_client_cert(None, None).await?;
+    client.create_client_cert(None, None, None).await?;
     client.create_user().await?;
     client.switch_user().await?;
     let request = client
@@ -120,7 +121,7 @@ async fn test_enforce_random_cert_password() -> Result<()> {
     settings["common"]["password_rule"] = Value::Number(2.into());
     client.put_settings(settings).await?;
 
-    client.create_client_cert(None, Some(TEST_PASSWORD.to_string())).await?;
+    client.create_client_cert(None, Some(TEST_PASSWORD.to_string()), None).await?;
 
     let request = client
         .get("/certificates/1/password");
@@ -140,7 +141,7 @@ async fn test_enforce_cert_password() -> Result<()> {
     settings["common"]["password_rule"] = Value::Number(1.into());
     client.put_settings(settings).await?;
 
-    client.create_client_cert(None, Some("  ".to_string())).await?;
+    client.create_client_cert(None, Some("  ".to_string()), None).await?;
 
     let request = client
         .get("/certificates/1/password");
@@ -156,7 +157,7 @@ async fn test_enforce_cert_password() -> Result<()> {
 async fn access_deleted_users_certs() -> Result<()> {
     let client = VaulTLSClient::new_authenticated().await;
     client.create_user().await?;
-    client.create_client_cert(Some(2), None).await?;
+    client.create_client_cert(Some(2), None, None).await?;
     client.delete("/users/2").dispatch().await;
 
     let request = client
@@ -172,6 +173,28 @@ async fn access_deleted_users_certs() -> Result<()> {
     let response = request.dispatch().await;
     assert_eq!(response.status(), Status::Ok);
     assert_eq!(response.into_string().await.unwrap(), "[]");
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn access_deleted_ca() -> Result<()> {
+    let client = VaulTLSClient::new_authenticated().await;
+    client.create_second_ca().await?;
+    client.delete("/certificates/ca/2").dispatch().await;
+
+    let ca_list = client.get_all_ca().await?;
+    assert_eq!(ca_list.len(), 1);
+
+    let request = client
+        .get("/certificates/2/download");
+    let response = request.dispatch().await;
+    assert_eq!(response.status(), Status::InternalServerError);
+
+    let ca_pem = client.download_current_ca().await?;
+    let ca_x509 = ca_pem.parse_x509()?;
+
+    assert_eq!(ca_x509.subject.to_string(), concatcp!("CN=", TEST_CA_NAME).to_string());
 
     Ok(())
 }

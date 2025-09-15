@@ -23,7 +23,7 @@ RUN --mount=type=cache,target=/app/backend/target \
     cargo build --release \
     && cp target/release/backend backend \
     && if [ "$RUN_TESTS" = "true" ]; then \
-         cargo test; \
+         cargo test --features test-mode; \
        else \
          echo "Skipping tests"; \
        fi

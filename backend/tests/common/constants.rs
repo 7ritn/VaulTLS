@@ -2,6 +2,7 @@ pub(crate) const TEST_USER_NAME: &str = "test";
 pub(crate) const TEST_USER_EMAIL: &str = "test@example.com>";
 pub(crate) const TEST_PASSWORD: &str = "password";
 pub(crate) const TEST_CA_NAME: &str = "Test CA";
+pub(crate) const TEST_SECOND_CA_NAME: &str = "Second CA";
 pub(crate) const TEST_CLIENT_CERT_NAME: &str = "Test Cert";
 pub(crate) const TEST_SERVER_CERT_NAME: &str = "Test Server Cert";
 pub(crate) const TEST_SERVER_CERT_DNS_NAME: &str = "localhost";

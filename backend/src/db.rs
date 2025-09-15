@@ -175,34 +175,84 @@ impl VaulTLSDB {
     /// Adds id to the Certificate struct
     pub(crate) async fn insert_ca(
         &self,
-        ca: CA
-    ) -> Result<i64> {
+        mut ca: CA
+    ) -> Result<CA> {
         db_do!(self.pool, |conn: &Connection| {
             conn.execute(
-                "INSERT INTO ca_certificates (created_on, valid_until, certificate, key) VALUES (?1, ?2, ?3, ?4)",
-                params![ca.created_on, ca.valid_until, ca.cert, ca.key],
+                "INSERT INTO ca_certificates (name, created_on, valid_until, certificate, key) VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![ca.name, ca.created_on, ca.valid_until, ca.cert, ca.key],
             )?;
-
-            Ok(conn.last_insert_rowid())
+            ca.id = conn.last_insert_rowid();
+            Ok(ca)
         })
     }
 
-    /// Retrieve the most recent CA entry from the database
-    pub(crate) async fn get_current_ca(&self) -> Result<CA> {
+    /// Delete a CA from the database
+    pub(crate) async fn delete_ca(&self, id: i64) -> Result<()> {
         db_do!(self.pool, |conn: &Connection| {
-            let mut stmt = conn.prepare("SELECT * FROM ca_certificates ORDER BY id DESC LIMIT 1")?;
+            Ok(conn.execute(
+                "DELETE FROM ca_certificates WHERE id=?1",
+                params![id]
+            ).map(|_| ())?)
+        })
+    }
 
-            stmt.query_row([], |row| {
+    /// Retrieve a CA entry from the database. If no ID is specified, the most recent is returned.
+    pub(crate) async fn get_ca(&self, ca_id: Option<i64>) -> Result<CA> {
+        db_do!(self.pool, |conn: &Connection| {
+            let query = match ca_id {
+                None => "SELECT id, name, created_on, valid_until, certificate, key FROM ca_certificates ORDER BY id DESC LIMIT 1",
+                Some(_) => "SELECT id, name, created_on, valid_until, certificate, key FROM ca_certificates WHERE id = ?1"
+            };
+
+            let mut stmt = conn.prepare(query)?;
+            let mut rows = match ca_id {
+                None => stmt.query([])?,
+                Some(ca_id) => stmt.query(params![ca_id])?
+            };
+
+            let row = rows.next()?.ok_or_else(|| anyhow!("No CA found"))?;
+            Ok(CA {
+                id: row.get(0)?,
+                name: row.get(1).unwrap_or_default(),
+                created_on: row.get(2)?,
+                valid_until: row.get(3)?,
+                cert: row.get(4)?,
+                key: row.get(5)?
+            })
+        })
+    }
+
+    /// Retrieve all CA certificates from the database
+    pub(crate) async fn get_all_ca(&self) -> Result<Vec<CA>> {
+        db_do!(self.pool, |conn: &Connection| {
+            let mut stmt = conn.prepare("SELECT id, name, created_on, valid_until, certificate, key FROM ca_certificates ORDER BY id ASC")?;
+            let query = stmt.query([])?;
+            Ok(query.map(|row| {
                 Ok(CA{
                     id: row.get(0)?,
-                    created_on: row.get(1)?,
-                    valid_until: row.get(2)?,
-                    cert: row.get(3)?,
-                    key: row.get(4)?
+                    name: row.get(1).unwrap_or_default(),
+                    created_on: row.get(2)?,
+                    valid_until: row.get(3)?,
+                    cert: row.get(4)?,
+                    key: row.get(5)?
                 })
-            }).map_err(|_| anyhow!("VaulTLS has not been set-up yet"))
+            })
+            .collect()?)
         })
     }
+
+    /// Count user certificates that have a specific CA ID
+    pub(crate) async fn count_user_certs_by_ca_id(&self, ca_id: i64) -> Result<i64> {
+        db_do!(self.pool, |conn: &Connection| {
+            Ok(conn.query_row(
+                "SELECT COUNT(*) FROM user_certificates WHERE ca_id = ?1",
+                params![ca_id],
+                |row| row.get(0)
+            )?)
+        })
+    }
+
 
     /// Retrieve all user certificates from the database
     /// If user_id is Some, only certificates for that user are returned
@@ -210,8 +260,8 @@ impl VaulTLSDB {
     pub(crate) async fn get_all_user_cert(&self, user_id: Option<i64>) -> Result<Vec<Certificate>> {
         db_do!(self.pool, |conn: &Connection| {
             let query = match user_id {
-                Some(_) => "SELECT id, name, created_on, valid_until, pkcs12, pkcs12_password, user_id, type, renew_method FROM user_certificates WHERE user_id = ?1",
-                None => "SELECT id, name, created_on, valid_until, pkcs12, pkcs12_password, user_id, type, renew_method FROM user_certificates"
+                Some(_) => "SELECT id, name, created_on, valid_until, pkcs12, pkcs12_password, user_id, type, renew_method, ca_id FROM user_certificates WHERE user_id = ?1",
+                None => "SELECT id, name, created_on, valid_until, pkcs12, pkcs12_password, user_id, type, renew_method, ca_id FROM user_certificates"
             };
             let mut stmt = conn.prepare(query)?;
             let rows = match user_id {
@@ -229,7 +279,7 @@ impl VaulTLSDB {
                     user_id: row.get(6)?,
                     certificate_type: row.get(7)?,
                     renew_method: row.get(8)?,
-                    ..Default::default()
+                    ca_id: row.get(9)?
                 })
             })
             .collect()?)

@@ -1,0 +1,1 @@
+ALTER TABLE ca_certificates ADD COLUMN name TEXT DEFAULT '';
