@@ -11,6 +11,9 @@ path = "src/main.rs"
 name = "vaultls"
 path = "src/lib.rs"
 
+[profile.release]
+incremental = true
+
 [features]
 test-mode = []
 

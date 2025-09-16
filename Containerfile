@@ -5,7 +5,7 @@ COPY assets/logo.png /app/assets/logo.png
 
 WORKDIR /app/frontend
 COPY frontend/package*.json ./
-RUN --mount=type=cache,target=/root/.npm npm install
+RUN npm install
 
 COPY frontend/ ./
 RUN npm run build
@@ -17,10 +17,7 @@ ARG RUN_TESTS=false
 WORKDIR /app/backend
 COPY backend/ ./
 
-RUN --mount=type=cache,target=/app/backend/target \
-    --mount=type=cache,target=/usr/local/cargo/git/db \
-    --mount=type=cache,target=/usr/local/cargo/registry/ \
-    cargo build --release \
+RUN cargo build --release --locked \
     && cp target/release/backend backend \
     && if [ "$RUN_TESTS" = "true" ]; then \
          cargo test --features test-mode; \
