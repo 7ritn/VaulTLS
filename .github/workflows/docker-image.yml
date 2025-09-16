@@ -48,6 +48,8 @@ jobs:
         file: ./Containerfile
         push: true
         tags: ghcr.io/${{ env.REPO_LOWER }}:${{ env.RELEASE_TAG }}-${{ matrix.arch }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
   manifest:
     runs-on: ubuntu-latest
     needs: build

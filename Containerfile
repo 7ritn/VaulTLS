@@ -17,7 +17,7 @@ ARG RUN_TESTS=false
 WORKDIR /app/backend
 COPY backend/ ./
 
-RUN cargo build --release --locked \
+RUN cargo build --release \
     && cp target/release/backend backend \
     && if [ "$RUN_TESTS" = "true" ]; then \
          cargo test --features test-mode; \
