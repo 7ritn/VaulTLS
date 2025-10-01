@@ -51,5 +51,5 @@ uuid = { version = "1.18", features = ["v4"] }
 
 [dev-dependencies]
 x509-parser = "0.18.0"
-rustls = { version = "0.23.29", features = ["aws-lc-rs"] }
+rustls = { version = "0.23.32", features = ["aws-lc-rs"] }
 tokio-rustls = "0.26.1"
