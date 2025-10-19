@@ -60,7 +60,7 @@ pub struct AuthenticatedPrivileged {
 }
 
 /// JWT claims
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub(crate) struct Claims {
     pub(crate) jti: String,
     pub(crate) id: i64,
