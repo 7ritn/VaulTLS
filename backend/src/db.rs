@@ -1,4 +1,3 @@
-use crate::cert::{Certificate, CA};
 use crate::constants::{DB_FILE_PATH, TEMP_DB_FILE_PATH};
 use crate::data::enums::{CertificateRenewMethod, UserRole};
 use crate::data::objects::User;
@@ -15,6 +14,7 @@ use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use tracing::{debug, info, trace, warn};
 use crate::auth::password_auth::Password;
+use crate::certs::common::{Certificate, CA};
 
 static MIGRATIONS_DIR: Dir = include_dir!("$CARGO_MANIFEST_DIR/migrations");
 
@@ -274,8 +274,8 @@ impl VaulTLSDB {
                     name: row.get(1)?,
                     created_on: row.get(2)?,
                     valid_until: row.get(3)?,
-                    pkcs12: row.get(4)?,
-                    pkcs12_password: row.get(5).unwrap_or_default(),
+                    data: row.get(4)?,
+                    password: row.get(5).unwrap_or_default(),
                     user_id: row.get(6)?,
                     certificate_type: row.get(7)?,
                     renew_method: row.get(8)?,
@@ -288,7 +288,7 @@ impl VaulTLSDB {
 
     /// Retrieve the certificate's PKCS12  data with id from the database
     /// Returns the id of the user the certificate belongs to and the PKCS12 data
-    pub(crate) async fn get_user_cert_pkcs12(&self, id: i64) -> Result<(i64, String, Vec<u8>)> {
+    pub(crate) async fn get_user_cert_data(&self, id: i64) -> Result<(i64, String, Vec<u8>)> {
         db_do!(self.pool, |conn: &Connection| {
             let mut stmt = conn.prepare("SELECT user_id, name, pkcs12 FROM user_certificates WHERE id = ?1")?;
 
@@ -301,7 +301,7 @@ impl VaulTLSDB {
 
     /// Retrieve the certificate's PKCS12 data with id from the database
     /// Returns the id of the user the certificate belongs to and the PKCS12 password
-    pub(crate) async fn get_user_cert_pkcs12_password(&self, id: i64) -> Result<(i64, String)> {
+    pub(crate) async fn get_user_cert_password(&self, id: i64) -> Result<(i64, String)> {
         db_do!(self.pool, |conn: &Connection| {
             let mut stmt = conn.prepare("SELECT user_id, pkcs12_password FROM user_certificates WHERE id = ?1")?;
 
@@ -318,7 +318,7 @@ impl VaulTLSDB {
         db_do!(self.pool, |conn: &Connection| {
             conn.execute(
                 "INSERT INTO user_certificates (name, created_on, valid_until, pkcs12, pkcs12_password, type, renew_method, ca_id, user_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-                params![cert.name, cert.created_on, cert.valid_until, cert.pkcs12, cert.pkcs12_password, cert.certificate_type as u8, cert.renew_method as u8, cert.ca_id, cert.user_id],
+                params![cert.name, cert.created_on, cert.valid_until, cert.data, cert.password, cert.certificate_type as u8, cert.renew_method as u8, cert.ca_id, cert.user_id],
             )?;
 
             cert.id = conn.last_insert_rowid();

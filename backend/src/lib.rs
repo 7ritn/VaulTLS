@@ -14,7 +14,7 @@ use tracing::{debug, info, trace};
 use tracing_subscriber::EnvFilter;
 use crate::api::*;
 use crate::auth::oidc_auth::OidcAuth;
-use crate::cert::migrate_ca_storage;
+use crate::certs::tls_cert::migrate_ca_storage;
 use crate::constants::{API_PORT, DB_FILE_PATH, VAULTLS_VERSION};
 use crate::data::objects::AppState;
 use crate::db::VaulTLSDB;
@@ -24,7 +24,7 @@ use crate::notification::notifier::watch_expiry;
 use crate::settings::Settings;
 
 mod db;
-pub mod cert;
+pub mod certs;
 mod settings;
 pub mod data;
 mod helper;

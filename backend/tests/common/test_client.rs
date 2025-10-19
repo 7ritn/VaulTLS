@@ -5,11 +5,11 @@ use rocket::http::{ContentType, Status};
 use rocket::local::asynchronous::Client;
 use std::ops::{Deref, DerefMut};
 use serde_json::Value;
-use vaultls::cert::{Certificate, CA};
 use vaultls::create_test_rocket;
 use vaultls::data::api::{CreateCARequest, CreateUserCertificateRequest, CreateUserRequest, LoginRequest, SetupRequest};
 use vaultls::data::enums::{CertificateRenewMethod, CertificateType, UserRole};
 use x509_parser::pem::Pem;
+use vaultls::certs::common::{Certificate, CA};
 use vaultls::data::objects::User;
 
 pub(crate) struct VaulTLSClient(Client);
@@ -112,7 +112,7 @@ impl VaulTLSClient {
             notify_user: None,
             system_generated_password: false,
             pkcs12_password: Some(TEST_PASSWORD.to_string()),
-            cert_type: Some(CertificateType::Server),
+            cert_type: Some(CertificateType::TLSServer),
             dns_names: Some(vec![TEST_SERVER_CERT_DNS_NAME.to_string()]),
             renew_method: None,
             ca_id: None,
@@ -128,7 +128,7 @@ impl VaulTLSClient {
 
         let cert: Certificate = serde_json::from_str(&response.into_string().await.unwrap())?;
 
-        assert_eq!(cert.certificate_type, CertificateType::Server);
+        assert_eq!(cert.certificate_type, CertificateType::TLSServer);
         Ok(())
     }
 

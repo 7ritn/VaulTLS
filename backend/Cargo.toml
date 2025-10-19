@@ -31,7 +31,7 @@ r2d2_sqlite = { version = "0.31", features = ["bundled-sqlcipher"] }
 openssl = "0.10"
 argon2 = "0.5"
 jsonwebtoken = "9"
-openidconnect = "4.0"
+openidconnect = "4.0.1"
 anyhow = "1.0"
 num_enum = "0.7"
 lettre = { version = "0.11", features = ["tokio1", "builder", "smtp-transport", "tokio1-native-tls"] }
@@ -48,6 +48,10 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 derive_deref = "1.1"
 parking_lot = "0.12"
 uuid = { version = "1.18", features = ["v4"] }
+ssh-key = { version = "0.6", features = ["ed25519", "alloc", "serde", "encryption"] }
+rand = "0.9"
+zip = "5.1.1"
+rand_core = "0.9.3"
 
 [dev-dependencies]
 x509-parser = "0.18.0"

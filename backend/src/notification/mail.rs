@@ -4,9 +4,9 @@ use lettre::transport::smtp::client::{Tls, TlsParameters};
 use lettre::message::{header, Mailbox, MultiPart, SinglePart};
 use lettre::transport::smtp::authentication::Credentials;
 use maud::html;
+use crate::certs::common::Certificate;
 use crate::data::enums::MailEncryption;
 use crate::settings::Mail;
-use crate::cert::Certificate;
 
 macro_rules! build_email_message {
     ($from:expr, $to:expr, $subject:expr, $plain_text:expr, $html_content:expr) => {

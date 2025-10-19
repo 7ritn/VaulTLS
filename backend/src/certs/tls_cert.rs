@@ -15,45 +15,15 @@ use openssl::x509::{X509Name, X509NameBuilder, X509};
 use openssl::x509::extension::{AuthorityKeyIdentifier, BasicConstraints, ExtendedKeyUsage, KeyUsage, SubjectAlternativeName, SubjectKeyIdentifier};
 use openssl::x509::X509Builder;
 use passwords::PasswordGenerator;
-use rocket_okapi::JsonSchema;
-use serde::{Deserialize, Serialize};
 use tracing::info;
 use crate::constants::{CA_DIR_PATH, CA_FILE_PATTERN, CA_TLS_FILE_PATH};
 use crate::data::enums::{CertificateRenewMethod, CertificateType};
-use crate::data::enums::CertificateType::{Client, Server};
+use crate::data::enums::CertificateType::{TLSClient, TLSServer};
 #[cfg(not(feature = "test-mode"))]
 use crate::ApiError;
+use crate::certs::common::{Certificate, CA};
 
-#[derive(Default, Clone, Serialize, Deserialize, JsonSchema, Debug)]
-/// Certificate can be either CA or user certificate.
-pub struct Certificate {
-    pub id: i64,
-    pub name: String,
-    pub created_on: i64,
-    pub valid_until: i64,
-    pub certificate_type: CertificateType,
-    pub user_id: i64,
-    pub renew_method: CertificateRenewMethod,
-    pub ca_id: i64,
-    #[serde(skip)]
-    pub pkcs12: Vec<u8>,
-    #[serde(skip)]
-    pub pkcs12_password: String
-}
-
-#[derive(Clone, Serialize, Deserialize, JsonSchema, Debug)]
-pub struct CA {
-    pub id: i64,
-    pub name: String,
-    pub created_on: i64,
-    pub valid_until: i64,
-    #[serde(skip)]
-    pub cert: Vec<u8>,
-    #[serde(skip)]
-    pub key: Vec<u8>,
-}
-
-pub struct CertificateBuilder {
+pub struct TLSCertificateBuilder {
     x509: X509Builder,
     private_key: PKey<Private>,
     created_on: i64,
@@ -64,7 +34,7 @@ pub struct CertificateBuilder {
     user_id: Option<i64>,
     renew_method: CertificateRenewMethod
 }
-impl CertificateBuilder {
+impl TLSCertificateBuilder {
     pub fn new() -> Result<Self> {
         let private_key = generate_private_key()?;
         let asn1_serial = generate_serial_number()?;
@@ -102,7 +72,7 @@ impl CertificateBuilder {
         Self::new()?
             .set_name(&old_cert.name)?
             .set_valid_until(validity_in_years as u64)?
-            .set_pkcs12_password(&old_cert.pkcs12_password)?
+            .set_password(&old_cert.password)?
             .set_renew_method(old_cert.renew_method)?
             .set_user_id(old_cert.user_id)
     }
@@ -135,7 +105,7 @@ impl CertificateBuilder {
         Ok(self)
     }
 
-    pub fn set_pkcs12_password(mut self, password: &str) -> Result<Self, anyhow::Error> {
+    pub fn set_password(mut self, password: &str) -> Result<Self, anyhow::Error> {
         self.pkcs12_password = password.to_string();
         Ok(self)
     }
@@ -217,7 +187,7 @@ impl CertificateBuilder {
             .build()?;
         self.x509.append_extension(ext_key_usage)?;
 
-        self.build_common(Client)
+        self.build_common(TLSClient)
     }
 
     pub fn build_server(mut self) -> Result<Certificate, anyhow::Error> {
@@ -226,7 +196,7 @@ impl CertificateBuilder {
             .build()?;
         self.x509.append_extension(ext_key_usage)?;
 
-        self.build_common(Server)
+        self.build_common(TLSServer)
     }
 
     pub fn build_common(mut self, certificate_type: CertificateType) -> Result<Certificate, anyhow::Error> {
@@ -259,20 +229,59 @@ impl CertificateBuilder {
             .pkey(&self.private_key)
             .build2(&self.pkcs12_password)?;
 
-        Ok(Certificate{
+        Ok(Certificate {
             id: -1,
             name,
             created_on: self.created_on,
             valid_until,
             certificate_type,
-            pkcs12: pkcs12.to_der()?,
-            pkcs12_password: self.pkcs12_password,
+            data: pkcs12.to_der()?,
+            password: self.pkcs12_password,
             ca_id,
             user_id,
             renew_method: self.renew_method
         })
     }
 }
+
+// impl Certificate {
+//     fn revoke_cert(
+//     ) -> Result<()> {
+//         let mut rng = rng();
+//         let serial_number = SerialNumber::generate(&mut rng);
+//         let validity = Validity::from_now(Duration::new(5, 0))?;
+//         let subject =
+//             Name::from_str("CN=World domination corporation,O=World domination Inc,C=US")?;
+//         let profile = profile::cabf::Root::new(false, subject).expect("create root profile");
+//         let pub_key = SubjectPublicKeyInfo::try_from(PKCS8_PUBLIC_KEY_DER).expect("get ecdsa pub key");
+//
+//         let secret_key = p256::SecretKey::from_pkcs8_der(PKCS8_PRIVATE_KEY_DER).unwrap();
+//         let signer = p256::ecdsa::SigningKey::random(&mut rng);
+//
+//         let cert_der = Vec::new();
+//         let certificate = x509_cert::Certificate::from_der(&cert_der)?;
+//
+//         let crl_number = CrlNumber::try_from(1)?;
+//
+//         let builder = CrlBuilder::<Rfc5280>::new(&certificate, crl_number)?
+//             .with_certificates(
+//                 vec![
+//                     RevokedCert {
+//                         serial_number: SerialNumber::from(1),
+//                         revocation_date: Time::now()?,
+//                         crl_entry_extensions: None,
+//                     },
+//                 ]
+//                     .into_iter(),
+//             );
+//
+//         let crl = builder.build::<_, ecdsa::der::Signature<_>>(&signer).unwrap();
+//
+//         let pem = crl.to_pem(LineEnding::LF)?;
+//
+//         Ok(())
+//     }
+// }
 
 /// Generates a new private key.
 fn generate_private_key() -> Result<PKey<Private>, ErrorStack> {
@@ -290,7 +299,7 @@ fn create_cn(ca_name: &str) -> Result<X509Name, ErrorStack> {
 }
 
 /// Returns the password for the PKCS#12.
-pub(crate) fn get_password(system_generated_password: bool, pkcs12_password: &Option<String>) -> String {
+pub fn get_password(system_generated_password: bool, pkcs12_password: &Option<String>) -> String {
     if system_generated_password {
         // Create password for the PKCS#12
         let pg = PasswordGenerator {
@@ -363,11 +372,11 @@ pub(crate) fn save_ca(_ca: &CA) -> Result<()> {
 
 /// Migrates the Certificate Authority (CA) storage to a separate directory.
 pub(crate) fn migrate_ca_storage() -> Result<()> {
-    if let Ok(exists) = fs::exists("ca.cert") {
+    if let Ok(exists) = fs::exists("../../ca.cert") {
         if exists {
             info!("Migrating CA storage to separate directory");
             fs::create_dir(CA_DIR_PATH)?;
-            fs::rename("ca.cert", CA_TLS_FILE_PATH)?;
+            fs::rename("../../ca.cert", CA_TLS_FILE_PATH)?;
             fs::copy(CA_TLS_FILE_PATH, CA_FILE_PATTERN.replace("{}", "1"))?;
         }
     }
@@ -376,8 +385,8 @@ pub(crate) fn migrate_ca_storage() -> Result<()> {
 
 /// Extract DNS names stored in X509 certificate
 pub(crate) fn get_dns_names(cert: &Certificate) -> Result<Vec<String>, anyhow::Error> {
-    let encrypted_p12 = Pkcs12::from_der(&cert.pkcs12)?;
-    let Some(cert) = encrypted_p12.parse2(&cert.pkcs12_password)?.cert else { return Err(anyhow::anyhow!("No certificate found in PKCS#12"))};
+    let encrypted_p12 = Pkcs12::from_der(&cert.data)?;
+    let Some(cert) = encrypted_p12.parse2(&cert.password)?.cert else { return Err(anyhow::anyhow!("No certificate found in PKCS#12"))};
     let Some(san) = cert.subject_alt_names() else { return Err(anyhow::anyhow!("No certificate found in PKCS#12"))};
     Ok(san.iter().filter_map(|name| name.dnsname().map(|s| s.to_string())).collect())
 }

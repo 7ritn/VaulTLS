@@ -3,11 +3,12 @@ use rocket::{delete, get, post, put, State};
 use rocket::response::Redirect;
 use rocket::serde::json::Json;
 use rocket::http::{Cookie, CookieJar, SameSite};
-use tracing::{trace, debug, info, warn};
+use tracing::{debug, info, trace, warn};
 use crate::auth::oidc_auth::OidcAuth;
 use crate::auth::password_auth::Password;
 use crate::auth::session_auth::{generate_token, invalidate_token, Authenticated, AuthenticatedPrivileged};
-use crate::cert::{get_password, get_pem, save_ca, Certificate, CertificateBuilder, CA};
+use crate::certs::common::{Certificate, CA};
+use crate::certs::tls_cert::{get_password, get_pem, get_timestamp, save_ca, TLSCertificateBuilder};
 use crate::constants::VAULTLS_VERSION;
 use crate::data::api::{CallbackQuery, ChangePasswordRequest, CreateCARequest, CreateUserCertificateRequest, CreateUserRequest, DownloadResponse, IsSetupResponse, LoginRequest, SetupRequest};
 use crate::data::enums::{CertificateType, PasswordRule, UserRole};
@@ -79,7 +80,7 @@ pub(crate) async fn setup(
 
     state.db.insert_user(user).await?;
 
-    let mut ca = CertificateBuilder::new()?
+    let mut ca = TLSCertificateBuilder::new()?
         .set_name(&setup_req.ca_name)?
         .set_valid_until(setup_req.ca_validity_in_years)?
         .build_ca()?;
@@ -266,7 +267,7 @@ pub(crate) async fn get_certificates(
 
 #[openapi(tag = "Certificates")]
 #[get("/certificates/ca")]
-/// Get all CAs. Does not require authentication.
+/// Get all CAs.
 pub(crate) async fn get_all_ca(
     state: &State<AppState>,
     _authentication: Authenticated
@@ -283,7 +284,7 @@ pub(crate) async fn create_ca(
     payload: Json<CreateCARequest>,
     _authentication: AuthenticatedPrivileged
 ) -> Result<Json<i64>, ApiError> {
-    let mut ca = CertificateBuilder::new()?
+    let mut ca = TLSCertificateBuilder::new()?
         .set_name(&payload.ca_name)?
         .set_valid_until(payload.validity_in_years)?
         .build_ca()?;
@@ -316,10 +317,10 @@ pub(crate) async fn create_user_certificate(
         .map_err(|_| ApiError::BadRequest(format!("The CA id {:?} does not exist", payload.ca_id)))?;
 
     let cert_validity_in_years = payload.validity_in_years.unwrap_or(1);
-    let cert_validity_timestamp = crate::cert::get_timestamp(cert_validity_in_years)?;
+    let cert_validity_timestamp = get_timestamp(cert_validity_in_years)?;
     if cert_validity_timestamp.0 > ca.valid_until {
         if payload.ca_id.is_none() {
-            ca = CertificateBuilder::try_from_ca(&ca)?;
+            ca = TLSCertificateBuilder::try_from_ca(&ca)?;
             ca = state.db.insert_ca(ca).await?;
             save_ca(&ca)?;
         } else {
@@ -328,25 +329,28 @@ pub(crate) async fn create_user_certificate(
     }
 
     let pkcs12_password = get_password(use_random_password, &payload.pkcs12_password);
-    let cert_builder = CertificateBuilder::new()?
+    let cert_builder = TLSCertificateBuilder::new()?
         .set_name(&payload.cert_name)?
         .set_valid_until(cert_validity_in_years)?
         .set_renew_method(payload.renew_method.unwrap_or_default())?
-        .set_pkcs12_password(&pkcs12_password)?
+        .set_password(&pkcs12_password)?
         .set_ca(&ca)?
         .set_user_id(payload.user_id)?;
     let mut cert = match payload.cert_type.unwrap_or_default() {
-        CertificateType::Client => {
+        CertificateType::TLSClient => {
             let user = state.db.get_user(payload.user_id).await?;
             cert_builder
                 .set_email_san(&user.email)?
                 .build_client()?
         }
-        CertificateType::Server => {
+        CertificateType::TLSServer => {
             let dns = payload.dns_names.clone().unwrap_or_default();
             cert_builder
                 .set_dns_san(&dns)?
                 .build_server()?
+        }
+        _ => {
+            return Err(ApiError::BadRequest("Invalid certificate type".to_string()))
         }
     };
 
@@ -407,9 +411,9 @@ pub(crate) async fn download_certificate(
     id: i64,
     authentication: Authenticated
 ) -> Result<DownloadResponse, ApiError> {
-    let (user_id, name, pkcs12) = state.db.get_user_cert_pkcs12(id).await?;
+    let (user_id, name, data) = state.db.get_user_cert_data(id).await?;
     if user_id != authentication.claims.id && authentication.claims.role != UserRole::Admin { return Err(ApiError::Forbidden(None)) }
-    Ok(DownloadResponse::new(pkcs12, &format!("{name}.p12")))
+    Ok(DownloadResponse::new(data, &format!("{name}.p12")))
 }
 
 #[openapi(tag = "Certificates")]
@@ -420,9 +424,9 @@ pub(crate) async fn fetch_certificate_password(
     id: i64,
     authentication: Authenticated
 ) -> Result<Json<String>, ApiError> {
-    let (user_id, pkcs12_password) = state.db.get_user_cert_pkcs12_password(id).await?;
+    let (user_id, password) = state.db.get_user_cert_password(id).await?;
     if user_id != authentication.claims.id && authentication.claims.role != UserRole::Admin { return Err(ApiError::Forbidden(None)) }
-    Ok(Json(pkcs12_password))
+    Ok(Json(password))
 }
 
 #[openapi(tag = "Certificates")]

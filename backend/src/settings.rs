@@ -2,10 +2,11 @@ use std::{env, fs};
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::sync::Arc;
-use argon2::password_hash::rand_core::{OsRng, RngCore};
 use derive_deref::Deref;
 use openssl::base64;
 use parking_lot::RwLock;
+use rand::rand_core::OsRng;
+use rand::TryRngCore;
 use rocket::serde;
 use rocket::serde::json::serde_json;
 use rocket::serde::{Deserialize, Serialize};
@@ -244,7 +245,7 @@ pub(crate) struct Logic {
 /// Generates a new JWT key.
 fn generate_jwt_key() -> String {
     let mut secret = [0u8; 32];
-    OsRng.fill_bytes(&mut secret);
+    OsRng.try_fill_bytes(&mut secret).expect("Failed to generate JWT key");
     base64::encode_block(&secret)
 }
 

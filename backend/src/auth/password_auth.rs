@@ -1,9 +1,9 @@
 use crate::constants::ARGON2;
 use crate::ApiError;
-use argon2::password_hash::rand_core::OsRng;
 use argon2::password_hash::{PasswordHashString, SaltString};
 use argon2::{password_hash, PasswordHasher, PasswordVerifier};
 use std::fmt::Display;
+use argon2::password_hash::rand_core::OsRng;
 use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ValueRef};
 
 #[derive(Clone, Debug)]

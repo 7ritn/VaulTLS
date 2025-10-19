@@ -1,13 +1,15 @@
-use crate::cert::{get_dns_names, Certificate, CertificateBuilder};
+use crate::certs::tls_cert::{get_dns_names, TLSCertificateBuilder};
 use crate::data::enums::CertificateRenewMethod;
-use crate::data::enums::CertificateType::Client;
+use crate::data::enums::CertificateType::{TLSClient, TLSServer};
 use crate::db::VaulTLSDB;
 use crate::notification::mail::{MailMessage, Mailer};
 use std::sync::Arc;
 use std::time::Duration;
+use anyhow::anyhow;
 use tokio::sync::Mutex;
 use tokio::time::{interval  , MissedTickBehavior};
 use tracing::{info, trace};
+use crate::certs::common::Certificate;
 
 pub(crate) async fn watch_expiry(db: VaulTLSDB, mailer_mutex: Arc<Mutex<Option<Mailer>>>) {
     info!("Starting certificate expiry watcher.");
@@ -62,18 +64,20 @@ async fn handle_expiry(cert: &Certificate, db: &VaulTLSDB, mailer_mutex: Arc<Mut
             info!("Renewing certificate {} for user {}.", cert.name, user.name);
             let ca = db.get_ca(None).await?;
 
-            let cert_builder = CertificateBuilder::try_from(cert)?
+            let cert_builder = TLSCertificateBuilder::try_from(cert)?
                 .set_ca(&ca)?;
 
-            let mut new_cert = if cert.certificate_type == Client {
+            let mut new_cert = if cert.certificate_type == TLSClient {
                 cert_builder
                     .set_email_san(&user.email)?
                     .build_client()?
-            } else {
+            } else if cert.certificate_type == TLSServer {
                 let dns = get_dns_names(cert)?;
                 cert_builder
                     .set_dns_san(&dns)?
                     .build_server()?
+            } else {
+                return Err(anyhow!("Certificate type not supported."));
             };
 
             new_cert = db.insert_user_cert(new_cert).await?;

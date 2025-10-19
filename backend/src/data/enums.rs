@@ -57,8 +57,10 @@ pub(crate) enum PasswordRule {
 #[repr(u8)]
 pub enum CertificateType {
     #[default]
-    Client = 0,
-    Server = 1
+    TLSClient = 0,
+    TLSServer = 1,
+    SSHClient = 10,
+    SSHServer = 11,
 }
 
 impl FromSql for CertificateType {
