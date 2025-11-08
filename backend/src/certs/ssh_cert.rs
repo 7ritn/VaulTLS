@@ -8,6 +8,7 @@ use ssh_key::rand_core::OsRng;
 use ssh_key::{certificate, Algorithm, LineEnding, PrivateKey};
 use std::io::{Cursor, Write};
 use std::time::{SystemTime, UNIX_EPOCH};
+use tracing::trace;
 use zip::write::SimpleFileOptions;
 use zip::ZipWriter;
 use crate::data::enums::CAType::SSH;
@@ -52,7 +53,11 @@ impl SSHCertificateBuilder {
     }
 
     pub fn set_principals(mut self, principals: &[String]) -> Result<Self> {
-        self.principals = principals.to_vec();
+        self.principals = principals
+            .iter()
+            .filter(|principal| !principal.is_empty())
+            .map(|principal| principal.clone())
+            .collect();
         Ok(self)
     }
 
@@ -112,8 +117,8 @@ impl SSHCertificateBuilder {
         let mut cert_builder = certificate::Builder::new_with_random_nonce(
             &mut OsRng,
             user_public_key,
-            self.created_on as u64,
-            valid_until as u64,
+            self.created_on as u64 / 1000,
+            valid_until as u64 / 1000,
         )?;
         cert_builder.serial(serial)?;
         cert_builder.key_id(name.clone())?;
@@ -128,10 +133,9 @@ impl SSHCertificateBuilder {
         }
 
         let cert = cert_builder.sign(&ca_key)?;
-        let cert_bytes = cert.to_bytes()?;
-        let key_bytes = user_private_key.to_bytes()?.to_vec();
+        trace!("SSH certificate signed with: {}", ca_key.fingerprint(Default::default()));
 
-        let data = create_cert_key_bundle(&name, cert_bytes, key_bytes)?;
+        let data = create_cert_key_bundle(&name, cert, user_private_key)?;
 
         Ok(Certificate {
             id: -1,
@@ -151,6 +155,7 @@ impl SSHCertificateBuilder {
         let name = self.name.ok_or(anyhow!("SSH: name not set"))?;
         let valid_until = self.valid_until.ok_or(anyhow!("SSH: valid_until not set"))?;
         let (ca_id, ca_key) = self.ca.ok_or(anyhow!("SSH: CA not set"))?;
+        let user_id = self.user_id.ok_or(anyhow!("SSH: user_id not set"))?;
 
         let host_private_key = PrivateKey::random(&mut OsRng, Algorithm::Ed25519)?;
         let host_public_key = host_private_key.public_key();
@@ -160,8 +165,8 @@ impl SSHCertificateBuilder {
         let mut cert_builder = certificate::Builder::new_with_random_nonce(
             &mut OsRng,
             host_public_key,
-            self.created_on as u64,
-            valid_until as u64,
+            self.created_on as u64 / 1000,
+            valid_until as u64 / 1000,
         )?;
         cert_builder.serial(serial)?;
         cert_builder.key_id(name.clone())?;
@@ -171,10 +176,9 @@ impl SSHCertificateBuilder {
         }
 
         let cert = cert_builder.sign(&ca_key)?;
-        let cert_bytes = cert.to_bytes()?;
-        let key_bytes = host_private_key.to_bytes()?.to_vec();
+        trace!("SSH certificate signed with: {}", ca_key.fingerprint(Default::default()));
 
-        let data = create_cert_key_bundle(&name, cert_bytes, key_bytes)?;
+        let data = create_cert_key_bundle(&name, cert, host_private_key)?;
 
         Ok(Certificate {
             id: -1,
@@ -182,7 +186,7 @@ impl SSHCertificateBuilder {
             created_on: self.created_on,
             valid_until,
             certificate_type: CertificateType::SSHServer,
-            user_id: -1, // not user-specific
+            user_id,
             renew_method: self.renew_method,
             ca_id,
             data,
@@ -192,7 +196,11 @@ impl SSHCertificateBuilder {
 
 }
 
-pub fn create_cert_key_bundle(name: &str, cert_bytes: Vec<u8>, key_bytes: Vec<u8>) -> Result<Vec<u8>> {
+pub fn create_cert_key_bundle(name: &str, cert: ssh_key::Certificate, key: PrivateKey) -> Result<Vec<u8>> {
+    let cert_bytes = cert.to_openssh()?.into_bytes();
+    let key_str = key.to_openssh(LineEnding::LF)?;
+    let key_bytes = key_str.to_string().into_bytes();
+
     let mut buffer = Cursor::new(Vec::with_capacity(cert_bytes.len() + key_bytes.len()));
     let mut zip = ZipWriter::new(&mut buffer);
 

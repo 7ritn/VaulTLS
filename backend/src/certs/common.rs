@@ -1,6 +1,7 @@
 use std::fs;
 use rocket::serde::{Deserialize, Serialize};
 use rocket_okapi::JsonSchema;
+use passwords::PasswordGenerator;
 use crate::ApiError;
 use crate::certs::tls_cert::get_tls_pem;
 use crate::certs::ssh_cert::get_ssh_pem;
@@ -57,4 +58,26 @@ pub(crate) fn save_ca(ca: &CA) -> anyhow::Result<()> {
 #[cfg(feature = "test-mode")]
 pub(crate) fn save_ca(_ca: &CA) -> anyhow::Result<()> {
     Ok(())
+}
+
+/// Returns the password for the certificate. If none provided returns empty string.
+pub fn get_password(system_generated_password: bool, cert_password: &Option<String>) -> String {
+    if system_generated_password {
+        let pg = PasswordGenerator {
+            length: 20,
+            numbers: true,
+            lowercase_letters: true,
+            uppercase_letters: true,
+            symbols: true,
+            spaces: false,
+            exclude_similar_characters: false,
+            strict: true,
+        };
+        pg.generate_one().unwrap()
+    } else {
+        match cert_password {
+            Some(p) => p.clone(),
+            None => String::new(),
+        }
+    }
 }

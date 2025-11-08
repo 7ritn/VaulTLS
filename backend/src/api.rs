@@ -7,9 +7,9 @@ use tracing::{debug, info, trace, warn};
 use crate::auth::oidc_auth::OidcAuth;
 use crate::auth::password_auth::Password;
 use crate::auth::session_auth::{generate_token, invalidate_token, Authenticated, AuthenticatedPrivileged};
-use crate::certs::common::{Certificate, CA, save_ca};
+use crate::certs::common::{get_password, save_ca, Certificate, CA};
 use crate::certs::ssh_cert::{get_ssh_pem, SSHCertificateBuilder};
-use crate::certs::tls_cert::{get_password, get_tls_pem, get_timestamp, TLSCertificateBuilder};
+use crate::certs::tls_cert::{get_timestamp, get_tls_pem, TLSCertificateBuilder};
 use crate::constants::VAULTLS_VERSION;
 use crate::data::api::{CallbackQuery, ChangePasswordRequest, CreateCARequest, CreateUserCertificateRequest, CreateUserRequest, DownloadResponse, IsSetupResponse, LoginRequest, SetupRequest};
 use crate::data::enums::{CAType, CertificateType, PasswordRule, UserRole};
@@ -399,103 +399,76 @@ async fn ensure_ca_validity(ca: &mut CA, state: &State<AppState>, payload: &Crea
 async fn build_certificate(
     payload: &CreateUserCertificateRequest,
     ca: &CA,
-    pkcs12_password: &str,
+    cert_password: &str,
     cert_validity_in_years: u64,
     state: &State<AppState>
 ) -> Result<Certificate, ApiError> {
     let cert_type = payload.cert_type.ok_or_else(|| {
         ApiError::BadRequest("Certificate type is required".to_string())
     })?;
-    
+
     match cert_type {
-        CertificateType::SSHClient => build_ssh_client_cert(payload, ca, pkcs12_password, cert_validity_in_years),
-        CertificateType::SSHServer => build_ssh_server_cert(payload, ca, pkcs12_password, cert_validity_in_years),
-        CertificateType::TLSClient => build_tls_client_cert(payload, ca, pkcs12_password, cert_validity_in_years, state).await,
-        CertificateType::TLSServer => build_tls_server_cert(payload, ca, pkcs12_password, cert_validity_in_years),
+        CertificateType::SSHClient => build_ssh_cert(payload, ca, cert_password, cert_validity_in_years, true),
+        CertificateType::SSHServer => build_ssh_cert(payload, ca, cert_password, cert_validity_in_years, false),
+        CertificateType::TLSClient => build_tls_cert(payload, ca, cert_password, cert_validity_in_years, state, true).await,
+        CertificateType::TLSServer => build_tls_cert(payload, ca, cert_password, cert_validity_in_years, state, false).await,
     }
 }
 
-fn build_ssh_client_cert(
+fn build_ssh_cert(
+    payload: &CreateUserCertificateRequest,
+    ca: &CA,
+    cert_password: &str,
+    cert_validity_in_years: u64,
+    is_client: bool,
+) -> Result<Certificate, ApiError> {
+    let mut cert_builder = SSHCertificateBuilder::new()?
+        .set_name(&payload.cert_name)?
+        .set_valid_until(cert_validity_in_years)?
+        .set_renew_method(payload.renew_method.unwrap_or_default())?
+        .set_ca(ca)?
+        .set_user_id(payload.user_id)?;
+
+    if !cert_password.is_empty() {
+        cert_builder = cert_builder.set_password(cert_password)?
+    }
+
+    if let Some(ref principals) = payload.usage_limit {
+        cert_builder = cert_builder.set_principals(principals)?;
+    }
+
+    if is_client {
+        cert_builder.build_user().map_err(ApiError::from)
+    } else {
+        cert_builder.build_host().map_err(ApiError::from)
+    }
+}
+
+async fn build_tls_cert(
     payload: &CreateUserCertificateRequest,
     ca: &CA,
     pkcs12_password: &str,
     cert_validity_in_years: u64,
+    state: &State<AppState>,
+    is_client: bool,
 ) -> Result<Certificate, ApiError> {
-    let mut cert_builder = SSHCertificateBuilder::new()?
+    let mut cert_builder = TLSCertificateBuilder::new()?
         .set_name(&payload.cert_name)?
         .set_valid_until(cert_validity_in_years)?
         .set_renew_method(payload.renew_method.unwrap_or_default())?
         .set_password(pkcs12_password)?
         .set_ca(ca)?
         .set_user_id(payload.user_id)?;
-    
-    if let Some(ref principals) = payload.usage_limit {
-        cert_builder = cert_builder.set_principals(principals)?;
+
+    if is_client {
+        let user = state.db.get_user(payload.user_id).await?;
+        cert_builder = cert_builder.set_email_san(&user.email)?;
+        cert_builder.build_client().map_err(ApiError::from)
+    } else {
+        let dns_names = payload.usage_limit.clone().unwrap_or_default();
+        cert_builder = cert_builder.set_dns_san(&dns_names)?;
+        cert_builder.build_server().map_err(ApiError::from)
     }
-    
-    cert_builder.build_user().map_err(ApiError::from)
-}
-
-fn build_ssh_server_cert(
-    payload: &CreateUserCertificateRequest,
-    ca: &CA,
-    pkcs12_password: &str,
-    cert_validity_in_years: u64,
-) -> Result<Certificate, ApiError> {
-    let mut cert_builder = SSHCertificateBuilder::new()?
-        .set_name(&payload.cert_name)?
-        .set_valid_until(cert_validity_in_years)?
-        .set_renew_method(payload.renew_method.unwrap_or_default())?
-        .set_password(pkcs12_password)?
-        .set_ca(ca)?
-        .set_user_id(payload.user_id)?;
-    
-    if let Some(ref principals) = payload.usage_limit {
-        cert_builder = cert_builder.set_principals(principals)?;
-    }
-    
-    cert_builder.build_host().map_err(ApiError::from)
-}
-
-async fn build_tls_client_cert(
-    payload: &CreateUserCertificateRequest,
-    ca: &CA,
-    pkcs12_password: &str,
-    cert_validity_in_years: u64,
-    state: &State<AppState>
-) -> Result<Certificate, ApiError> {
-    let user = state.db.get_user(payload.user_id).await?;
-    
-    TLSCertificateBuilder::new()?
-        .set_name(&payload.cert_name)?
-        .set_valid_until(cert_validity_in_years)?
-        .set_renew_method(payload.renew_method.unwrap_or_default())?
-        .set_password(pkcs12_password)?
-        .set_ca(ca)?
-        .set_user_id(payload.user_id)?
-        .set_email_san(&user.email)?
-        .build_client()
-        .map_err(ApiError::from)
-}
-
-fn build_tls_server_cert(
-    payload: &CreateUserCertificateRequest,
-    ca: &CA,
-    pkcs12_password: &str,
-    cert_validity_in_years: u64,
-) -> Result<Certificate, ApiError> {
-    let dns_names = payload.usage_limit.clone().unwrap_or_default();
-    
-    TLSCertificateBuilder::new()?
-        .set_name(&payload.cert_name)?
-        .set_valid_until(cert_validity_in_years)?
-        .set_renew_method(payload.renew_method.unwrap_or_default())?
-        .set_password(pkcs12_password)?
-        .set_ca(ca)?
-        .set_user_id(payload.user_id)?
-        .set_dns_san(&dns_names)?
-        .build_server()
-        .map_err(ApiError::from)
 }
 
 async fn send_notification_email(state: &State<AppState>, user_id: i64, cert: &Certificate) {

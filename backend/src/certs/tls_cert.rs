@@ -14,15 +14,14 @@ use openssl::stack::Stack;
 use openssl::x509::{X509Name, X509NameBuilder, X509};
 use openssl::x509::extension::{AuthorityKeyIdentifier, BasicConstraints, ExtendedKeyUsage, KeyUsage, SubjectAlternativeName, SubjectKeyIdentifier};
 use openssl::x509::X509Builder;
-use passwords::PasswordGenerator;
 use tracing::info;
-use crate::constants::{CA_DIR_PATH, CA_FILE_PATTERN, CA_TLS_FILE_PATH, CA_SSH_FILE_PATH};
+use crate::constants::{CA_DIR_PATH, CA_FILE_PATTERN, CA_SSH_FILE_PATH, CA_TLS_FILE_PATH};
 use crate::data::enums::{CAType, CertificateRenewMethod, CertificateType};
 use crate::data::enums::CertificateType::{TLSClient, TLSServer};
 #[cfg(not(feature = "test-mode"))]
 use crate::ApiError;
 use crate::certs::common::{Certificate, CA};
-use crate::data::enums::CAType::{SSH, TLS};
+use crate::data::enums::CAType::TLS;
 
 pub struct TLSCertificateBuilder {
     x509: X509Builder,
@@ -304,29 +303,6 @@ fn create_cn(ca_name: &str) -> Result<X509Name, ErrorStack> {
     name_builder.append_entry_by_text("CN", ca_name)?;
     let name = name_builder.build();
     Ok(name)
-}
-
-/// Returns the password for the PKCS#12.
-pub fn get_password(system_generated_password: bool, pkcs12_password: &Option<String>) -> String {
-    if system_generated_password {
-        // Create password for the PKCS#12
-        let pg = PasswordGenerator {
-            length: 20,
-            numbers: true,
-            lowercase_letters: true,
-            uppercase_letters: true,
-            symbols: true,
-            spaces: false,
-            exclude_similar_characters: false,
-            strict: true,
-        };
-        pg.generate_one().unwrap()
-    } else {
-        match pkcs12_password {
-            Some(p) => p.clone(),
-            None => "".to_string(),
-        }
-    }
 }
 
 /// Generates a random serial number.
