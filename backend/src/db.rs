@@ -273,8 +273,8 @@ impl VaulTLSDB {
     pub(crate) async fn get_all_user_cert(&self, user_id: Option<i64>) -> Result<Vec<Certificate>> {
         db_do!(self.pool, |conn: &Connection| {
             let query = match user_id {
-                Some(_) => "SELECT id, name, created_on, valid_until, pkcs12, pkcs12_password, user_id, type, renew_method, ca_id FROM user_certificates WHERE user_id = ?1",
-                None => "SELECT id, name, created_on, valid_until, pkcs12, pkcs12_password, user_id, type, renew_method, ca_id FROM user_certificates"
+                Some(_) => "SELECT id, name, created_on, valid_until, data, password, user_id, type, renew_method, ca_id FROM user_certificates WHERE user_id = ?1",
+                None => "SELECT id, name, created_on, valid_until, data, password, user_id, type, renew_method, ca_id FROM user_certificates"
             };
             let mut stmt = conn.prepare(query)?;
             let rows = match user_id {
@@ -299,11 +299,11 @@ impl VaulTLSDB {
         })
     }
 
-    /// Retrieve the certificate's PKCS12  data with id from the database
-    /// Returns the id of the user the certificate belongs to and the PKCS12 data
+    /// Retrieve the certificate's cert data with id from the database
+    /// Returns the id of the user the certificate belongs to and the cert data
     pub(crate) async fn get_user_cert_data(&self, id: i64) -> Result<(i64, String, Vec<u8>)> {
         db_do!(self.pool, |conn: &Connection| {
-            let mut stmt = conn.prepare("SELECT user_id, name, pkcs12 FROM user_certificates WHERE id = ?1")?;
+            let mut stmt = conn.prepare("SELECT user_id, name, data FROM user_certificates WHERE id = ?1")?;
 
             Ok(stmt.query_row(
                 params![id],
@@ -312,11 +312,11 @@ impl VaulTLSDB {
         })
     }
 
-    /// Retrieve the certificate's PKCS12 data with id from the database
-    /// Returns the id of the user the certificate belongs to and the PKCS12 password
+    /// Retrieve the certificate's cert data with id from the database
+    /// Returns the id of the user the certificate belongs to and the cert password
     pub(crate) async fn get_user_cert_password(&self, id: i64) -> Result<(i64, String)> {
         db_do!(self.pool, |conn: &Connection| {
-            let mut stmt = conn.prepare("SELECT user_id, pkcs12_password FROM user_certificates WHERE id = ?1")?;
+            let mut stmt = conn.prepare("SELECT user_id, password FROM user_certificates WHERE id = ?1")?;
 
             Ok(stmt.query_row(
                 params![id],
@@ -330,7 +330,7 @@ impl VaulTLSDB {
     pub(crate) async fn insert_user_cert(&self, mut cert: Certificate) -> Result<Certificate> {
         db_do!(self.pool, |conn: &Connection| {
             conn.execute(
-                "INSERT INTO user_certificates (name, created_on, valid_until, pkcs12, pkcs12_password, type, renew_method, ca_id, user_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                "INSERT INTO user_certificates (name, created_on, valid_until, data, password, type, renew_method, ca_id, user_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
                 params![cert.name, cert.created_on, cert.valid_until, cert.data, cert.password, cert.certificate_type as u8, cert.renew_method as u8, cert.ca_id, cert.user_id],
             )?;
 
