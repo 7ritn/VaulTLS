@@ -512,8 +512,8 @@ async fn test_download_ssh_client_certificate() -> Result<()> {
 
     let now: u64 = get_timestamp_s(0) as u64;
     let valid_until: u64 = get_timestamp_s(1) as u64;
-    assert!(now > cert.valid_after() && cert.valid_after() > now - 10 /* 10 seconds */);
-    assert!(valid_until > cert.valid_before() && cert.valid_before() > valid_until - 10 /* 10 seconds */);
+    assert!(now >= cert.valid_after() && cert.valid_after() >= now - 10 /* 10 seconds */);
+    assert!(valid_until >= cert.valid_before() && cert.valid_before() >= valid_until - 10 /* 10 seconds */);
 
     assert_eq!(cert.valid_principals(), vec!["test.example.com".to_string()]);
     let fingerprint = ca.fingerprint(Default::default());
