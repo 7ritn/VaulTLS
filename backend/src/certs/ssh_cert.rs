@@ -209,6 +209,7 @@ pub fn create_cert_key_bundle(name: &str, cert_bytes: Vec<u8>, key_bytes: Vec<u8
 }
 
 pub fn get_ssh_pem(ca: &CA) -> Result<Vec<u8>> {
-    let key = PrivateKey::from_bytes(&ca.key)?;
-    Ok(key.to_openssh(LineEnding::LF)?.as_bytes().to_vec())
+    let private_key = PrivateKey::from_bytes(&ca.key)?;
+    let public_key = private_key.public_key();
+    Ok(public_key.to_openssh()?.as_bytes().to_vec())
 }

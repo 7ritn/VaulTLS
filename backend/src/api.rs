@@ -540,7 +540,7 @@ pub(crate) async fn download_current_ssh_ca(
 ) -> Result<DownloadResponse, ApiError> {
     let ca = state.db.get_latest_ssh_ca().await?;
     let pem = get_ssh_pem(&ca)?;
-    Ok(DownloadResponse::new(pem, "ca_certificate.pem"))
+    Ok(DownloadResponse::new(pem, "ca.pub"))
 }
 
 #[openapi(tag = "Certificates")]
