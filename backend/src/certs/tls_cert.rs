@@ -16,12 +16,13 @@ use openssl::x509::extension::{AuthorityKeyIdentifier, BasicConstraints, Extende
 use openssl::x509::X509Builder;
 use passwords::PasswordGenerator;
 use tracing::info;
-use crate::constants::{CA_DIR_PATH, CA_FILE_PATTERN, CA_TLS_FILE_PATH};
-use crate::data::enums::{CertificateRenewMethod, CertificateType};
+use crate::constants::{CA_DIR_PATH, CA_FILE_PATTERN, CA_TLS_FILE_PATH, CA_SSH_FILE_PATH};
+use crate::data::enums::{CAType, CertificateRenewMethod, CertificateType};
 use crate::data::enums::CertificateType::{TLSClient, TLSServer};
 #[cfg(not(feature = "test-mode"))]
 use crate::ApiError;
 use crate::certs::common::{Certificate, CA};
+use crate::data::enums::CAType::{SSH, TLS};
 
 pub struct TLSCertificateBuilder {
     x509: X509Builder,
@@ -78,6 +79,9 @@ impl TLSCertificateBuilder {
     }
 
     pub fn try_from_ca(old_ca: &CA) -> Result<CA> {
+        if old_ca.ca_type != TLS {
+            return Err(anyhow!("CA is not of type SSH"));
+        }
         let validity_in_years = ((old_ca.valid_until - old_ca.created_on) / 1000 / 60 / 60 / 24 / 365).max(1);
 
         Self::new()?
@@ -131,6 +135,9 @@ impl TLSCertificateBuilder {
     }
 
     pub fn set_ca(mut self, ca: &CA) -> Result<Self, anyhow::Error> {
+        if ca.ca_type != TLS {
+            return Err(anyhow!("CA is not of type SSH"));
+        }
         let ca_cert = X509::from_der(&ca.cert)?;
         let ca_key = PKey::private_key_from_der(&ca.key)?;
         self.ca = Some((ca.id, ca_cert, ca_key));
@@ -176,6 +183,7 @@ impl TLSCertificateBuilder {
             name,
             created_on: self.created_on,
             valid_until,
+            ca_type: CAType::TLS,
             cert: cert.to_der()?,
             key: self.private_key.private_key_to_der()?,
         })
@@ -348,26 +356,9 @@ fn get_short_lifetime() -> Result<(i64, Asn1Time), ErrorStack> {
 }
 
 /// Convert a CA certificate to PEM format.
-pub(crate) fn get_pem(ca: &CA) -> Result<Vec<u8>, ErrorStack> {
+pub(crate) fn get_tls_pem(ca: &CA) -> Result<Vec<u8>, ErrorStack> {
     let cert = X509::from_der(&ca.cert)?;
     cert.to_pem()
-}
-
-
-/// Saves the CA certificate to a file for filesystem access.
-#[cfg(not(feature = "test-mode"))]
-pub(crate) fn save_ca(ca: &CA) -> Result<()> {
-    let pem = get_pem(ca)?;
-    let ca_id_file_path = CA_FILE_PATTERN.replace("{}", &ca.id.to_string());
-    fs::create_dir_all(CA_DIR_PATH)?;
-    fs::write(ca_id_file_path, pem.clone()).map_err(|e| ApiError::Other(e.to_string()))?;
-    fs::write(CA_TLS_FILE_PATH, pem).map_err(|e| ApiError::Other(e.to_string()))?;
-    Ok(())
-}
-
-#[cfg(feature = "test-mode")]
-pub(crate) fn save_ca(_ca: &CA) -> Result<()> {
-    Ok(())
 }
 
 /// Migrates the Certificate Authority (CA) storage to a separate directory.

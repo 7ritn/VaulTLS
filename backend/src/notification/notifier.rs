@@ -1,6 +1,6 @@
 use crate::certs::tls_cert::{get_dns_names, TLSCertificateBuilder};
 use crate::data::enums::CertificateRenewMethod;
-use crate::data::enums::CertificateType::{TLSClient, TLSServer};
+use crate::data::enums::CertificateType::*;
 use crate::db::VaulTLSDB;
 use crate::notification::mail::{MailMessage, Mailer};
 use std::sync::Arc;
@@ -62,22 +62,27 @@ async fn handle_expiry(cert: &Certificate, db: &VaulTLSDB, mailer_mutex: Arc<Mut
         }
         CertificateRenewMethod::Renew | CertificateRenewMethod::RenewAndNotify => {
             info!("Renewing certificate {} for user {}.", cert.name, user.name);
-            let ca = db.get_ca(None).await?;
 
-            let cert_builder = TLSCertificateBuilder::try_from(cert)?
-                .set_ca(&ca)?;
+            let mut new_cert = match cert.certificate_type {
+                TLSClient | TLSServer => {
+                    let ca = db.get_latest_tls_ca().await?;
+                    let cert_builder = TLSCertificateBuilder::try_from(cert)?
+                        .set_ca(&ca)?;
 
-            let mut new_cert = if cert.certificate_type == TLSClient {
-                cert_builder
-                    .set_email_san(&user.email)?
-                    .build_client()?
-            } else if cert.certificate_type == TLSServer {
-                let dns = get_dns_names(cert)?;
-                cert_builder
-                    .set_dns_san(&dns)?
-                    .build_server()?
-            } else {
-                return Err(anyhow!("Certificate type not supported."));
+                    if cert.certificate_type == TLSClient {
+                        cert_builder
+                            .set_email_san(&user.email)?
+                            .build_client()?
+                    } else {
+                        let dns = get_dns_names(cert)?;
+                        cert_builder
+                            .set_dns_san(&dns)?
+                            .build_server()?
+                    }
+                }
+                SSHClient | SSHServer => {
+                    return Err(anyhow!("SSH not supported for renewal."));
+                }
             };
 
             new_cert = db.insert_user_cert(new_cert).await?;

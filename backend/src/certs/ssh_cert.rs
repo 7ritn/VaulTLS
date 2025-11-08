@@ -5,11 +5,12 @@ use anyhow::Result;
 use rand::prelude::*;
 use rand::rng;
 use ssh_key::rand_core::OsRng;
-use ssh_key::{certificate, Algorithm, PrivateKey};
+use ssh_key::{certificate, Algorithm, LineEnding, PrivateKey};
 use std::io::{Cursor, Write};
 use std::time::{SystemTime, UNIX_EPOCH};
 use zip::write::SimpleFileOptions;
-use zip::{ZipArchive, ZipWriter};
+use zip::ZipWriter;
+use crate::data::enums::CAType::SSH;
 
 pub struct SSHCertificateBuilder {
     created_on: i64,
@@ -26,7 +27,7 @@ impl SSHCertificateBuilder {
     pub fn new() -> Result<Self> {
         let created_on = SystemTime::now()
             .duration_since(UNIX_EPOCH)?
-            .as_secs() as i64;
+            .as_millis() as i64;
         Ok(Self {
             created_on,
             valid_until: None,
@@ -45,7 +46,7 @@ impl SSHCertificateBuilder {
     }
 
     pub fn set_valid_until(mut self, years: u64) -> Result<Self> {
-        let valid_until = self.created_on + (365 * 86400) * years as i64;
+        let valid_until = self.created_on + (365 * 86400 * 1000) * years as i64;
         self.valid_until = Some(valid_until);
         Ok(self)
     }
@@ -56,6 +57,9 @@ impl SSHCertificateBuilder {
     }
 
     pub fn set_ca(mut self, ca: &CA) -> Result<Self> {
+        if ca.ca_type != SSH {
+            return Err(anyhow!("CA is not of type SSH"));
+        }
         let ca_key = PrivateKey::from_bytes(ca.key.as_slice())?;
         self.ca = Some((ca.id, ca_key));
         Ok(self)
@@ -85,6 +89,7 @@ impl SSHCertificateBuilder {
             name: self.name.unwrap_or_else(|| "CA".to_string()),
             created_on: self.created_on,
             valid_until: -1,
+            ca_type: SSH,
             cert: Vec::new(),
             key,
         })
@@ -113,6 +118,11 @@ impl SSHCertificateBuilder {
         cert_builder.serial(serial)?;
         cert_builder.key_id(name.clone())?;
         cert_builder.cert_type(certificate::CertType::User)?;
+
+        if self.principals.is_empty() {
+            cert_builder.all_principals_valid()?;
+        }
+
         for principal in self.principals {
             cert_builder.valid_principal(principal)?;
         }
@@ -136,6 +146,50 @@ impl SSHCertificateBuilder {
             password: self.password.unwrap_or_default(),
         })
     }
+
+    pub fn build_host(self) -> Result<Certificate> {
+        let name = self.name.ok_or(anyhow!("SSH: name not set"))?;
+        let valid_until = self.valid_until.ok_or(anyhow!("SSH: valid_until not set"))?;
+        let (ca_id, ca_key) = self.ca.ok_or(anyhow!("SSH: CA not set"))?;
+
+        let host_private_key = PrivateKey::random(&mut OsRng, Algorithm::Ed25519)?;
+        let host_public_key = host_private_key.public_key();
+
+        let serial = rng().random();
+
+        let mut cert_builder = certificate::Builder::new_with_random_nonce(
+            &mut OsRng,
+            host_public_key,
+            self.created_on as u64,
+            valid_until as u64,
+        )?;
+        cert_builder.serial(serial)?;
+        cert_builder.key_id(name.clone())?;
+        cert_builder.cert_type(certificate::CertType::Host)?;
+        for principal in self.principals {
+            cert_builder.valid_principal(principal)?;
+        }
+
+        let cert = cert_builder.sign(&ca_key)?;
+        let cert_bytes = cert.to_bytes()?;
+        let key_bytes = host_private_key.to_bytes()?.to_vec();
+
+        let data = create_cert_key_bundle(&name, cert_bytes, key_bytes)?;
+
+        Ok(Certificate {
+            id: -1,
+            name,
+            created_on: self.created_on,
+            valid_until,
+            certificate_type: CertificateType::SSHServer,
+            user_id: -1, // not user-specific
+            renew_method: self.renew_method,
+            ca_id,
+            data,
+            password: self.password.unwrap_or_default(),
+        })
+    }
+
 }
 
 pub fn create_cert_key_bundle(name: &str, cert_bytes: Vec<u8>, key_bytes: Vec<u8>) -> Result<Vec<u8>> {
@@ -154,27 +208,7 @@ pub fn create_cert_key_bundle(name: &str, cert_bytes: Vec<u8>, key_bytes: Vec<u8
     Ok(buffer.into_inner())
 }
 
-pub fn extract_cert_key_bundle(zip_bytes: Vec<u8>, name: &str) -> Result<(Vec<u8>, Vec<u8>)> {
-    let cursor = Cursor::new(zip_bytes);
-    let mut archive = ZipArchive::new(cursor)?;
-
-    let mut cert_bytes = Vec::new();
-    let mut key_bytes = Vec::new();
-
-    for i in 0..archive.len() {
-        let mut file = archive.by_index(i)?;
-        let file_name = file.name();
-
-        if file_name == format!("{}.pub", name) {
-            std::io::Read::read_to_end(&mut file, &mut cert_bytes)?;
-        } else if file_name == format!("{}.key", name) {
-            std::io::Read::read_to_end(&mut file, &mut key_bytes)?;
-        }
-    }
-
-    if cert_bytes.is_empty() || key_bytes.is_empty() {
-        return Err(anyhow!("Certificate or key not found in ZIP"));
-    }
-
-    Ok((cert_bytes, key_bytes))
+pub fn get_ssh_pem(ca: &CA) -> Result<Vec<u8>> {
+    let key = PrivateKey::from_bytes(&ca.key)?;
+    Ok(key.to_openssh(LineEnding::LF)?.as_bytes().to_vec())
 }

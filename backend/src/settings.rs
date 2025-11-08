@@ -303,7 +303,7 @@ impl InnerSettings {
         self.common.password_enabled
     }
 
-    fn get_password_rule(&self) -> PasswordRule {
+    pub(crate) fn get_password_rule(&self) -> PasswordRule {
         self.common.password_rule
     }
 }

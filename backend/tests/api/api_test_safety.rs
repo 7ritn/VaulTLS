@@ -191,7 +191,7 @@ async fn access_deleted_ca() -> Result<()> {
     let response = request.dispatch().await;
     assert_eq!(response.status(), Status::InternalServerError);
 
-    let ca_pem = client.download_current_ca().await?;
+    let ca_pem = client.download_current_tls_ca().await?;
     let ca_x509 = ca_pem.parse_x509()?;
 
     assert_eq!(ca_x509.subject.to_string(), concatcp!("CN=", TEST_CA_NAME).to_string());

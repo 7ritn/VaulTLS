@@ -119,11 +119,13 @@
                   v-model="certReq.cert_type"
                   required
               >
-                <option :value="CertificateType.Client">Client</option>
-                <option :value="CertificateType.Server">Server</option>
+                <option :value="CertificateType.TLSClient">TLS Client</option>
+                <option :value="CertificateType.TLSServer">TLS Server</option>
+                <option :value="CertificateType.SSHClient">SSH Client</option>
+                <option :value="CertificateType.SSHServer">SSH Server</option>
               </select>
             </div>
-            <div class="mb-3" v-if="certReq.cert_type == CertificateType.Server">
+            <div class="mb-3" v-if="certReq.cert_type == CertificateType.TLSServer">
               <label class="form-label">DNS Names</label>
               <div v-for="(_, index) in certReq.dns_names" :key="index" class="input-group mb-2">
                 <input
@@ -206,7 +208,7 @@
               <label for="certPassword" class="form-label">Password</label>
               <input
                   id="certPassword"
-                  v-model="certReq.pkcs12_password"
+                  v-model="certReq.cert_password"
                   type="text"
                   class="form-control"
                   placeholder="Enter password"
@@ -246,7 +248,7 @@
             <button
                 type="button"
                 class="btn btn-primary"
-                :disabled="loading || ((!certReq.system_generated_password && certReq.pkcs12_password.length == 0) && passwordRule == PasswordRule.Required)"
+                :disabled="loading || ((!certReq.system_generated_password && certReq.cert_password.length == 0) && passwordRule == PasswordRule.Required)"
                 @click="createCertificate"
             >
               <span v-if="loading">Creating...</span>
@@ -334,7 +336,7 @@ const certReq = reactive<CertificateRequirements>({
   user_id: 0,
   validity_in_years: 1,
   system_generated_password: passwordRule.value == PasswordRule.System,
-  pkcs12_password: '',
+  cert_password: '',
   notify_user: false,
   cert_type: CertificateType.Client,
   dns_names: [''],
@@ -374,7 +376,7 @@ const closeGenerateModal = () => {
   certReq.cert_name = '';
   certReq.user_id = 0;
   certReq.validity_in_years = 1;
-  certReq.pkcs12_password = '';
+  certReq.cert_password = '';
   certReq.notify_user = false;
   certReq.ca_id = undefined;
 };

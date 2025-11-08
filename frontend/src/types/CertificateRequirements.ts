@@ -5,7 +5,7 @@ export interface CertificateRequirements {
     user_id: number;
     validity_in_years: number;
     system_generated_password: boolean;
-    pkcs12_password: string;
+    cert_password: string;
     notify_user: boolean;
     cert_type: CertificateType;
     dns_names: string[];

@@ -8,6 +8,7 @@ pub(crate) const TEMP_DB_FILE_PATH: &str = "encrypted.db3";
 pub(crate) const CA_DIR_PATH: &str = "./ca";
 pub(crate) const CA_FILE_PATTERN: &str = "./ca/ca-{}.pem";
 pub(crate) const CA_TLS_FILE_PATH: &str = "./ca/ca-tls.cert";
+pub(crate) const CA_SSH_FILE_PATH: &str = "./ca/ca-ssh.cert";
 pub(crate) const API_PORT: u16 = 3737;
 pub const VAULTLS_VERSION: &str = formatcp!("v{}", env!("CARGO_PKG_VERSION"));
 

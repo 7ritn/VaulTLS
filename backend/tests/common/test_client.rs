@@ -7,9 +7,10 @@ use std::ops::{Deref, DerefMut};
 use serde_json::Value;
 use vaultls::create_test_rocket;
 use vaultls::data::api::{CreateCARequest, CreateUserCertificateRequest, CreateUserRequest, LoginRequest, SetupRequest};
-use vaultls::data::enums::{CertificateRenewMethod, CertificateType, UserRole};
+use vaultls::data::enums::{CAType, CertificateRenewMethod, CertificateType, UserRole};
 use x509_parser::pem::Pem;
 use vaultls::certs::common::{Certificate, CA};
+use vaultls::data::enums::CertificateType::{SSHClient, TLSClient};
 use vaultls::data::objects::User;
 
 pub(crate) struct VaulTLSClient(Client);
@@ -86,11 +87,36 @@ impl VaulTLSClient {
             user_id: user_id.unwrap_or(1),
             notify_user: None,
             system_generated_password: false,
-            pkcs12_password: password,
-            cert_type: None,
+            cert_password: password,
+            cert_type: Some(TLSClient),
             dns_names: None,
             renew_method: Some(CertificateRenewMethod::Renew),
             ca_id,
+        };
+
+        let request = self
+            .post("/certificates")
+            .header(ContentType::JSON)
+            .body(serde_json::to_string(&cert_req)?);
+        let response = request.dispatch().await;
+        assert_eq!(response.status(), Status::Ok);
+        assert_eq!(response.content_type(), Some(ContentType::JSON));
+
+        Ok(serde_json::from_str(&response.into_string().await.unwrap())?)
+    }
+
+    pub(crate) async fn create_ssh_client_cert(&self) -> Result<Certificate> {
+        let cert_req = CreateUserCertificateRequest {
+            cert_name: TEST_SSH_CLIENT_CERT_NAME.to_string(),
+            validity_in_years: Some(1),
+            user_id: 1,
+            notify_user: None,
+            system_generated_password: false,
+            cert_password: Some(TEST_PASSWORD.to_string()),
+            cert_type: Some(SSHClient),
+            dns_names: None,
+            renew_method: Some(CertificateRenewMethod::Notify),
+            ca_id: None,
         };
 
         let request = self
@@ -111,7 +137,7 @@ impl VaulTLSClient {
             user_id: 1,
             notify_user: None,
             system_generated_password: false,
-            pkcs12_password: Some(TEST_PASSWORD.to_string()),
+            cert_password: Some(TEST_PASSWORD.to_string()),
             cert_type: Some(CertificateType::TLSServer),
             dns_names: Some(vec![TEST_SERVER_CERT_DNS_NAME.to_string()]),
             renew_method: None,
@@ -214,14 +240,18 @@ impl VaulTLSClient {
         Ok(cert.to_der()?)
     }
 
-    pub(crate) async fn download_current_ca(&self) -> Result<Pem> {
+    pub(crate) async fn download_current_tls_ca(&self) -> Result<Pem> {
         let x509_pem = self.download_cert("ca").await?;
         Ok(Pem::iter_from_buffer(&x509_pem)
             .nth(0)
             .expect("No PEM block found")?)
     }
 
-    pub(crate) async fn download_ca_by_id(&self, id: i64) -> Result<Pem> {
+    pub(crate) async fn download_current_ssh_ca(&self) -> Result<Vec<u8>> {
+        Ok(self.download_cert("ca/ssh").await?)
+    }
+
+    pub(crate) async fn download_tls_ca_by_id(&self, id: i64) -> Result<Pem> {
         let x509_pem = self.download_cert(&format!("ca/{}", id)).await?;
         Ok(Pem::iter_from_buffer(&x509_pem)
             .nth(0)
@@ -263,7 +293,25 @@ impl VaulTLSClient {
     pub(crate) async fn create_second_ca(&self) -> Result<()> {
         let data = CreateCARequest {
             ca_name: TEST_SECOND_CA_NAME.to_string(),
-            validity_in_years: 15
+            ca_type: CAType::TLS,
+            validity_in_years: Some(15)
+        };
+
+        let request = self
+            .post("/certificates/ca")
+            .header(ContentType::JSON)
+            .body(serde_json::to_string(&data)?);
+        let response = request.dispatch().await;
+        assert_eq!(response.status(), Status::Ok);
+
+        Ok(())
+    }
+
+    pub(crate) async fn create_ssh_ca(&self) -> Result<()> {
+        let data = CreateCARequest {
+            ca_name: TEST_SSH_CA_NAME.to_string(),
+            ca_type: CAType::SSH,
+            validity_in_years: None
         };
 
         let request = self

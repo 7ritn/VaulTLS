@@ -18,7 +18,7 @@ use serde_json::Value;
 use tokio::io::{duplex, AsyncReadExt, AsyncWriteExt};
 use tokio::time::sleep;
 use tokio_rustls::{TlsAcceptor, TlsConnector};
-use vaultls::data::enums::{CertificateRenewMethod, CertificateType, UserRole};
+use vaultls::data::enums::{CAType, CertificateRenewMethod, CertificateType, UserRole};
 use vaultls::data::objects::User;
 use x509_parser::asn1_rs::FromDer;
 use x509_parser::prelude::X509Certificate;
@@ -68,8 +68,8 @@ async fn test_ca_download() -> Result<()>{
     let old_cas: Vec<CA> = client.get_all_ca().await?;
     assert_eq!(old_cas.len(), 1);
 
-    let ca_by_id_pem = client.download_ca_by_id(1).await?;
-    let ca_pem = client.download_current_ca().await?;
+    let ca_by_id_pem = client.download_tls_ca_by_id(1).await?;
+    let ca_pem = client.download_current_tls_ca().await?;
     assert_eq!(ca_pem, ca_by_id_pem);
     let ca_x509 = ca_pem.parse_x509()?;
 
@@ -367,8 +367,8 @@ async fn test_create_new_ca() -> Result<()> {
     assert!(now > new_cas[1].created_on && new_cas[1].created_on > now - 10000 /* 10 seconds */);
     assert!(valid_until > new_cas[1].valid_until && new_cas[1].valid_until > valid_until - 10000 /* 10 seconds */);
 
-    let ca_by_id_pem = client.download_ca_by_id(2).await?;
-    let ca_pem = client.download_current_ca().await?;
+    let ca_by_id_pem = client.download_tls_ca_by_id(2).await?;
+    let ca_pem = client.download_current_tls_ca().await?;
     assert_eq!(ca_pem, ca_by_id_pem);
     let ca_x509 = ca_pem.parse_x509()?;
 
@@ -377,7 +377,7 @@ async fn test_create_new_ca() -> Result<()> {
     let bc = ca_x509.basic_constraints()?.expect("No basic constraints");
     assert!(bc.value.ca);
 
-    let old_ca = client.download_ca_by_id(1).await?;
+    let old_ca = client.download_tls_ca_by_id(1).await?;
     let old_ca_x509 = old_ca.parse_x509()?;
     assert_eq!(old_ca_x509.subject.to_string(), concatcp!("CN=", TEST_CA_NAME).to_string());
 
@@ -407,8 +407,8 @@ async fn test_create_certificate_with_short_lived_ca() -> Result<()> {
         user_id: 1,
         notify_user: None,
         system_generated_password: false,
-        pkcs12_password: None,
-        cert_type: None,
+        cert_password: None,
+        cert_type: Some(CertificateType::TLSClient),
         dns_names: None,
         renew_method: Some(CertificateRenewMethod::Renew),
         ca_id: None,
@@ -440,6 +440,44 @@ async fn test_settings() -> Result<()> {
     settings = client.get_settings().await?;
     assert_eq!(settings["common"]["password_rule"], 2);
 
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_create_ssh_ca() -> Result<()> {
+    let client = VaulTLSClient::new_authenticated().await;
+    client.create_ssh_ca().await?;
+    client.download_current_ssh_ca().await?;
+    let cas = client.get_all_ca().await?;
+    let ca = cas.get(1).unwrap();
+
+    let now = get_timestamp(0);
+    let valid_until = get_timestamp(1);
+
+    assert_eq!(ca.id, 2);
+    assert_eq!(ca.name, TEST_SSH_CA_NAME);
+    assert!(now > ca.created_on && ca.created_on > now - 10000 /* 10 seconds */);
+    assert_eq!(ca.ca_type, CAType::SSH);
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_create_ssh_client_certificate() -> Result<()> {
+    let client = VaulTLSClient::new_authenticated().await;
+    client.create_ssh_ca().await?;
+    let cert = client.create_ssh_client_cert().await?;
+
+    let now = get_timestamp(0);
+    let valid_until = get_timestamp(1);
+
+    assert_eq!(cert.id, 1);
+    assert_eq!(cert.name, TEST_SSH_CLIENT_CERT_NAME);
+    assert!(now > cert.created_on && cert.created_on > now - 10000 /* 10 seconds */);
+    assert!(valid_until > cert.valid_until && cert.valid_until > valid_until - 10000 /* 10 seconds */);
+    assert_eq!(cert.certificate_type, CertificateType::SSHClient);
+    assert_eq!(cert.user_id, 1);
+    assert_eq!(cert.renew_method , CertificateRenewMethod::Notify);
+    assert_eq!(cert.ca_id, 2);
     Ok(())
 }
 

@@ -7,11 +7,12 @@ use tracing::{debug, info, trace, warn};
 use crate::auth::oidc_auth::OidcAuth;
 use crate::auth::password_auth::Password;
 use crate::auth::session_auth::{generate_token, invalidate_token, Authenticated, AuthenticatedPrivileged};
-use crate::certs::common::{Certificate, CA};
-use crate::certs::tls_cert::{get_password, get_pem, get_timestamp, save_ca, TLSCertificateBuilder};
+use crate::certs::common::{Certificate, CA, save_ca};
+use crate::certs::ssh_cert::{get_ssh_pem, SSHCertificateBuilder};
+use crate::certs::tls_cert::{get_password, get_tls_pem, get_timestamp, TLSCertificateBuilder};
 use crate::constants::VAULTLS_VERSION;
 use crate::data::api::{CallbackQuery, ChangePasswordRequest, CreateCARequest, CreateUserCertificateRequest, CreateUserRequest, DownloadResponse, IsSetupResponse, LoginRequest, SetupRequest};
-use crate::data::enums::{CertificateType, PasswordRule, UserRole};
+use crate::data::enums::{CAType, CertificateType, PasswordRule, UserRole};
 use crate::data::error::ApiError;
 use crate::data::objects::{AppState, User};
 use crate::notification::mail::{MailMessage, Mailer};
@@ -284,10 +285,21 @@ pub(crate) async fn create_ca(
     payload: Json<CreateCARequest>,
     _authentication: AuthenticatedPrivileged
 ) -> Result<Json<i64>, ApiError> {
-    let mut ca = TLSCertificateBuilder::new()?
-        .set_name(&payload.ca_name)?
-        .set_valid_until(payload.validity_in_years)?
-        .build_ca()?;
+    let mut ca = match payload.ca_type {
+        CAType::TLS => {
+            let validity = payload.validity_in_years.unwrap_or(5);
+            TLSCertificateBuilder::new()?
+                .set_name(&payload.ca_name)?
+                .set_valid_until(validity)?
+                .build_ca()?
+        },
+        CAType::SSH => {
+            SSHCertificateBuilder::new()?
+                .set_name(&payload.ca_name)?
+                .build_ca()?
+        }
+    };
+
     ca = state.db.insert_ca(ca).await?;
     save_ca(&ca)?;
     Ok(Json(ca.id))
@@ -301,93 +313,233 @@ pub(crate) async fn create_user_certificate(
     _authentication: AuthenticatedPrivileged
 ) -> Result<Json<Certificate>, ApiError> {
     debug!(cert_name=?payload.cert_name, "Creating certificate");
+    trace!("{:?}", payload);
 
-    let password_rule = state.settings.get_password_rule();
-    let use_random_password = if password_rule == PasswordRule::System
-        || (password_rule == PasswordRule::Required
-            && payload.pkcs12_password.as_deref().unwrap_or("").trim().is_empty()) {
-        debug!(cert_name=?payload.cert_name, "Using system-supplied password");
-        true
-    } else {
-        debug!(cert_name=?payload.cert_name, "Using user-supplied password");
-        payload.system_generated_password
-    };
-
-    let mut ca = state.db.get_ca(payload.ca_id).await
-        .map_err(|_| ApiError::BadRequest(format!("The CA id {:?} does not exist", payload.ca_id)))?;
-
+    let use_random_password = should_use_random_password(&state, &payload);
+    let cert_password = get_password(use_random_password, &payload.cert_password);
+    
+    let mut ca = get_appropriate_ca(state, &payload).await?;
+    ca = ensure_ca_validity(&mut ca, state, &payload).await?;
+    
     let cert_validity_in_years = payload.validity_in_years.unwrap_or(1);
-    let cert_validity_timestamp = get_timestamp(cert_validity_in_years)?;
-    if cert_validity_timestamp.0 > ca.valid_until {
-        if payload.ca_id.is_none() {
-            ca = TLSCertificateBuilder::try_from_ca(&ca)?;
-            ca = state.db.insert_ca(ca).await?;
-            save_ca(&ca)?;
-        } else {
-            return Err(ApiError::BadRequest("The CA to be used would expire before the certificate".to_string()))
+    let mut cert = build_certificate(&payload, &ca, &cert_password, cert_validity_in_years, state).await?;
+    
+    cert = state.db.insert_user_cert(cert).await?;
+    
+    info!(cert=cert.name, "New certificate created.");
+    trace!("{:?}", cert);
+    
+    if payload.notify_user == Some(true) {
+        send_notification_email(state, payload.user_id, &cert).await;
+    }
+    
+    Ok(Json(cert))
+}
+
+fn should_use_random_password(
+    state: &State<AppState>,
+    payload: &CreateUserCertificateRequest
+) -> bool {
+    let password_rule = state.settings.get_password_rule();
+    let user_password_empty = payload.cert_password.as_deref().unwrap_or("").trim().is_empty();
+    
+    match password_rule {
+        PasswordRule::System => {
+            debug!(cert_name=?payload.cert_name, "Using system-supplied password");
+            true
+        }
+        PasswordRule::Required if user_password_empty => {
+            debug!(cert_name=?payload.cert_name, "Using system-supplied password");
+            true
+        }
+        _ => {
+            debug!(cert_name=?payload.cert_name, "Using user-supplied password");
+            payload.system_generated_password
         }
     }
+}
 
-    let pkcs12_password = get_password(use_random_password, &payload.pkcs12_password);
-    let cert_builder = TLSCertificateBuilder::new()?
+async fn get_appropriate_ca(state: &State<AppState>, payload: &CreateUserCertificateRequest) -> Result<CA, ApiError> {
+    let ca_result = match payload.ca_id {
+        Some(ca_id) => state.db.get_ca_by_id(ca_id).await,
+        None => match payload.cert_type {
+            Some(CertificateType::SSHClient) | Some(CertificateType::SSHServer) => {
+                state.db.get_latest_ssh_ca().await
+            }
+            _ => state.db.get_latest_tls_ca().await
+        }
+    };
+    
+    ca_result.map_err(|_| ApiError::BadRequest(format!("The CA id {:?} does not exist", payload.ca_id)))
+}
+
+async fn ensure_ca_validity(ca: &mut CA, state: &State<AppState>, payload: &CreateUserCertificateRequest) -> Result<CA, ApiError> {
+    let cert_validity_in_years = payload.validity_in_years.unwrap_or(1);
+    let cert_validity_timestamp = get_timestamp(cert_validity_in_years)?;
+    
+    if ca.valid_until == -1 || cert_validity_timestamp.0 <= ca.valid_until {
+        return Ok(ca.clone());
+    }
+    
+    if payload.ca_id.is_some() {
+        return Err(ApiError::BadRequest("The CA to be used would expire before the certificate".to_string()));
+    }
+    
+    // Auto-renew CA if no specific CA was requested
+    if ca.ca_type == CAType::TLS {
+        let new_ca = TLSCertificateBuilder::try_from_ca(ca)?;
+        let renewed_ca = state.db.insert_ca(new_ca).await?;
+        save_ca(&renewed_ca)?;
+        Ok(renewed_ca)
+    } else {
+        Err(ApiError::Other("This error should never happen".to_string()))
+    }
+}
+
+async fn build_certificate(
+    payload: &CreateUserCertificateRequest,
+    ca: &CA,
+    pkcs12_password: &str,
+    cert_validity_in_years: u64,
+    state: &State<AppState>
+) -> Result<Certificate, ApiError> {
+    let cert_type = payload.cert_type.ok_or_else(|| {
+        ApiError::BadRequest("Certificate type is required".to_string())
+    })?;
+    
+    match cert_type {
+        CertificateType::SSHClient => build_ssh_client_cert(payload, ca, pkcs12_password, cert_validity_in_years),
+        CertificateType::SSHServer => build_ssh_server_cert(payload, ca, pkcs12_password, cert_validity_in_years),
+        CertificateType::TLSClient => build_tls_client_cert(payload, ca, pkcs12_password, cert_validity_in_years, state).await,
+        CertificateType::TLSServer => build_tls_server_cert(payload, ca, pkcs12_password, cert_validity_in_years),
+    }
+}
+
+fn build_ssh_client_cert(
+    payload: &CreateUserCertificateRequest,
+    ca: &CA,
+    pkcs12_password: &str,
+    cert_validity_in_years: u64,
+) -> Result<Certificate, ApiError> {
+    let mut cert_builder = SSHCertificateBuilder::new()?
         .set_name(&payload.cert_name)?
         .set_valid_until(cert_validity_in_years)?
         .set_renew_method(payload.renew_method.unwrap_or_default())?
-        .set_password(&pkcs12_password)?
-        .set_ca(&ca)?
+        .set_password(pkcs12_password)?
+        .set_ca(ca)?
         .set_user_id(payload.user_id)?;
-    let mut cert = match payload.cert_type.unwrap_or_default() {
-        CertificateType::TLSClient => {
-            let user = state.db.get_user(payload.user_id).await?;
-            cert_builder
-                .set_email_san(&user.email)?
-                .build_client()?
-        }
-        CertificateType::TLSServer => {
-            let dns = payload.dns_names.clone().unwrap_or_default();
-            cert_builder
-                .set_dns_san(&dns)?
-                .build_server()?
-        }
-        _ => {
-            return Err(ApiError::BadRequest("Invalid certificate type".to_string()))
-        }
-    };
-
-    cert = state.db.insert_user_cert(cert).await?;
-
-    info!(cert=cert.name, "New certificate created.");
-    trace!("{:?}", cert);
-
-    if Some(true) == payload.notify_user {
-        let user = state.db.get_user(payload.user_id).await?;
-        let mail = MailMessage{
-            to: format!("{} <{}>", user.name, user.email),
-            username: user.name,
-            certificate: cert.clone()
-        };
-
-        debug!(mail=?mail, "Sending mail notification");
-
-        let mailer = state.mailer.clone();
-        tokio::spawn(async move {
-            if let Some(mailer) = &mut *mailer.lock().await {
-                let _ = mailer.notify_new_certificate(mail).await;
-            }
-        });
+    
+    if let Some(ref principals) = payload.dns_names {
+        cert_builder = cert_builder.set_principals(principals)?;
     }
+    
+    cert_builder.build_user().map_err(ApiError::from)
+}
 
-    Ok(Json(cert))
+fn build_ssh_server_cert(
+    payload: &CreateUserCertificateRequest,
+    ca: &CA,
+    pkcs12_password: &str,
+    cert_validity_in_years: u64,
+) -> Result<Certificate, ApiError> {
+    let mut cert_builder = SSHCertificateBuilder::new()?
+        .set_name(&payload.cert_name)?
+        .set_valid_until(cert_validity_in_years)?
+        .set_renew_method(payload.renew_method.unwrap_or_default())?
+        .set_password(pkcs12_password)?
+        .set_ca(ca)?
+        .set_user_id(payload.user_id)?;
+    
+    if let Some(ref principals) = payload.dns_names {
+        cert_builder = cert_builder.set_principals(principals)?;
+    }
+    
+    cert_builder.build_host().map_err(ApiError::from)
+}
+
+async fn build_tls_client_cert(
+    payload: &CreateUserCertificateRequest,
+    ca: &CA,
+    pkcs12_password: &str,
+    cert_validity_in_years: u64,
+    state: &State<AppState>
+) -> Result<Certificate, ApiError> {
+    let user = state.db.get_user(payload.user_id).await?;
+    
+    TLSCertificateBuilder::new()?
+        .set_name(&payload.cert_name)?
+        .set_valid_until(cert_validity_in_years)?
+        .set_renew_method(payload.renew_method.unwrap_or_default())?
+        .set_password(pkcs12_password)?
+        .set_ca(ca)?
+        .set_user_id(payload.user_id)?
+        .set_email_san(&user.email)?
+        .build_client()
+        .map_err(ApiError::from)
+}
+
+fn build_tls_server_cert(
+    payload: &CreateUserCertificateRequest,
+    ca: &CA,
+    pkcs12_password: &str,
+    cert_validity_in_years: u64,
+) -> Result<Certificate, ApiError> {
+    let dns_names = payload.dns_names.clone().unwrap_or_default();
+    
+    TLSCertificateBuilder::new()?
+        .set_name(&payload.cert_name)?
+        .set_valid_until(cert_validity_in_years)?
+        .set_renew_method(payload.renew_method.unwrap_or_default())?
+        .set_password(pkcs12_password)?
+        .set_ca(ca)?
+        .set_user_id(payload.user_id)?
+        .set_dns_san(&dns_names)?
+        .build_server()
+        .map_err(ApiError::from)
+}
+
+async fn send_notification_email(state: &State<AppState>, user_id: i64, cert: &Certificate) {
+    let user_result = state.db.get_user(user_id).await;
+    let Ok(user) = user_result else {
+        warn!("Failed to get user for notification email");
+        return;
+    };
+    
+    let mail = MailMessage {
+        to: format!("{} <{}>", user.name, user.email),
+        username: user.name,
+        certificate: cert.clone(),
+    };
+    
+    debug!(mail=?mail, "Sending mail notification");
+    
+    let mailer = state.mailer.clone();
+    tokio::spawn(async move {
+        if let Some(mailer) = &mut *mailer.lock().await {
+            let _ = mailer.notify_new_certificate(mail).await;
+        }
+    });
 }
 
 #[openapi(tag = "Certificates")]
 #[get("/certificates/ca/download")]
 /// Download the current CA certificate.
-pub(crate) async fn download_current_ca(
+pub(crate) async fn download_current_tls_ca(
     state: &State<AppState>
 ) -> Result<DownloadResponse, ApiError> {
-    let ca = state.db.get_ca(None).await?;
-    let pem = get_pem(&ca)?;
+    let ca = state.db.get_latest_tls_ca().await?;
+    let pem = get_tls_pem(&ca)?;
+    Ok(DownloadResponse::new(pem, "ca_certificate.pem"))
+}
+
+#[openapi(tag = "Certificates")]
+#[get("/certificates/ca/ssh/download")]
+/// Download the current CA certificate.
+pub(crate) async fn download_current_ssh_ca(
+    state: &State<AppState>
+) -> Result<DownloadResponse, ApiError> {
+    let ca = state.db.get_latest_ssh_ca().await?;
+    let pem = get_ssh_pem(&ca)?;
     Ok(DownloadResponse::new(pem, "ca_certificate.pem"))
 }
 
@@ -398,8 +550,11 @@ pub(crate) async fn download_ca(
     state: &State<AppState>,
     id: i64
 ) -> Result<DownloadResponse, ApiError> {
-    let ca = state.db.get_ca(Some(id)).await?;
-    let pem = get_pem(&ca)?;
+    let ca = state.db.get_ca_by_id(id).await?;
+    let pem = match ca.ca_type {
+        CAType::TLS => get_tls_pem(&ca)?,
+        CAType::SSH => get_ssh_pem(&ca)?
+    };
     Ok(DownloadResponse::new(pem, &format!("ca_{}.pem", ca.id)))
 }
 

@@ -1,5 +1,5 @@
 use crate::constants::{DB_FILE_PATH, TEMP_DB_FILE_PATH};
-use crate::data::enums::{CertificateRenewMethod, UserRole};
+use crate::data::enums::{CAType, CertificateRenewMethod, UserRole};
 use crate::data::objects::User;
 use crate::helper::get_secret;
 use anyhow::anyhow;
@@ -10,6 +10,7 @@ use rusqlite::{params, Connection};
 use rusqlite_migration::Migrations;
 use std::fs;
 use std::path::Path;
+use const_format::formatcp;
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use tracing::{debug, info, trace, warn};
@@ -179,8 +180,8 @@ impl VaulTLSDB {
     ) -> Result<CA> {
         db_do!(self.pool, |conn: &Connection| {
             conn.execute(
-                "INSERT INTO ca_certificates (name, created_on, valid_until, certificate, key) VALUES (?1, ?2, ?3, ?4, ?5)",
-                params![ca.name, ca.created_on, ca.valid_until, ca.cert, ca.key],
+                "INSERT INTO ca_certificates (name, created_on, valid_until, type, certificate, key) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![ca.name, ca.created_on, ca.valid_until, ca.ca_type as u8, ca.cert, ca.key],
             )?;
             ca.id = conn.last_insert_rowid();
             Ok(ca)
@@ -197,15 +198,25 @@ impl VaulTLSDB {
         })
     }
 
-    /// Retrieve a CA entry from the database. If no ID is specified, the most recent is returned.
-    pub(crate) async fn get_ca(&self, ca_id: Option<i64>) -> Result<CA> {
-        db_do!(self.pool, |conn: &Connection| {
-            let query = match ca_id {
-                None => "SELECT id, name, created_on, valid_until, certificate, key FROM ca_certificates ORDER BY id DESC LIMIT 1",
-                Some(_) => "SELECT id, name, created_on, valid_until, certificate, key FROM ca_certificates WHERE id = ?1"
-            };
+    pub(crate) async fn get_latest_tls_ca(&self) -> Result<CA> {
+        let query = formatcp!("SELECT id, name, created_on, valid_until, type, certificate, key FROM ca_certificates WHERE type = {} ORDER BY id DESC LIMIT 1", CAType::TLS as u8);
+        self.get_ca_by_query(query.to_string(), None).await
+    }
 
-            let mut stmt = conn.prepare(query)?;
+    pub(crate) async fn get_latest_ssh_ca(&self) -> Result<CA> {
+        let query = formatcp!("SELECT id, name, created_on, valid_until, type, certificate, key FROM ca_certificates WHERE type = {} ORDER BY id DESC LIMIT 1", CAType::SSH as u8);
+        self.get_ca_by_query(query.to_string(), None).await
+    }
+
+    pub(crate) async fn get_ca_by_id(&self, ca_id: i64) -> Result<CA> {
+        let query = "SELECT id, name, created_on, valid_until, type, certificate, key FROM ca_certificates WHERE id = ?1";
+        self.get_ca_by_query(query.to_string(), Some(ca_id)).await
+    }
+
+    /// Retrieve a CA entry from the database. If no ID is specified, the most recent is returned.
+    async fn get_ca_by_query(&self, query: String, ca_id: Option<i64>) -> Result<CA> {
+        db_do!(self.pool, |conn: &Connection| {
+            let mut stmt = conn.prepare(&query)?;
             let mut rows = match ca_id {
                 None => stmt.query([])?,
                 Some(ca_id) => stmt.query(params![ca_id])?
@@ -217,8 +228,9 @@ impl VaulTLSDB {
                 name: row.get(1).unwrap_or_default(),
                 created_on: row.get(2)?,
                 valid_until: row.get(3)?,
-                cert: row.get(4)?,
-                key: row.get(5)?
+                ca_type: row.get(4)?,
+                cert: row.get(5)?,
+                key: row.get(6)?
             })
         })
     }
@@ -226,7 +238,7 @@ impl VaulTLSDB {
     /// Retrieve all CA certificates from the database
     pub(crate) async fn get_all_ca(&self) -> Result<Vec<CA>> {
         db_do!(self.pool, |conn: &Connection| {
-            let mut stmt = conn.prepare("SELECT id, name, created_on, valid_until, certificate, key FROM ca_certificates ORDER BY id ASC")?;
+            let mut stmt = conn.prepare("SELECT id, name, created_on, valid_until, type, certificate, key FROM ca_certificates ORDER BY id ASC")?;
             let query = stmt.query([])?;
             Ok(query.map(|row| {
                 Ok(CA{
@@ -234,8 +246,9 @@ impl VaulTLSDB {
                     name: row.get(1).unwrap_or_default(),
                     created_on: row.get(2)?,
                     valid_until: row.get(3)?,
-                    cert: row.get(4)?,
-                    key: row.get(5)?
+                    ca_type: row.get(4)?,
+                    cert: row.get(5)?,
+                    key: row.get(6)?
                 })
             })
             .collect()?)

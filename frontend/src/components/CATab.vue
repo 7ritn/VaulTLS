@@ -81,6 +81,26 @@
               />
             </div>
             <div class="mb-3">
+              <label for="caType" class="form-label">CA Type</label>
+              <input
+                  id="caType"
+                  v-model="caReq.ca_name"
+                  type="text"
+                  class="form-control"
+                  placeholder="Enter CA name"
+                  required
+              />
+              <select
+                  class="form-select"
+                  id="caType"
+                  v-model="caReq.ca_type"
+                  required
+              >
+                <option :value="CAType.TLS">TLS</option>
+                <option :value="CAType.SSH">SSH</option>
+              </select>
+            </div>
+            <div class="mb-3">
               <label for="validity" class="form-label">Validity (years)</label>
               <input
                   id="validity"
@@ -90,7 +110,6 @@
                   min="1"
                   max="30"
                   placeholder="Enter validity period"
-                  required
               />
             </div>
           </div>
@@ -148,7 +167,7 @@
 <script setup lang="ts">
 import {computed, onMounted, reactive, ref} from 'vue';
 import {useCAStore} from '@/stores/cas';
-import type {CA, CARequirements} from '@/types/CA';
+import {type CA, type CARequirements, CAType} from '@/types/CA';
 import {useAuthStore} from '@/stores/auth';
 
 // stores
@@ -166,7 +185,8 @@ const caToDelete = ref<CA | null>(null);
 
 const caReq = reactive<CARequirements>({
   ca_name: '',
-  validity_in_years: 10,
+  ca_type: CAType.TLS,
+  validity_in_years: undefined
 });
 
 onMounted(async () => {

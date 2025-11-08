@@ -1,6 +1,11 @@
+use std::fs;
 use rocket::serde::{Deserialize, Serialize};
 use rocket_okapi::JsonSchema;
-use crate::data::enums::{CertificateRenewMethod, CertificateType};
+use crate::ApiError;
+use crate::certs::tls_cert::get_tls_pem;
+use crate::certs::ssh_cert::get_ssh_pem;
+use crate::constants::{CA_DIR_PATH, CA_FILE_PATTERN, CA_SSH_FILE_PATH, CA_TLS_FILE_PATH};
+use crate::data::enums::{CAType, CertificateRenewMethod, CertificateType};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
 /// Certificate can be either SSH or TLS certificate.
@@ -25,8 +30,31 @@ pub struct CA {
     pub name: String,
     pub created_on: i64,
     pub valid_until: i64,
+    pub ca_type: CAType,
     #[serde(skip)]
     pub cert: Vec<u8>,
     #[serde(skip)]
     pub key: Vec<u8>,
+}
+
+/// Saves the CA certificate to a file for filesystem access.
+#[cfg(not(feature = "test-mode"))]
+pub(crate) fn save_ca(ca: &CA) -> anyhow::Result<()> {
+    let pem = match ca.ca_type {
+        CAType::TLS => get_tls_pem(ca)?,
+        CAType::SSH => get_ssh_pem(ca)?,
+    };
+    let ca_id_file_path = CA_FILE_PATTERN.replace("{}", &ca.id.to_string());
+    fs::create_dir_all(CA_DIR_PATH)?;
+    fs::write(ca_id_file_path, pem.clone()).map_err(|e| ApiError::Other(e.to_string()))?;
+    match ca.ca_type {
+        CAType::SSH => fs::write(CA_SSH_FILE_PATH, pem).map_err(|e| ApiError::Other(e.to_string()))?,
+        CAType::TLS => fs::write(CA_TLS_FILE_PATH, pem).map_err(|e| ApiError::Other(e.to_string()))?,
+    }
+    Ok(())
+}
+
+#[cfg(feature = "test-mode")]
+pub(crate) fn save_ca(_ca: &CA) -> anyhow::Result<()> {
+    Ok(())
 }

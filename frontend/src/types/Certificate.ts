@@ -1,7 +1,8 @@
 export enum CertificateType {
-    Client = 0,
-    Server = 1,
-    CA = 2
+    TLSClient = 0,
+    TLSServer = 1,
+    SSHClient = 10,
+    SSHServer = 11,
 }
 
 export enum CertificateRenewMethod {

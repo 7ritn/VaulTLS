@@ -78,6 +78,27 @@ impl FromSql for CertificateType {
 
 #[derive(Serialize_repr, Deserialize_repr, JsonSchema, TryFromPrimitive, Clone, Debug, Copy, PartialEq, Eq, Default)]
 #[repr(u8)]
+pub enum CAType {
+    #[default]
+    TLS = 0,
+    SSH = 1
+}
+
+impl FromSql for CAType {
+    fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
+        match value {
+            ValueRef::Integer(i) => {
+                let value = i as u8;
+                CAType::try_from(value)
+                    .map_err(|_| FromSqlError::InvalidType)
+            },
+            _ => Err(FromSqlError::InvalidType),
+        }
+    }
+}
+
+#[derive(Serialize_repr, Deserialize_repr, JsonSchema, TryFromPrimitive, Clone, Debug, Copy, PartialEq, Eq, Default)]
+#[repr(u8)]
 pub enum CertificateRenewMethod {
     #[default]
     None = 0,
