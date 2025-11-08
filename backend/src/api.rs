@@ -551,11 +551,18 @@ pub(crate) async fn download_ca(
     id: i64
 ) -> Result<DownloadResponse, ApiError> {
     let ca = state.db.get_ca_by_id(id).await?;
+
     let pem = match ca.ca_type {
         CAType::TLS => get_tls_pem(&ca)?,
         CAType::SSH => get_ssh_pem(&ca)?
     };
-    Ok(DownloadResponse::new(pem, &format!("ca_{}.pem", ca.id)))
+
+    let file_name = match ca.ca_type {
+        CAType::TLS => format!("ca_{}.pem", ca.name),
+        CAType::SSH => format!("ca_{}.pub", ca.name)
+    };
+
+    Ok(DownloadResponse::new(pem, &file_name))
 }
 
 #[openapi(tag = "Certificates")]
@@ -566,9 +573,15 @@ pub(crate) async fn download_certificate(
     id: i64,
     authentication: Authenticated
 ) -> Result<DownloadResponse, ApiError> {
-    let (user_id, name, data) = state.db.get_user_cert_data(id).await?;
+    let (user_id, name, data, cert_type) = state.db.get_user_cert_data(id).await?;
     if user_id != authentication.claims.id && authentication.claims.role != UserRole::Admin { return Err(ApiError::Forbidden(None)) }
-    Ok(DownloadResponse::new(data, &format!("{name}.p12")))
+
+    let file_name = match cert_type {
+        CertificateType::TLSClient | CertificateType::TLSServer => format!("{}.p12", name),
+        CertificateType::SSHClient | CertificateType::SSHServer => format!("{}.zip", name),
+    };
+
+    Ok(DownloadResponse::new(data, &file_name))
 }
 
 #[openapi(tag = "Certificates")]
