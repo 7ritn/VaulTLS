@@ -46,10 +46,10 @@ export const useCertificateStore = defineStore('certificate', {
 
         async fetchCertificatePassword(id: number): Promise<void> {
             try {
-                const pkcs12_password = await fetchCertificatePassword(id);
+                const cert_password = await fetchCertificatePassword(id);
                 const current_cert = this.certificates.get(id);
                 if (current_cert) {
-                    current_cert.pkcs12_password = pkcs12_password;
+                    current_cert.password = cert_password;
                 }
             } catch (err) {
                 this.error = 'Failed to fetch certificates.';

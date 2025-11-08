@@ -30,7 +30,7 @@
                   <input
                       :id="'PasswordInput-' + cert.id"
                       type="text"
-                      :value="cert.pkcs12_password"
+                      :value="cert.password"
                       readonly
                       class="form-control form-control-sm me-2"
                       style="font-family: monospace; max-width: 100px;"
@@ -125,20 +125,21 @@
                 <option :value="CertificateType.SSHServer">SSH Server</option>
               </select>
             </div>
-            <div class="mb-3" v-if="certReq.cert_type == CertificateType.TLSServer">
-              <label class="form-label">DNS Names</label>
+            <div class="mb-3" v-if="certReq.cert_type == CertificateType.TLSServer || certReq.cert_type == CertificateType.SSHClient || certReq.cert_type == CertificateType.SSHServer">
+              <label class="form-label" v-if="certReq.cert_type == CertificateType.TLSServer">DNS Names</label>
+              <label class="form-label" v-if="certReq.cert_type == CertificateType.SSHClient || certReq.cert_type == CertificateType.SSHServer">Principals</label>
               <div v-for="(_, index) in certReq.usage_limit" :key="index" class="input-group mb-2">
                 <input
                     type="text"
                     class="form-control"
                     v-model="certReq.usage_limit[index]"
-                    :placeholder="'DNS Name ' + (index + 1)"
+                    :placeholder="'Usage ' + (index + 1)"
                 />
                 <button
                     v-if="index === certReq.usage_limit.length - 1"
                     type="button"
                     class="btn btn-outline-secondary"
-                    @click="addDNSField"
+                    @click="addUsageField"
                 >
                   +
                 </button>
@@ -146,7 +147,7 @@
                     v-if="certReq.usage_limit.length > 1"
                     type="button"
                     class="btn btn-outline-danger"
-                    @click="removeDNSField(index)"
+                    @click="removeUsageField(index)"
                 >
                   −
                 </button>
@@ -224,8 +225,8 @@
               >
                 <option :value="CertificateRenewMethod.None">None</option>
                 <option :value="CertificateRenewMethod.Notify">Remind</option>
-                <option :value="CertificateRenewMethod.Renew">Renew</option>
-                <option :value="CertificateRenewMethod.RenewAndNotify">Renew and Notify</option>
+                <option :value="CertificateRenewMethod.Renew" v-if="certReq.cert_type == CertificateType.TLSServer || certReq.cert_type == CertificateType.TLSClient">Renew</option>
+                <option :value="CertificateRenewMethod.RenewAndNotify" v-if="certReq.cert_type == CertificateType.TLSServer || certReq.cert_type == CertificateType.TLSClient">Renew and Notify</option>
               </select>
             </div>
             <div v-if="isMailValid" class="mb-3 form-check form-switch">
@@ -307,6 +308,7 @@ import {useUserStore} from "@/stores/users.ts";
 import {useSettingsStore} from "@/stores/settings.ts";
 import {PasswordRule} from "@/types/Settings.ts";
 import {useCAStore} from "@/stores/cas.ts";
+import {CAType} from "@/types/CA.ts";
 
 // stores
 const certificateStore = useCertificateStore();
@@ -349,8 +351,23 @@ const isMailValid = computed(() => {
 });
 
 const availableCAs = computed(() => {
-  return Array.from(caStore.cas.values()).sort((a, b) => b.id - a.id); // Sort by ID descending
+  const cas = Array.from(caStore.cas.values());
+  if (!certReq.cert_type) return cas;
+
+  // Map certificate types to allowed CA types
+  const allowedCATypes = {
+    [CertificateType.TLSClient]: [CAType.TLS],
+    [CertificateType.TLSServer]: [CAType.TLS],
+    [CertificateType.SSHClient]: [CAType.SSH],
+    [CertificateType.SSHServer]: [CAType.SSH],
+  };
+
+  const allowedType = allowedCATypes[certReq.cert_type];
+  if (!allowedType) return cas;
+
+  return cas.filter(ca => allowedType.includes(ca.ca_type)).sort((a, b) => b.id - a.id);
 });
+
 
 watch(passwordRule, (newVal) => {
   certReq.system_generated_password = (newVal === PasswordRule.System);
@@ -408,7 +425,7 @@ const deleteCertificate = async () => {
 };
 
 const togglePasswordShown = async (cert: Certificate) => {
-  if (!cert.pkcs12_password) {
+  if (!cert.password) {
     await certificateStore.fetchCertificatePassword(cert.id);
   }
 
@@ -419,11 +436,11 @@ const togglePasswordShown = async (cert: Certificate) => {
   }
 };
 
-const addDNSField = () => {
+const addUsageField = () => {
   certReq.usage_limit.push('');
 };
 
-const removeDNSField = (index: number) => {
+const removeUsageField = (index: number) => {
   certReq.usage_limit.splice(index, 1);
 };
 </script>

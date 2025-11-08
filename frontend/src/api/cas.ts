@@ -5,10 +5,6 @@ export const fetchCAs = async (): Promise<CA[]> => {
     return await ApiClient.get<CA[]>(`/certificates/ca`);
 };
 
-export const downloadCurrentCA = async (): Promise<void> => {
-    return await ApiClient.download(`/certificates/ca/download`);
-};
-
 export const createCA = async (certReq: CARequirements): Promise<number> => {
     return await ApiClient.post<number>('/certificates/ca', certReq);
 };

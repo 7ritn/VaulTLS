@@ -46,7 +46,7 @@ class ApiClient {
             });
 
             const disposition = response.headers['content-disposition'];
-            let filename = 'certificate.crt';
+            let filename = 'certificate';
             if (disposition && disposition.includes('filename=')) {
                 filename = disposition
                     .split('filename=')[1]

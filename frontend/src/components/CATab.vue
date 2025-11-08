@@ -94,7 +94,7 @@
                 <option :value="CAType.SSH">SSH</option>
               </select>
             </div>
-            <div class="mb-3">
+            <div class="mb-3" v-if="caReq.ca_type === CAType.TLS">
               <label for="validity" class="form-label">Validity (years)</label>
               <input
                   id="validity"
