@@ -338,7 +338,7 @@ const certReq = reactive<CertificateRequirements>({
   system_generated_password: passwordRule.value == PasswordRule.System,
   cert_password: '',
   notify_user: false,
-  cert_type: CertificateType.Client,
+  cert_type: CertificateType.TLSClient,
   dns_names: [''],
   renew_method: CertificateRenewMethod.None,
   ca_id: undefined
