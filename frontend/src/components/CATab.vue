@@ -8,6 +8,7 @@
         <tr>
           <th>CA ID</th>
           <th>Name</th>
+          <th>Type</th>
           <th class="d-none d-lg-table-cell">Created on</th>
           <th>Valid until</th>
           <th>Actions</th>
@@ -17,6 +18,7 @@
         <tr v-for="ca in cas.values()" :key="ca.id">
           <td :id="'CaId-' + ca.id">{{ ca.id }}</td>
           <td :id="'CAName-' + ca.id">{{ ca.name }}</td>
+          <td :id="'CAType-' + ca.id">{{ CAType[ca.ca_type] }}</td>
           <td :id="'CreatedOn-' + ca.id" class="d-none d-lg-table-cell">{{ new Date(ca.created_on).toLocaleDateString() }}</td>
           <td :id="'ValidUntil-' + ca.id">{{ new Date(ca.valid_until).toLocaleDateString() }}</td>
           <td>
@@ -82,14 +84,6 @@
             </div>
             <div class="mb-3">
               <label for="caType" class="form-label">CA Type</label>
-              <input
-                  id="caType"
-                  v-model="caReq.ca_name"
-                  type="text"
-                  class="form-control"
-                  placeholder="Enter CA name"
-                  required
-              />
               <select
                   class="form-select"
                   id="caType"

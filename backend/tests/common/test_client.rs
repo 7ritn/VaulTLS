@@ -89,7 +89,7 @@ impl VaulTLSClient {
             system_generated_password: false,
             cert_password: password,
             cert_type: Some(TLSClient),
-            dns_names: None,
+            usage_limit: None,
             renew_method: Some(CertificateRenewMethod::Renew),
             ca_id,
         };
@@ -114,7 +114,7 @@ impl VaulTLSClient {
             system_generated_password: false,
             cert_password: Some(TEST_PASSWORD.to_string()),
             cert_type: Some(SSHClient),
-            dns_names: None,
+            usage_limit: None,
             renew_method: Some(CertificateRenewMethod::Notify),
             ca_id: None,
         };
@@ -139,7 +139,7 @@ impl VaulTLSClient {
             system_generated_password: false,
             cert_password: Some(TEST_PASSWORD.to_string()),
             cert_type: Some(CertificateType::TLSServer),
-            dns_names: Some(vec![TEST_SERVER_CERT_DNS_NAME.to_string()]),
+            usage_limit: Some(vec![TEST_SERVER_CERT_DNS_NAME.to_string()]),
             renew_method: None,
             ca_id: None,
         };

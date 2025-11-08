@@ -60,7 +60,7 @@ pub struct CreateUserCertificateRequest {
     pub system_generated_password: bool,
     pub cert_password: Option<String>,
     pub cert_type: Option<CertificateType>,
-    pub dns_names: Option<Vec<String>>,
+    pub usage_limit: Option<Vec<String>>,
     pub renew_method: Option<CertificateRenewMethod>,
     pub ca_id: Option<i64>
 }

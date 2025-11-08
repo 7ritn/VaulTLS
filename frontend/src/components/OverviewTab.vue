@@ -127,15 +127,15 @@
             </div>
             <div class="mb-3" v-if="certReq.cert_type == CertificateType.TLSServer">
               <label class="form-label">DNS Names</label>
-              <div v-for="(_, index) in certReq.dns_names" :key="index" class="input-group mb-2">
+              <div v-for="(_, index) in certReq.usage_limit" :key="index" class="input-group mb-2">
                 <input
                     type="text"
                     class="form-control"
-                    v-model="certReq.dns_names[index]"
+                    v-model="certReq.usage_limit[index]"
                     :placeholder="'DNS Name ' + (index + 1)"
                 />
                 <button
-                    v-if="index === certReq.dns_names.length - 1"
+                    v-if="index === certReq.usage_limit.length - 1"
                     type="button"
                     class="btn btn-outline-secondary"
                     @click="addDNSField"
@@ -143,7 +143,7 @@
                   +
                 </button>
                 <button
-                    v-if="certReq.dns_names.length > 1"
+                    v-if="certReq.usage_limit.length > 1"
                     type="button"
                     class="btn btn-outline-danger"
                     @click="removeDNSField(index)"
@@ -339,7 +339,7 @@ const certReq = reactive<CertificateRequirements>({
   cert_password: '',
   notify_user: false,
   cert_type: CertificateType.TLSClient,
-  dns_names: [''],
+  usage_limit: [''],
   renew_method: CertificateRenewMethod.None,
   ca_id: undefined
 });
@@ -420,11 +420,11 @@ const togglePasswordShown = async (cert: Certificate) => {
 };
 
 const addDNSField = () => {
-  certReq.dns_names.push('');
+  certReq.usage_limit.push('');
 };
 
 const removeDNSField = (index: number) => {
-  certReq.dns_names.splice(index, 1);
+  certReq.usage_limit.splice(index, 1);
 };
 </script>
 

@@ -30,7 +30,7 @@ services:
       context: ../
       dockerfile: Containerfile
       args:
-        RUN_TESTS: "false"
+        RUN_TESTS: "true"
     depends_on:
       mailhog:
         condition: service_healthy

@@ -429,7 +429,7 @@ fn build_ssh_client_cert(
         .set_ca(ca)?
         .set_user_id(payload.user_id)?;
     
-    if let Some(ref principals) = payload.dns_names {
+    if let Some(ref principals) = payload.usage_limit {
         cert_builder = cert_builder.set_principals(principals)?;
     }
     
@@ -450,7 +450,7 @@ fn build_ssh_server_cert(
         .set_ca(ca)?
         .set_user_id(payload.user_id)?;
     
-    if let Some(ref principals) = payload.dns_names {
+    if let Some(ref principals) = payload.usage_limit {
         cert_builder = cert_builder.set_principals(principals)?;
     }
     
@@ -484,7 +484,7 @@ fn build_tls_server_cert(
     pkcs12_password: &str,
     cert_validity_in_years: u64,
 ) -> Result<Certificate, ApiError> {
-    let dns_names = payload.dns_names.clone().unwrap_or_default();
+    let dns_names = payload.usage_limit.clone().unwrap_or_default();
     
     TLSCertificateBuilder::new()?
         .set_name(&payload.cert_name)?

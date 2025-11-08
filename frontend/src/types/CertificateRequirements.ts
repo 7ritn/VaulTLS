@@ -8,7 +8,7 @@ export interface CertificateRequirements {
     cert_password: string;
     notify_user: boolean;
     cert_type: CertificateType;
-    dns_names: string[];
+    usage_limit: string[];
     renew_method: CertificateRenewMethod;
     ca_id?: number;
 }

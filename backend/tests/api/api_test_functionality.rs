@@ -409,7 +409,7 @@ async fn test_create_certificate_with_short_lived_ca() -> Result<()> {
         system_generated_password: false,
         cert_password: None,
         cert_type: Some(CertificateType::TLSClient),
-        dns_names: None,
+        usage_limit: None,
         renew_method: Some(CertificateRenewMethod::Renew),
         ca_id: None,
     };
