@@ -114,7 +114,7 @@ impl VaulTLSClient {
             system_generated_password: false,
             cert_password: Some(TEST_PASSWORD.to_string()),
             cert_type: Some(SSHClient),
-            usage_limit: None,
+            usage_limit: Some(vec!["test.example.com".to_string()]),
             renew_method: Some(CertificateRenewMethod::Notify),
             ca_id: None,
         };

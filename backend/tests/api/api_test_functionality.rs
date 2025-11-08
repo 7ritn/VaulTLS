@@ -1,5 +1,5 @@
 use crate::common::constants::*;
-use crate::common::helper::get_timestamp;
+use crate::common::helper::{extract_ssh_cert_key_bundle, get_timestamp_ms, get_timestamp_s};
 use crate::common::test_client::VaulTLSClient;
 use anyhow::Result;
 use const_format::{concatcp, formatcp};
@@ -15,6 +15,7 @@ use std::time::Duration;
 use argon2::password_hash::SaltString;
 use argon2::PasswordHasher;
 use serde_json::Value;
+use ssh_key::certificate::CertType;
 use tokio::io::{duplex, AsyncReadExt, AsyncWriteExt};
 use tokio::time::sleep;
 use tokio_rustls::{TlsAcceptor, TlsConnector};
@@ -141,8 +142,8 @@ async fn test_create_client_certificate() -> Result<()> {
     let client = VaulTLSClient::new_authenticated().await;
     let cert = client.create_client_cert(None, None, None).await?;
 
-    let now = get_timestamp(0);
-    let valid_until = get_timestamp(1);
+    let now = get_timestamp_ms(0);
+    let valid_until = get_timestamp_ms(1);
 
     assert_eq!(cert.id, 1);
     assert_eq!(cert.name, TEST_CLIENT_CERT_NAME);
@@ -169,8 +170,8 @@ async fn test_fetch_client_certificates() -> Result<()> {
     assert_eq!(certs.len(), 1);
 
     let cert = &certs[0];
-    let now = get_timestamp(0);
-    let valid_until = get_timestamp(1);
+    let now = get_timestamp_ms(0);
+    let valid_until = get_timestamp_ms(1);
 
     assert_eq!(cert.id, 1);
     assert_eq!(cert.name, TEST_CLIENT_CERT_NAME);
@@ -358,8 +359,8 @@ async fn test_create_new_ca() -> Result<()> {
     client.create_second_ca().await?;
     let new_cas: Vec<CA> = client.get_all_ca().await?;
 
-    let now = get_timestamp(0);
-    let valid_until = get_timestamp(15);
+    let now = get_timestamp_ms(0);
+    let valid_until = get_timestamp_ms(15);
 
     assert_eq!(new_cas.len(), 2);
     assert_eq!(new_cas[1].name, TEST_SECOND_CA_NAME.to_string());
@@ -451,8 +452,7 @@ async fn test_create_ssh_ca() -> Result<()> {
     let cas = client.get_all_ca().await?;
     let ca = cas.get(1).unwrap();
 
-    let now = get_timestamp(0);
-    let valid_until = get_timestamp(1);
+    let now = get_timestamp_ms(0);
 
     assert_eq!(ca.id, 2);
     assert_eq!(ca.name, TEST_SSH_CA_NAME);
@@ -467,8 +467,8 @@ async fn test_create_ssh_client_certificate() -> Result<()> {
     client.create_ssh_ca().await?;
     let cert = client.create_ssh_client_cert().await?;
 
-    let now = get_timestamp(0);
-    let valid_until = get_timestamp(1);
+    let now = get_timestamp_ms(0);
+    let valid_until = get_timestamp_ms(1);
 
     assert_eq!(cert.id, 1);
     assert_eq!(cert.name, TEST_SSH_CLIENT_CERT_NAME);
@@ -478,6 +478,47 @@ async fn test_create_ssh_client_certificate() -> Result<()> {
     assert_eq!(cert.user_id, 1);
     assert_eq!(cert.renew_method , CertificateRenewMethod::Notify);
     assert_eq!(cert.ca_id, 2);
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_download_ssh_client_certificate() -> Result<()> {
+    let client = VaulTLSClient::new_authenticated().await;
+    client.create_ssh_ca().await?;
+    let _ = client.create_ssh_client_cert().await?;
+
+    // Download SSH public CA key
+    let request = client.get("/certificates/ca/ssh/download");
+    let response = request.dispatch().await;
+    assert_eq!(response.status(), Status::Ok);
+    let Some(ca_data) = response.into_bytes().await else {
+        return Err(anyhow::anyhow!("No SSH CA public key"))
+    };
+
+    // Download SSH client certificate
+    let request = client.get("/certificates/1/download");
+    let response = request.dispatch().await;
+    assert_eq!(response.status(), Status::Ok);
+    let Some(client_data) = response.into_bytes().await else {
+        return Err(anyhow::anyhow!("No SSH client certificate"))
+    };
+
+    let ca_str = String::from_utf8(ca_data)?;
+    let ca = ssh_key::PublicKey::from_openssh(&ca_str)?;
+
+    let (cert, key) = extract_ssh_cert_key_bundle(&client_data)?;
+
+    assert_eq!(cert.cert_type(), CertType::User);
+
+    let now: u64 = get_timestamp_s(0) as u64;
+    let valid_until: u64 = get_timestamp_s(1) as u64;
+    assert!(now > cert.valid_after() && cert.valid_after() > now - 10 /* 10 seconds */);
+    assert!(valid_until > cert.valid_before() && cert.valid_before() > valid_until - 10 /* 10 seconds */);
+
+    assert_eq!(cert.valid_principals(), vec!["test.example.com".to_string()]);
+    let fingerprint = ca.fingerprint(Default::default());
+    assert!(cert.validate(vec![&fingerprint]).is_ok());
+
     Ok(())
 }
 
