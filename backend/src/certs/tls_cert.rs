@@ -339,11 +339,11 @@ pub(crate) fn get_tls_pem(ca: &CA) -> Result<Vec<u8>, ErrorStack> {
 
 /// Migrates the Certificate Authority (CA) storage to a separate directory.
 pub(crate) fn migrate_ca_storage() -> Result<()> {
-    if let Ok(exists) = fs::exists("../../ca.cert") {
+    if let Ok(exists) = fs::exists("./ca.cert") {
         if exists {
             info!("Migrating CA storage to separate directory");
             fs::create_dir(CA_DIR_PATH)?;
-            fs::rename("../../ca.cert", CA_TLS_FILE_PATH)?;
+            fs::rename("./ca.cert", CA_TLS_FILE_PATH)?;
             fs::copy(CA_TLS_FILE_PATH, CA_FILE_PATTERN.replace("{}", "1"))?;
         }
     }
