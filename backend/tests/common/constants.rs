@@ -7,7 +7,6 @@ pub(crate) const TEST_SSH_CA_NAME: &str = "SSH CA";
 pub(crate) const TEST_CLIENT_CERT_NAME: &str = "Test Cert";
 pub(crate) const TEST_SERVER_CERT_NAME: &str = "Test Server Cert";
 pub(crate) const TEST_SSH_CLIENT_CERT_NAME: &str = "Test SSH Cert";
-pub(crate) const TEST_SSH_SERVER_CERT_NAME: &str = "Test SSH Server Cert";
 pub(crate) const TEST_SERVER_CERT_DNS_NAME: &str = "localhost";
 pub(crate) const TEST_MESSAGE: &str = "Hello World!";
 pub(crate) const TEST_SECOND_USER_NAME: &str = "test2";

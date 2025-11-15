@@ -108,6 +108,8 @@ pub(crate) struct MailMessage {
     pub(crate) certificate: Certificate
 }
 
+// ToDo: Add types to mail
+
 impl Mailer {
     pub async fn new(server: &Mail, vaultls_url: &str) -> Result<Self, anyhow::Error> {
         let mut mail_builder = match server.encryption {

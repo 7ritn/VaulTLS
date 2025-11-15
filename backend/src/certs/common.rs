@@ -1,11 +1,6 @@
-use std::fs;
 use rocket::serde::{Deserialize, Serialize};
 use rocket_okapi::JsonSchema;
 use passwords::PasswordGenerator;
-use crate::ApiError;
-use crate::certs::tls_cert::get_tls_pem;
-use crate::certs::ssh_cert::get_ssh_pem;
-use crate::constants::{CA_DIR_PATH, CA_FILE_PATTERN, CA_SSH_FILE_PATH, CA_TLS_FILE_PATH};
 use crate::data::enums::{CAType, CertificateRenewMethod, CertificateType};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
@@ -41,6 +36,11 @@ pub struct CA {
 /// Saves the CA certificate to a file for filesystem access.
 #[cfg(not(feature = "test-mode"))]
 pub(crate) fn save_ca(ca: &CA) -> anyhow::Result<()> {
+    use std::fs;
+    use crate::ApiError;
+    use crate::certs::tls_cert::get_tls_pem;
+    use crate::certs::ssh_cert::get_ssh_pem;
+    use crate::constants::{CA_DIR_PATH, CA_FILE_PATTERN, CA_SSH_FILE_PATH, CA_TLS_FILE_PATH};
     let pem = match ca.ca_type {
         CAType::TLS => get_tls_pem(ca)?,
         CAType::SSH => get_ssh_pem(ca)?,

@@ -506,7 +506,7 @@ async fn test_download_ssh_client_certificate() -> Result<()> {
     let ca_str = String::from_utf8(ca_data)?;
     let ca = ssh_key::PublicKey::from_openssh(&ca_str)?;
 
-    let (cert, key) = extract_ssh_cert_key_bundle(&client_data)?;
+    let (cert, _) = extract_ssh_cert_key_bundle(&client_data)?;
 
     assert_eq!(cert.cert_type(), CertType::User);
 
