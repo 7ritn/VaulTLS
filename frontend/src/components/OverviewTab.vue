@@ -166,7 +166,7 @@
                 </option>
               </select>
             </div>
-            <div class="mb-3" v-if="availableCAs.length > 1">
+            <div class="mb-3">
               <label for="caId" class="form-label">Certificate Authority</label>
               <select
                   id="caId"
@@ -352,7 +352,6 @@ const isMailValid = computed(() => {
 
 const availableCAs = computed(() => {
   const cas = Array.from(caStore.cas.values());
-  if (!certReq.cert_type) return cas;
 
   // Map certificate types to allowed CA types
   const allowedCATypes = {
