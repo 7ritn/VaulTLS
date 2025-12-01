@@ -28,7 +28,7 @@ serde_repr = "0.1.20"
 rusqlite = { version = "0.37.0", features = ["bundled-sqlcipher"] }
 r2d2 = "0.8.10"
 r2d2_sqlite = { version = "0.31.0", features = ["bundled-sqlcipher"] }
-openssl = "0.10.74"
+openssl = "0.10.75"
 argon2 = "0.5.3"
 jsonwebtoken = { version = "10.2.0", features = ["rust_crypto"] }
 openidconnect = "4.0.1"
