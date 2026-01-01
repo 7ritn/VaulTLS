@@ -43,7 +43,7 @@ include_dir = "0.7.4"
 rusqlite_migration = {  version = "2.3.0", features = ["from-directory"] }
 const_format = "0.2.35"
 once_cell = "1.21.3"
-tracing = "0.1.41"
+tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
 derive_deref = "1.1.1"
 parking_lot = "0.12.5"
