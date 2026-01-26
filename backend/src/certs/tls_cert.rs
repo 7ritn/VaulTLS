@@ -16,7 +16,7 @@ use openssl::x509::extension::{AuthorityKeyIdentifier, BasicConstraints, Extende
 use openssl::x509::X509Builder;
 use tracing::info;
 use crate::constants::{CA_DIR_PATH, CA_FILE_PATTERN, CA_TLS_FILE_PATH};
-use crate::data::enums::{CAType, CertificateRenewMethod, CertificateType};
+use crate::data::enums::{CAType, CertificateRenewMethod, CertificateType, TimespanUnit};
 use crate::data::enums::CertificateType::{TLSClient, TLSServer};
 #[cfg(not(feature = "test-mode"))]
 use crate::ApiError;
@@ -38,7 +38,7 @@ impl TLSCertificateBuilder {
     pub fn new() -> Result<Self> {
         let private_key = generate_private_key()?;
         let asn1_serial = generate_serial_number()?;
-        let (created_on_unix, created_on_openssl) = get_timestamp(0)?;
+        let (created_on_unix, created_on_openssl) = get_timestamp(0, TimespanUnit::Hour)?;
 
         let mut x509 = X509Builder::new()?;
         x509.set_version(2)?;
@@ -67,11 +67,11 @@ impl TLSCertificateBuilder {
     ///     - Renew Method\
     ///     - User ID\
     pub fn try_from(old_cert: &Certificate) -> Result<Self> {
-        let validity_in_years = ((old_cert.valid_until - old_cert.created_on) / 1000 / 60 / 60 / 24 / 365).max(1);
+        let validity_d = ((old_cert.valid_until - old_cert.created_on) / 1000 / 60 / 60 / 24).max(14);
 
         Self::new()?
             .set_name(&old_cert.name)?
-            .set_valid_until(validity_in_years as u64)?
+            .set_valid_until(validity_d as u64, TimespanUnit::Day)?
             .set_password(&old_cert.password)?
             .set_renew_method(old_cert.renew_method)?
             .set_user_id(old_cert.user_id)
@@ -81,11 +81,11 @@ impl TLSCertificateBuilder {
         if old_ca.ca_type != TLS {
             return Err(anyhow!("CA is not of type SSH"));
         }
-        let validity_in_years = ((old_ca.valid_until - old_ca.created_on) / 1000 / 60 / 60 / 24 / 365).max(1);
+        let validity_h = ((old_ca.valid_until - old_ca.created_on) / 1000 / 60 / 60 / 24).max(14);
 
         Self::new()?
             .set_name(&old_ca.name)?
-            .set_valid_until(validity_in_years as u64)?
+            .set_valid_until(validity_h as u64, TimespanUnit::Day)?
             .build_ca()
 
     }
@@ -97,9 +97,9 @@ impl TLSCertificateBuilder {
         Ok(self)
     }
 
-    pub fn set_valid_until(mut self, years: u64) -> Result<Self, anyhow::Error> {
-        let (valid_until_unix, valid_until_openssl) = if years != 0 {
-            get_timestamp(years)?
+    pub fn set_valid_until(mut self, duration: u64, unit: TimespanUnit) -> Result<Self, anyhow::Error> {
+        let (valid_until_unix, valid_until_openssl) = if duration != 0 {
+            get_timestamp(duration, unit)?
         } else {
             get_short_lifetime()?
         };
@@ -314,12 +314,19 @@ fn generate_serial_number() -> Result<Asn1Integer, ErrorStack> {
 }
 
 /// Returns the current UNIX timestamp in milliseconds and an OpenSSL Asn1Time object.
-pub(crate) fn get_timestamp(from_now_in_years: u64) -> Result<(i64, Asn1Time), ErrorStack> {
-    let time = SystemTime::now() + std::time::Duration::from_secs(60 * 60 * 24 * 365 * from_now_in_years);
-    let time_unix = time.duration_since(UNIX_EPOCH).unwrap().as_millis() as i64;
-    let time_openssl = Asn1Time::days_from_now(365 * from_now_in_years as u32)?;
+pub(crate) fn get_timestamp(duration: u64, unit: TimespanUnit) -> Result<(i64, Asn1Time), ErrorStack> {
+    let duration_per_unit_h = match unit {
+        TimespanUnit::Year => 365*24,
+        TimespanUnit::Month => 30*24,
+        TimespanUnit::Day => 24,
+        TimespanUnit::Hour => 1,
+    };
+    let duration_s = 60 * 60 * duration * duration_per_unit_h;
+    let time = SystemTime::now() + std::time::Duration::from_secs(duration_s);
+    let time_unix_ms = time.duration_since(UNIX_EPOCH).unwrap().as_millis() as i64;
+    let time_openssl = Asn1Time::from_unix(time_unix_ms / 1000)?;
 
-    Ok((time_unix, time_openssl))
+    Ok((time_unix_ms, time_openssl))
 }
 
 /// For E2E testing generate a short lifetime certificate.

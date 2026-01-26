@@ -95,16 +95,28 @@
               </select>
             </div>
             <div class="mb-3" v-if="caReq.ca_type === CAType.TLS">
-              <label for="validity" class="form-label">Validity (years)</label>
-              <input
-                  id="validity"
-                  v-model.number="caReq.validity_in_years"
-                  type="number"
-                  class="form-control"
-                  min="1"
-                  max="30"
-                  placeholder="Enter validity period"
-              />
+              <label for="validity" class="form-label">Validity</label>
+              <div class="input-group">
+                <input
+                    id="validity"
+                    v-model.number="caReq.validity_duration"
+                    type="number"
+                    class="form-control"
+                    min="1"
+                    placeholder="Enter validity period"
+                />
+                <select
+                    id="validity_unit"
+                    v-model="caReq.validity_unit"
+                    class="form-select"
+                    style="max-width: 120px"
+                >
+                  <option :value="ValidityUnit.Hour">Hours</option>
+                  <option :value="ValidityUnit.Day">Days</option>
+                  <option :value="ValidityUnit.Month">Months</option>
+                  <option :value="ValidityUnit.Year">Years</option>
+                </select>
+              </div>
             </div>
           </div>
           <div class="modal-footer">
@@ -114,7 +126,7 @@
             <button
                 type="button"
                 class="btn btn-primary"
-                :disabled="loading || !caReq.ca_name || !caReq.validity_in_years"
+                :disabled="loading || !caReq.ca_name || !caReq.validity_duration"
                 @click="createCA"
             >
               <span v-if="loading">Creating...</span>
@@ -163,6 +175,7 @@ import {computed, onMounted, reactive, ref} from 'vue';
 import {useCAStore} from '@/stores/cas';
 import {type CA, type CARequirements, CAType} from '@/types/CA';
 import {useAuthStore} from '@/stores/auth';
+import {ValidityUnit} from "@/types/ValidityUnit.ts";
 
 // stores
 const caStore = useCAStore();
@@ -180,7 +193,8 @@ const caToDelete = ref<CA | null>(null);
 const caReq = reactive<CARequirements>({
   ca_name: '',
   ca_type: CAType.TLS,
-  validity_in_years: undefined
+  validity_duration: undefined,
+  validity_unit: ValidityUnit.Year
 });
 
 onMounted(async () => {
@@ -194,7 +208,8 @@ const showCreateModal = () => {
 const closeCreateModal = () => {
   isCreateModalVisible.value = false;
   caReq.ca_name = '';
-  caReq.validity_in_years = 10;
+  caReq.validity_duration = 10;
+  caReq.validity_unit = ValidityUnit.Year;
 };
 
 const createCA = async () => {

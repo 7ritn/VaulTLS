@@ -98,6 +98,7 @@ def test_renewal_remind(page):
     page.select_option("#userId", "1")
     page.fill("#certPassword", "password")
     page.fill("#validity", "0")
+    page.select_option("#validity_unit", "0")
     page.select_option("#renewMethod", "1")
     page.click("button:has-text('Create Certificate')")
 
@@ -115,6 +116,7 @@ def test_renewal_renew_notify(page):
     page.select_option("#userId", "1")
     page.fill("#certPassword", "password")
     page.fill("#validity", "0")
+    page.select_option("#validity_unit", "0")
     page.select_option("#renewMethod", "3")
     page.click("button:has-text('Create Certificate')")
 
@@ -161,6 +163,7 @@ def test_create_ca_and_certificate_with_ca_verification(page):
     page.click("#CreateCAButton")
     page.fill("#caName", "Test CA 2")
     page.fill("#validity", "5")
+    page.select_option("#validity_unit", "0")  # Select Years (Year = 0)
     page.click("button:has-text('Create CA')")
     
     # Wait for CA creation and verify it was created

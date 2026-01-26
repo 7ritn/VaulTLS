@@ -43,14 +43,28 @@
         </div>
 
         <div class="mb-3">
-          <label for="ca_validity_in_years" class="form-label">Validity of CA in years</label>
-          <input
-              id="ca_validity_in_years"
-              type="number"
-              v-model="ca_validity_in_years"
-              class="form-control"
-              required
-          />
+          <label for="ca_validity_duration" class="form-label">Validity of CA</label>
+          <div class="input-group">
+            <input
+                id="ca_validity_duration"
+                type="number"
+                v-model="ca_validity_duration"
+                class="form-control"
+                required
+            />
+            <select
+                id="ca_validity_unit"
+                v-model="ca_validity_unit"
+                class="form-select"
+                style="max-width: 120px"
+                required
+            >
+              <option :value="ValidityUnit.Hour">Hours</option>
+              <option :value="ValidityUnit.Day">Days</option>
+              <option :value="ValidityUnit.Month">Months</option>
+              <option :value="ValidityUnit.Year">Years</option>
+            </select>
+          </div>
         </div>
 
         <!-- Password field is always available, but not required if OIDC is enabled -->
@@ -87,13 +101,15 @@ import router from '../router/router';
 import { setup } from "@/api/auth.ts";
 import {useSetupStore} from "@/stores/setup.ts";
 import {hashPassword} from "@/utils/hash.ts";
+import {ValidityUnit} from "@/types/ValidityUnit.ts";
 
 const setupStore = useSetupStore();
 
 const username = ref('');
 const email = ref('');
 const ca_name = ref('');
-const ca_validity_in_years = ref(10);
+const ca_validity_duration = ref(10);
+const ca_validity_unit = ref(ValidityUnit.Year);
 const password = ref('');
 const errorMessage = ref('');
 
@@ -105,7 +121,8 @@ const setupPassword = async () => {
       name: username.value,
       email: email.value,
       ca_name: ca_name.value,
-      ca_validity_in_years: ca_validity_in_years.value,
+      validity_duration: ca_validity_duration.value,
+      validity_unit: ca_validity_unit.value,
       password: password.value || null,
     });
     await setupStore.reload();

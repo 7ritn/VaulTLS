@@ -1,5 +1,5 @@
 use crate::certs::common::{Certificate, CA};
-use crate::data::enums::{CertificateRenewMethod, CertificateType};
+use crate::data::enums::{CertificateRenewMethod, CertificateType, TimespanUnit};
 use anyhow::anyhow;
 use anyhow::Result;
 use rand::prelude::*;
@@ -46,8 +46,15 @@ impl SSHCertificateBuilder {
         Ok(self)
     }
 
-    pub fn set_valid_until(mut self, years: u64) -> Result<Self> {
-        let valid_until = self.created_on + (365 * 86400 * 1000) * years as i64;
+    pub fn set_valid_until(mut self, duration: u64, unit: TimespanUnit) -> Result<Self> {
+        let duration_per_unit_h = match unit {
+            TimespanUnit::Year => 365*24,
+            TimespanUnit::Month => 30*24,
+            TimespanUnit::Day => 24,
+            TimespanUnit::Hour => 1,
+        };
+        let duration_s = 60 * 60 * duration as i64 * duration_per_unit_h;
+        let valid_until = self.created_on + (duration_s * 1000);
         self.valid_until = Some(valid_until);
         Ok(self)
     }

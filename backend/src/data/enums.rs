@@ -119,3 +119,13 @@ impl FromSql for CertificateRenewMethod {
         }
     }
 }
+
+#[derive(Serialize_repr, Deserialize_repr, JsonSchema, TryFromPrimitive, Clone, Debug, Copy, PartialEq, Eq, Default)]
+#[repr(u8)]
+pub enum TimespanUnit {
+    #[default]
+    Year = 0,
+    Month = 1,
+    Day = 2,
+    Hour = 3
+}

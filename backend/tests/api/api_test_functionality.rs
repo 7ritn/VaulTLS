@@ -19,7 +19,7 @@ use ssh_key::certificate::CertType;
 use tokio::io::{duplex, AsyncReadExt, AsyncWriteExt};
 use tokio::time::sleep;
 use tokio_rustls::{TlsAcceptor, TlsConnector};
-use vaultls::data::enums::{CAType, CertificateRenewMethod, CertificateType, UserRole};
+use vaultls::data::enums::{CAType, CertificateRenewMethod, CertificateType, TimespanUnit, UserRole};
 use vaultls::data::objects::User;
 use x509_parser::asn1_rs::FromDer;
 use x509_parser::prelude::X509Certificate;
@@ -107,7 +107,8 @@ async fn test_setup_hash() -> Result<()> {
         name: TEST_USER_NAME.to_string(),
         email: TEST_USER_EMAIL.to_string(),
         ca_name: TEST_CA_NAME.to_string(),
-        ca_validity_in_years: 1,
+        validity_duration: Some(1),
+        validity_unit: Some(TimespanUnit::Year),
         password: Some(password_hash.to_string()),
     };
 
@@ -365,8 +366,8 @@ async fn test_create_new_ca() -> Result<()> {
     assert_eq!(new_cas.len(), 2);
     assert_eq!(new_cas[1].name, TEST_SECOND_CA_NAME.to_string());
     assert_eq!(new_cas[1].id, 2);
-    assert!(now > new_cas[1].created_on && new_cas[1].created_on > now - 10000 /* 10 seconds */);
-    assert!(valid_until > new_cas[1].valid_until && new_cas[1].valid_until > valid_until - 10000 /* 10 seconds */);
+    assert!(now >= new_cas[1].created_on && new_cas[1].created_on > now - 10000 /* 10 seconds */);
+    assert!(valid_until >= new_cas[1].valid_until && new_cas[1].valid_until > valid_until - 10000 /* 10 seconds */);
 
     let ca_by_id_pem = client.download_tls_ca_by_id(2).await?;
     let ca_pem = client.download_current_tls_ca().await?;
@@ -404,7 +405,8 @@ async fn test_create_certificate_with_short_lived_ca() -> Result<()> {
 
     let cert_req = CreateUserCertificateRequest {
         cert_name: TEST_CLIENT_CERT_NAME.to_string(),
-        validity_in_years: Some(2),
+        validity_duration: Some(2),
+        validity_unit: Some(TimespanUnit::Year),
         user_id: 1,
         notify_user: None,
         system_generated_password: false,

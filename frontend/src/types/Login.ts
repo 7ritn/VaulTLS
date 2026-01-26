@@ -1,8 +1,11 @@
+import {ValidityUnit} from "@/types/ValidityUnit.ts";
+
 export interface SetupReq {
     name: string,
     email: string,
     ca_name: string,
-    ca_validity_in_years: number,
+    validity_duration: number,
+    validity_unit: ValidityUnit,
     password: string | null;
 }
 

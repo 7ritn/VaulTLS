@@ -1,3 +1,5 @@
+import {ValidityUnit} from "@/types/ValidityUnit.ts";
+
 export enum CAType {
     TLS = 0,
     SSH = 1
@@ -14,5 +16,6 @@ export interface CA {
 export interface CARequirements {
     ca_name: string;                    // CA name
     ca_type: CAType;                    // CA type
-    validity_in_years?: number;          // Validity of CA in years
+    validity_duration?: number;         // Validity duration
+    validity_unit?: ValidityUnit;       // Validity unit (hours, days, months, years)
 }

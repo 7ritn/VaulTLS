@@ -12,7 +12,7 @@ use crate::certs::ssh_cert::{get_ssh_pem, SSHCertificateBuilder};
 use crate::certs::tls_cert::{get_timestamp, get_tls_pem, TLSCertificateBuilder};
 use crate::constants::VAULTLS_VERSION;
 use crate::data::api::{CallbackQuery, ChangePasswordRequest, CreateCARequest, CreateUserCertificateRequest, CreateUserRequest, DownloadResponse, IsSetupResponse, LoginRequest, SetupRequest};
-use crate::data::enums::{CAType, CertificateType, PasswordRule, UserRole};
+use crate::data::enums::{CAType, CertificateType, PasswordRule, TimespanUnit, UserRole};
 use crate::data::error::ApiError;
 use crate::data::objects::{AppState, User};
 use crate::notification::mail::{MailMessage, Mailer};
@@ -81,9 +81,11 @@ pub(crate) async fn setup(
 
     state.db.insert_user(user).await?;
 
+    let cert_validity = setup_req.validity_duration.unwrap_or(5);
+    let cert_validity_unit = setup_req.validity_unit.unwrap_or(TimespanUnit::Year);
     let mut ca = TLSCertificateBuilder::new()?
         .set_name(&setup_req.ca_name)?
-        .set_valid_until(setup_req.ca_validity_in_years)?
+        .set_valid_until(cert_validity, cert_validity_unit)?
         .build_ca()?;
     ca = state.db.insert_ca(ca).await?;
     save_ca(&ca)?;
@@ -287,10 +289,11 @@ pub(crate) async fn create_ca(
 ) -> Result<Json<i64>, ApiError> {
     let mut ca = match payload.ca_type {
         CAType::TLS => {
-            let validity = payload.validity_in_years.unwrap_or(5);
+            let cert_validity = payload.validity_duration.unwrap_or(5);
+            let cert_validity_unit = payload.validity_unit.unwrap_or(TimespanUnit::Year);
             TLSCertificateBuilder::new()?
                 .set_name(&payload.ca_name)?
-                .set_valid_until(validity)?
+                .set_valid_until(cert_validity, cert_validity_unit)?
                 .build_ca()?
         },
         CAType::SSH => {
@@ -320,9 +323,10 @@ pub(crate) async fn create_user_certificate(
     
     let mut ca = get_appropriate_ca(state, &payload).await?;
     ca = ensure_ca_validity(&mut ca, state, &payload).await?;
-    
-    let cert_validity_in_years = payload.validity_in_years.unwrap_or(1);
-    let mut cert = build_certificate(&payload, &ca, &cert_password, cert_validity_in_years, state).await?;
+
+    let cert_validity = payload.validity_duration.unwrap_or(1);
+    let cert_validity_unit = payload.validity_unit.unwrap_or(TimespanUnit::Year);
+    let mut cert = build_certificate(&payload, &ca, &cert_password, cert_validity, cert_validity_unit, state).await?;
     
     cert = state.db.insert_user_cert(cert).await?;
     
@@ -374,8 +378,9 @@ async fn get_appropriate_ca(state: &State<AppState>, payload: &CreateUserCertifi
 }
 
 async fn ensure_ca_validity(ca: &mut CA, state: &State<AppState>, payload: &CreateUserCertificateRequest) -> Result<CA, ApiError> {
-    let cert_validity_in_years = payload.validity_in_years.unwrap_or(1);
-    let cert_validity_timestamp = get_timestamp(cert_validity_in_years)?;
+    let cert_validity = payload.validity_duration.unwrap_or(1);
+    let cert_validity_unit = payload.validity_unit.unwrap_or(TimespanUnit::Year);
+    let cert_validity_timestamp = get_timestamp(cert_validity, cert_validity_unit)?;
     
     if ca.valid_until == -1 || cert_validity_timestamp.0 <= ca.valid_until {
         return Ok(ca.clone());
@@ -400,7 +405,8 @@ async fn build_certificate(
     payload: &CreateUserCertificateRequest,
     ca: &CA,
     cert_password: &str,
-    cert_validity_in_years: u64,
+    validity_duration: u64,
+    validity_unit: TimespanUnit,
     state: &State<AppState>
 ) -> Result<Certificate, ApiError> {
     let cert_type = payload.cert_type.ok_or_else(|| {
@@ -408,10 +414,10 @@ async fn build_certificate(
     })?;
 
     match cert_type {
-        CertificateType::SSHClient => build_ssh_cert(payload, ca, cert_password, cert_validity_in_years, true),
-        CertificateType::SSHServer => build_ssh_cert(payload, ca, cert_password, cert_validity_in_years, false),
-        CertificateType::TLSClient => build_tls_cert(payload, ca, cert_password, cert_validity_in_years, state, true).await,
-        CertificateType::TLSServer => build_tls_cert(payload, ca, cert_password, cert_validity_in_years, state, false).await,
+        CertificateType::SSHClient => build_ssh_cert(payload, ca, cert_password, validity_duration, validity_unit, true),
+        CertificateType::SSHServer => build_ssh_cert(payload, ca, cert_password, validity_duration, validity_unit, false),
+        CertificateType::TLSClient => build_tls_cert(payload, ca, cert_password, validity_duration, validity_unit, state, true).await,
+        CertificateType::TLSServer => build_tls_cert(payload, ca, cert_password, validity_duration, validity_unit, state, false).await,
     }
 }
 
@@ -419,12 +425,13 @@ fn build_ssh_cert(
     payload: &CreateUserCertificateRequest,
     ca: &CA,
     cert_password: &str,
-    cert_validity_in_years: u64,
+    validity_duration: u64,
+    validity_unit: TimespanUnit,
     is_client: bool,
 ) -> Result<Certificate, ApiError> {
     let mut cert_builder = SSHCertificateBuilder::new()?
         .set_name(&payload.cert_name)?
-        .set_valid_until(cert_validity_in_years)?
+        .set_valid_until(validity_duration, validity_unit)?
         .set_renew_method(payload.renew_method.unwrap_or_default())?
         .set_ca(ca)?
         .set_user_id(payload.user_id)?;
@@ -448,13 +455,14 @@ async fn build_tls_cert(
     payload: &CreateUserCertificateRequest,
     ca: &CA,
     pkcs12_password: &str,
-    cert_validity_in_years: u64,
+    validity_duration: u64,
+    validity_unit: TimespanUnit,
     state: &State<AppState>,
     is_client: bool,
 ) -> Result<Certificate, ApiError> {
     let mut cert_builder = TLSCertificateBuilder::new()?
         .set_name(&payload.cert_name)?
-        .set_valid_until(cert_validity_in_years)?
+        .set_valid_until(validity_duration, validity_unit)?
         .set_renew_method(payload.renew_method.unwrap_or_default())?
         .set_password(pkcs12_password)?
         .set_ca(ca)?

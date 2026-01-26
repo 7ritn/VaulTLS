@@ -182,15 +182,28 @@
             </div>
 
             <div class="mb-3">
-              <label for="validity" class="form-label">Validity (years)</label>
-              <input
-                  id="validity"
-                  v-model.number="certReq.validity_in_years"
-                  type="number"
-                  class="form-control"
-                  min="1"
-                  placeholder="Enter validity period"
-              />
+              <label for="validity" class="form-label">Validity</label>
+              <div class="input-group">
+                <input
+                    id="validity"
+                    v-model.number="certReq.validity_duration"
+                    type="number"
+                    class="form-control"
+                    min="0"
+                    placeholder="Enter validity period"
+                />
+                <select
+                    id="validity_unit"
+                    v-model="certReq.validity_unit"
+                    class="form-select"
+                    style="max-width: 120px"
+                >
+                  <option :value="ValidityUnit.Hour">Hours</option>
+                  <option :value="ValidityUnit.Day">Days</option>
+                  <option :value="ValidityUnit.Month">Months</option>
+                  <option :value="ValidityUnit.Year">Years</option>
+                </select>
+              </div>
             </div>
             <div class="mb-3 form-check form-switch">
               <input
@@ -309,6 +322,7 @@ import {useSettingsStore} from "@/stores/settings.ts";
 import {PasswordRule} from "@/types/Settings.ts";
 import {useCAStore} from "@/stores/cas.ts";
 import {CAType} from "@/types/CA.ts";
+import {ValidityUnit} from "@/types/ValidityUnit.ts";
 
 // stores
 const certificateStore = useCertificateStore();
@@ -336,7 +350,8 @@ const passwordRule = computed(() => {
 const certReq = reactive<CertificateRequirements>({
   cert_name: '',
   user_id: 0,
-  validity_in_years: 1,
+  validity_duration: 1,
+  validity_unit: ValidityUnit.Year,
   system_generated_password: passwordRule.value == PasswordRule.System,
   cert_password: '',
   notify_user: false,
@@ -391,7 +406,8 @@ const closeGenerateModal = () => {
   isGenerateModalVisible.value = false;
   certReq.cert_name = '';
   certReq.user_id = 0;
-  certReq.validity_in_years = 1;
+  certReq.validity_duration = 1;
+  certReq.validity_unit = ValidityUnit.Year;
   certReq.cert_password = '';
   certReq.notify_user = false;
   certReq.ca_id = undefined;

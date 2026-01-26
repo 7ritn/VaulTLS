@@ -7,7 +7,7 @@ use std::ops::{Deref, DerefMut};
 use serde_json::Value;
 use vaultls::create_test_rocket;
 use vaultls::data::api::{CreateCARequest, CreateUserCertificateRequest, CreateUserRequest, LoginRequest, SetupRequest};
-use vaultls::data::enums::{CAType, CertificateRenewMethod, CertificateType, UserRole};
+use vaultls::data::enums::{CAType, CertificateRenewMethod, CertificateType, TimespanUnit, UserRole};
 use x509_parser::pem::Pem;
 use vaultls::certs::common::{Certificate, CA};
 use vaultls::data::enums::CertificateType::{SSHClient, TLSClient};
@@ -46,7 +46,8 @@ impl VaulTLSClient {
             name: TEST_USER_NAME.to_string(),
             email: TEST_USER_EMAIL.to_string(),
             ca_name: TEST_CA_NAME.to_string(),
-            ca_validity_in_years: 2,
+            validity_duration: Some(2),
+            validity_unit: Some(TimespanUnit::Year),
             password: Some(TEST_PASSWORD.to_string()),
         };
 
@@ -83,7 +84,8 @@ impl VaulTLSClient {
     pub(crate) async fn create_client_cert(&self, user_id: Option<i64>, password: Option<String>, ca_id: Option<i64>) -> Result<Certificate> {
         let cert_req = CreateUserCertificateRequest {
             cert_name: TEST_CLIENT_CERT_NAME.to_string(),
-            validity_in_years: Some(1),
+            validity_duration: Some(1),
+            validity_unit: Some(TimespanUnit::Year),
             user_id: user_id.unwrap_or(1),
             notify_user: None,
             system_generated_password: false,
@@ -108,7 +110,8 @@ impl VaulTLSClient {
     pub(crate) async fn create_ssh_client_cert(&self) -> Result<Certificate> {
         let cert_req = CreateUserCertificateRequest {
             cert_name: TEST_SSH_CLIENT_CERT_NAME.to_string(),
-            validity_in_years: Some(1),
+            validity_duration: Some(1),
+            validity_unit: Some(TimespanUnit::Year),
             user_id: 1,
             notify_user: None,
             system_generated_password: false,
@@ -133,7 +136,8 @@ impl VaulTLSClient {
     pub(crate) async fn create_server_cert(&self) -> Result<()> {
         let cert_req = CreateUserCertificateRequest {
             cert_name: TEST_SERVER_CERT_NAME.to_string(),
-            validity_in_years: Some(1),
+            validity_duration: Some(1),
+            validity_unit: Some(TimespanUnit::Year),
             user_id: 1,
             notify_user: None,
             system_generated_password: false,
@@ -294,7 +298,8 @@ impl VaulTLSClient {
         let data = CreateCARequest {
             ca_name: TEST_SECOND_CA_NAME.to_string(),
             ca_type: CAType::TLS,
-            validity_in_years: Some(15)
+            validity_duration: Some(15),
+            validity_unit: Some(TimespanUnit::Year),
         };
 
         let request = self
@@ -311,7 +316,8 @@ impl VaulTLSClient {
         let data = CreateCARequest {
             ca_name: TEST_SSH_CA_NAME.to_string(),
             ca_type: CAType::SSH,
-            validity_in_years: None
+            validity_duration: None,
+            validity_unit: None,
         };
 
         let request = self
