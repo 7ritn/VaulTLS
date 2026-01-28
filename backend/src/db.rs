@@ -1,6 +1,6 @@
 use crate::constants::{DB_FILE_PATH, TEMP_DB_FILE_PATH};
 use crate::data::enums::{CAType, CertificateRenewMethod, CertificateType, UserRole};
-use crate::data::objects::User;
+use crate::data::objects::{Name, User};
 use crate::helper::get_secret;
 use anyhow::anyhow;
 use anyhow::Result;
@@ -301,7 +301,7 @@ impl VaulTLSDB {
 
     /// Retrieve the certificate's cert data with id from the database
     /// Returns the id of the user the certificate belongs to and the cert data
-    pub(crate) async fn get_user_cert_data(&self, id: i64) -> Result<(i64, String, Vec<u8>, CertificateType)> {
+    pub(crate) async fn get_user_cert_data(&self, id: i64) -> Result<(i64, Name, Vec<u8>, CertificateType)> {
         db_do!(self.pool, |conn: &Connection| {
             let mut stmt = conn.prepare("SELECT user_id, name, data, type FROM user_certificates WHERE id = ?1")?;
 

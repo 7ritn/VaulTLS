@@ -9,6 +9,7 @@ use rocket_okapi::{okapi, JsonSchema, OpenApiError};
 use rocket_okapi::okapi::openapi3::{Responses, Response as OAResponse, MediaType, RefOr};
 use rocket_okapi::response::OpenApiResponderInner;
 use crate::data::enums::{CAType, CertificateRenewMethod, CertificateType, TimespanUnit, UserRole};
+use crate::data::objects::Name;
 
 #[derive(Serialize, Deserialize, JsonSchema)]
 pub struct IsSetupResponse {
@@ -47,7 +48,7 @@ pub struct CallbackQuery {
 
 #[derive(Serialize, Deserialize, JsonSchema)]
 pub struct CreateCARequest {
-    pub ca_name: String,
+    pub ca_name: Name,
     pub ca_type: CAType,
     pub validity_duration: Option<u64>,
     pub validity_unit: Option<TimespanUnit>,
@@ -55,7 +56,7 @@ pub struct CreateCARequest {
 
 #[derive(Serialize, Deserialize, JsonSchema, Debug)]
 pub struct CreateUserCertificateRequest {
-    pub cert_name: String,
+    pub cert_name: Name,
     pub validity_duration: Option<u64>,
     pub validity_unit: Option<TimespanUnit>,
     pub user_id: i64,

@@ -14,7 +14,7 @@ use crate::constants::VAULTLS_VERSION;
 use crate::data::api::{CallbackQuery, ChangePasswordRequest, CreateCARequest, CreateUserCertificateRequest, CreateUserRequest, DownloadResponse, IsSetupResponse, LoginRequest, SetupRequest};
 use crate::data::enums::{CAType, CertificateType, PasswordRule, TimespanUnit, UserRole};
 use crate::data::error::ApiError;
-use crate::data::objects::{AppState, User};
+use crate::data::objects::{AppState, Name, User};
 use crate::notification::mail::{MailMessage, Mailer};
     use crate::settings::{FrontendSettings, InnerSettings};
 
@@ -83,8 +83,12 @@ pub(crate) async fn setup(
 
     let cert_validity = setup_req.validity_duration.unwrap_or(5);
     let cert_validity_unit = setup_req.validity_unit.unwrap_or(TimespanUnit::Year);
+    let name = Name {
+        cn: setup_req.ca_name.clone(),
+        ou: None
+    };
     let mut ca = TLSCertificateBuilder::new()?
-        .set_name(&setup_req.ca_name)?
+        .set_name(name)?
         .set_valid_until(cert_validity, cert_validity_unit)?
         .build_ca()?;
     ca = state.db.insert_ca(ca).await?;
@@ -292,13 +296,13 @@ pub(crate) async fn create_ca(
             let cert_validity = payload.validity_duration.unwrap_or(5);
             let cert_validity_unit = payload.validity_unit.unwrap_or(TimespanUnit::Year);
             TLSCertificateBuilder::new()?
-                .set_name(&payload.ca_name)?
+                .set_name(payload.ca_name.clone())?
                 .set_valid_until(cert_validity, cert_validity_unit)?
                 .build_ca()?
         },
         CAType::SSH => {
             SSHCertificateBuilder::new()?
-                .set_name(&payload.ca_name)?
+                .set_name(&payload.ca_name.cn)?
                 .build_ca()?
         }
     };
@@ -330,7 +334,7 @@ pub(crate) async fn create_user_certificate(
     
     cert = state.db.insert_user_cert(cert).await?;
     
-    info!(cert=cert.name, "New certificate created.");
+    info!(cert=cert.name.cn, "New certificate created.");
     trace!("{:?}", cert);
     
     if payload.notify_user == Some(true) {
@@ -430,7 +434,7 @@ fn build_ssh_cert(
     is_client: bool,
 ) -> Result<Certificate, ApiError> {
     let mut cert_builder = SSHCertificateBuilder::new()?
-        .set_name(&payload.cert_name)?
+        .set_name(&payload.cert_name.cn)?
         .set_valid_until(validity_duration, validity_unit)?
         .set_renew_method(payload.renew_method.unwrap_or_default())?
         .set_ca(ca)?
@@ -461,7 +465,7 @@ async fn build_tls_cert(
     is_client: bool,
 ) -> Result<Certificate, ApiError> {
     let mut cert_builder = TLSCertificateBuilder::new()?
-        .set_name(&payload.cert_name)?
+        .set_name(payload.cert_name.clone())?
         .set_valid_until(validity_duration, validity_unit)?
         .set_renew_method(payload.renew_method.unwrap_or_default())?
         .set_password(pkcs12_password)?

@@ -83,7 +83,7 @@ impl VaulTLSClient {
 
     pub(crate) async fn create_client_cert(&self, user_id: Option<i64>, password: Option<String>, ca_id: Option<i64>) -> Result<Certificate> {
         let cert_req = CreateUserCertificateRequest {
-            cert_name: TEST_CLIENT_CERT_NAME.to_string(),
+            cert_name: TEST_CLIENT_CERT_NAME.into(),
             validity_duration: Some(1),
             validity_unit: Some(TimespanUnit::Year),
             user_id: user_id.unwrap_or(1),
@@ -109,7 +109,7 @@ impl VaulTLSClient {
 
     pub(crate) async fn create_ssh_client_cert(&self) -> Result<Certificate> {
         let cert_req = CreateUserCertificateRequest {
-            cert_name: TEST_SSH_CLIENT_CERT_NAME.to_string(),
+            cert_name: TEST_SSH_CLIENT_CERT_NAME.to_string().into(),
             validity_duration: Some(1),
             validity_unit: Some(TimespanUnit::Year),
             user_id: 1,
@@ -135,7 +135,7 @@ impl VaulTLSClient {
 
     pub(crate) async fn create_server_cert(&self) -> Result<()> {
         let cert_req = CreateUserCertificateRequest {
-            cert_name: TEST_SERVER_CERT_NAME.to_string(),
+            cert_name: TEST_SERVER_CERT_NAME.to_string().into(),
             validity_duration: Some(1),
             validity_unit: Some(TimespanUnit::Year),
             user_id: 1,
@@ -296,7 +296,7 @@ impl VaulTLSClient {
 
     pub(crate) async fn create_second_ca(&self) -> Result<()> {
         let data = CreateCARequest {
-            ca_name: TEST_SECOND_CA_NAME.to_string(),
+            ca_name: TEST_SECOND_CA_NAME.to_string().into(),
             ca_type: CAType::TLS,
             validity_duration: Some(15),
             validity_unit: Some(TimespanUnit::Year),
@@ -314,7 +314,7 @@ impl VaulTLSClient {
 
     pub(crate) async fn create_ssh_ca(&self) -> Result<()> {
         let data = CreateCARequest {
-            ca_name: TEST_SSH_CA_NAME.to_string(),
+            ca_name: TEST_SSH_CA_NAME.to_string().into(),
             ca_type: CAType::SSH,
             validity_duration: None,
             validity_unit: None,

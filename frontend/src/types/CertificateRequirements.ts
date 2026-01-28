@@ -1,8 +1,9 @@
 import {CertificateRenewMethod, type CertificateType} from "@/types/Certificate.ts";
 import {ValidityUnit} from "@/types/ValidityUnit.ts";
+import type {Name} from "@/types/Name.ts";
 
 export interface CertificateRequirements {
-    cert_name: string;
+    cert_name: Name;
     user_id: number;
     validity_duration: number;
     validity_unit: ValidityUnit;

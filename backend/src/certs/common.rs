@@ -2,12 +2,13 @@ use rocket::serde::{Deserialize, Serialize};
 use rocket_okapi::JsonSchema;
 use passwords::PasswordGenerator;
 use crate::data::enums::{CAType, CertificateRenewMethod, CertificateType};
+use crate::data::objects::Name;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
 /// Certificate can be either SSH or TLS certificate.
 pub struct Certificate {
     pub id: i64,
-    pub name: String,
+    pub name: Name,
     pub created_on: i64,
     pub valid_until: i64,
     pub certificate_type: CertificateType,
@@ -23,7 +24,7 @@ pub struct Certificate {
 #[derive(Clone, Serialize, Deserialize, JsonSchema, Debug)]
 pub struct CA {
     pub id: i64,
-    pub name: String,
+    pub name: Name,
     pub created_on: i64,
     pub valid_until: i64,
     pub ca_type: CAType,

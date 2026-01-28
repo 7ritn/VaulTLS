@@ -63,7 +63,7 @@ impl SSHCertificateBuilder {
         self.principals = principals
             .iter()
             .filter(|principal| !principal.is_empty())
-            .map(|principal| principal.clone())
+            .cloned()
             .collect();
         Ok(self)
     }
@@ -96,9 +96,11 @@ impl SSHCertificateBuilder {
         let ca_key = PrivateKey::random(&mut OsRng, Algorithm::Ed25519)?;
         let key = ca_key.to_bytes()?.to_vec();
 
+        let name = self.name.unwrap_or_else(|| "CA".to_string()).into();
+
         Ok(CA{
             id: -1,
-            name: self.name.unwrap_or_else(|| "CA".to_string()),
+            name,
             created_on: self.created_on,
             valid_until: -1,
             ca_type: SSH,
@@ -146,7 +148,7 @@ impl SSHCertificateBuilder {
 
         Ok(Certificate {
             id: -1,
-            name,
+            name: name.into(),
             created_on: self.created_on,
             valid_until,
             certificate_type: CertificateType::SSHClient,
@@ -189,7 +191,7 @@ impl SSHCertificateBuilder {
 
         Ok(Certificate {
             id: -1,
-            name,
+            name: name.into(),
             created_on: self.created_on,
             valid_until,
             certificate_type: CertificateType::SSHServer,

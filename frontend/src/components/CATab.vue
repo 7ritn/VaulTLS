@@ -8,6 +8,7 @@
         <tr>
           <th>CA ID</th>
           <th>Name</th>
+          <th v-if="hasAnyOU">Group</th>
           <th>Type</th>
           <th class="d-none d-lg-table-cell">Created on</th>
           <th>Valid until</th>
@@ -17,7 +18,8 @@
         <tbody>
         <tr v-for="ca in cas.values()" :key="ca.id">
           <td :id="'CaId-' + ca.id">{{ ca.id }}</td>
-          <td :id="'CAName-' + ca.id">{{ ca.name }}</td>
+          <td :id="'CAName-' + ca.id">{{ ca.name.cn }}</td>
+          <td :id="'CAGroup-' + ca.id" v-if="hasAnyOU">{{ ca.name.ou ?? '' }}</td>
           <td :id="'CAType-' + ca.id">{{ CAType[ca.ca_type] }}</td>
           <td :id="'CreatedOn-' + ca.id" class="d-none d-lg-table-cell">{{ new Date(ca.created_on).toLocaleDateString() }}</td>
           <td :id="'ValidUntil-' + ca.id">{{ new Date(ca.valid_until).toLocaleDateString() }}</td>
@@ -72,14 +74,34 @@
           </div>
           <div class="modal-body">
             <div class="mb-3">
-              <label for="caName" class="form-label">CA Name</label>
+              <label for="caName" class="form-label">CA Name (CN)</label>
+              <div class="input-group">
+                <input
+                    id="caName"
+                    v-model="caReq.ca_name.cn"
+                    type="text"
+                    class="form-control"
+                    placeholder="Enter CA common name"
+                    required
+                />
+                <button
+                    class="btn btn-outline-secondary"
+                    type="button"
+                    @click="showOUField = !showOUField"
+                    :title="showOUField ? 'Hide OU field' : 'Add OU (Group)'"
+                >
+                  {{ showOUField ? '−' : '+' }}
+                </button>
+              </div>
+            </div>
+            <div class="mb-3" v-if="showOUField && caReq.ca_type === CAType.TLS">
+              <label for="caOU" class="form-label">OU (Group)</label>
               <input
-                  id="caName"
-                  v-model="caReq.ca_name"
+                  id="caOU"
+                  v-model="caReq.ca_name.ou"
                   type="text"
                   class="form-control"
-                  placeholder="Enter CA name"
-                  required
+                  placeholder="Enter organizational unit (optional)"
               />
             </div>
             <div class="mb-3">
@@ -126,7 +148,7 @@
             <button
                 type="button"
                 class="btn btn-primary"
-                :disabled="loading || !caReq.ca_name || !caReq.validity_duration"
+                :disabled="loading || !caReq.ca_name.cn || !caReq.validity_duration"
                 @click="createCA"
             >
               <span v-if="loading">Creating...</span>
@@ -153,7 +175,7 @@
           <div class="modal-body">
             <p>
               Are you sure you want to delete the CA
-              <strong>{{ caToDelete?.name }}</strong>?
+              <strong>{{ caToDelete?.name.cn }}</strong>?
             </p>
           </div>
           <div class="modal-footer">
@@ -185,17 +207,20 @@ const authStore = useAuthStore();
 const cas = computed(() => caStore.cas);
 const loading = computed(() => caStore.loading);
 const error = computed(() => caStore.error);
+const hasAnyOU = computed(() => Array.from(cas.value.values()).some(ca => ca.name.ou));
 
 const isDeleteModalVisible = ref(false);
 const isCreateModalVisible = ref(false);
 const caToDelete = ref<CA | null>(null);
 
 const caReq = reactive<CARequirements>({
-  ca_name: '',
+  ca_name: { cn: '', ou: undefined },
   ca_type: CAType.TLS,
   validity_duration: undefined,
   validity_unit: ValidityUnit.Year
 });
+
+const showOUField = ref(false);
 
 onMounted(async () => {
   await caStore.fetchCAs();
@@ -207,9 +232,10 @@ const showCreateModal = () => {
 
 const closeCreateModal = () => {
   isCreateModalVisible.value = false;
-  caReq.ca_name = '';
+  caReq.ca_name = { cn: '', ou: undefined };
   caReq.validity_duration = 10;
   caReq.validity_unit = ValidityUnit.Year;
+  showOUField.value = false;
 };
 
 const createCA = async () => {

@@ -22,13 +22,14 @@ use crate::data::enums::CertificateType::{TLSClient, TLSServer};
 use crate::ApiError;
 use crate::certs::common::{Certificate, CA};
 use crate::data::enums::CAType::TLS;
+use crate::data::objects::Name;
 
 pub struct TLSCertificateBuilder {
     x509: X509Builder,
     private_key: PKey<Private>,
     created_on: i64,
     valid_until: Option<i64>,
-    name: Option<String>,
+    name: Option<Name>,
     pkcs12_password: String,
     ca: Option<(i64, X509, PKey<Private>)>,
     user_id: Option<i64>,
@@ -70,7 +71,7 @@ impl TLSCertificateBuilder {
         let validity_d = ((old_cert.valid_until - old_cert.created_on) / 1000 / 60 / 60 / 24).max(14);
 
         Self::new()?
-            .set_name(&old_cert.name)?
+            .set_name(old_cert.name.clone())?
             .set_valid_until(validity_d as u64, TimespanUnit::Day)?
             .set_password(&old_cert.password)?
             .set_renew_method(old_cert.renew_method)?
@@ -84,16 +85,16 @@ impl TLSCertificateBuilder {
         let validity_h = ((old_ca.valid_until - old_ca.created_on) / 1000 / 60 / 60 / 24).max(14);
 
         Self::new()?
-            .set_name(&old_ca.name)?
+            .set_name(old_ca.name.clone())?
             .set_valid_until(validity_h as u64, TimespanUnit::Day)?
             .build_ca()
 
     }
 
-    pub fn set_name(mut self, name: &str) -> Result<Self, anyhow::Error> {
-        self.name = Some(name.to_string());
-        let common_name = create_cn(name)?;
+    pub fn set_name(mut self, name: Name) -> Result<Self, anyhow::Error> {
+        let common_name = create_cn(&name)?;
         self.x509.set_subject_name(&common_name)?;
+        self.name = Some(name);
         Ok(self)
     }
 
@@ -230,7 +231,7 @@ impl TLSCertificateBuilder {
         ca_stack.push(ca_cert.clone())?;
 
         let pkcs12 = Pkcs12::builder()
-            .name(&name)
+            .name(&name.cn)
             .ca(ca_stack)
             .cert(&cert)
             .pkey(&self.private_key)
@@ -298,9 +299,12 @@ fn generate_private_key() -> Result<PKey<Private>, ErrorStack> {
     Ok(server_key)
 }
 
-fn create_cn(ca_name: &str) -> Result<X509Name, ErrorStack> {
+fn create_cn(name: &Name) -> Result<X509Name, ErrorStack> {
     let mut name_builder = X509NameBuilder::new()?;
-    name_builder.append_entry_by_text("CN", ca_name)?;
+    name_builder.append_entry_by_text("CN", &name.cn)?;
+    if let Some(ref ou) = name.ou {
+        name_builder.append_entry_by_text("OU", ou)?;
+    }
     let name = name_builder.build();
     Ok(name)
 }

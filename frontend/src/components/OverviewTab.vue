@@ -8,6 +8,7 @@
           <tr>
             <th v-if="authStore.isAdmin">User</th>
             <th>Name</th>
+            <th v-if="hasAnyOU">Group</th>
             <th class="d-none d-md-table-cell">Type</th>
             <th class="d-none d-md-table-cell">Created on</th>
             <th>Valid until</th>
@@ -20,7 +21,8 @@
         <tbody>
           <tr v-for="cert in certificates.values()" :key="cert.id">
             <td :id="'UserId-' + cert.id" v-if="authStore.isAdmin">{{ userStore.idToName(cert.user_id) }}</td>
-            <td :id="'CertName-' + cert.id" >{{ cert.name }}</td>
+            <td :id="'CertName-' + cert.id" >{{ cert.name.cn }}</td>
+            <td :id="'CertGroup-' + cert.id" v-if="hasAnyOU">{{ cert.name.ou ?? '' }}</td>
             <td :id="'CertType-' + cert.id" class="d-none d-md-table-cell">{{ CertificateType[cert.certificate_type] }}</td>
             <td :id="'CreatedOn-' + cert.id" class="d-none d-md-table-cell">{{ new Date(cert.created_on).toLocaleDateString() }}</td>
             <td :id="'ValidUntil-' + cert.id" >{{ new Date(cert.valid_until).toLocaleDateString() }}</td>
@@ -103,12 +105,32 @@
           <div class="modal-body">
             <div class="mb-3">
               <label for="certName" class="form-label">Common Name</label>
+              <div class="input-group">
+                <input
+                    id="certName"
+                    v-model="certReq.cert_name.cn"
+                    type="text"
+                    class="form-control"
+                    placeholder="Enter certificate common name"
+                />
+                <button
+                    class="btn btn-outline-secondary"
+                    type="button"
+                    @click="showOUField = !showOUField"
+                    :title="showOUField ? 'Hide OU field' : 'Add OU (Group)'"
+                >
+                  {{ showOUField ? '−' : '+' }}
+                </button>
+              </div>
+            </div>
+            <div class="mb-3" v-if="showOUField && (certReq.cert_type === CertificateType.TLSClient || certReq.cert_type === CertificateType.TLSServer)">
+              <label for="certOU" class="form-label">OU (Group)</label>
               <input
-                  id="certName"
-                  v-model="certReq.cert_name"
+                  id="certOU"
+                  v-model="certReq.cert_name.ou"
                   type="text"
                   class="form-control"
-                  placeholder="Enter certificate name"
+                  placeholder="Enter organizational unit (optional)"
               />
             </div>
             <div class="mb-3">
@@ -176,7 +198,7 @@
               >
                 <option :value="undefined" disabled>Select a CA</option>
                 <option v-for="ca in availableCAs" :key="ca.id" :value="ca.id">
-                  {{ ca.name }} (ID: {{ ca.id }})
+                  {{ ca.name.cn }} (ID: {{ ca.id }})
                 </option>
               </select>
             </div>
@@ -289,7 +311,7 @@
           <div class="modal-body">
             <p>
               Are you sure you want to delete the certificate
-              <strong>{{ certToDelete?.name }}</strong>?
+              <strong>{{ certToDelete?.name.cn }}</strong>?
             </p>
             <p class="text-warning">
               <small>
@@ -338,6 +360,7 @@ const certificates = computed(() => certificateStore.certificates);
 const settings = computed(() => settingStore.settings);
 const loading = computed(() => certificateStore.loading);
 const error = computed(() => certificateStore.error);
+const hasAnyOU = computed(() => Array.from(certificates.value.values()).some(cert => cert.name.ou));
 
 const isDeleteModalVisible = ref(false);
 const isGenerateModalVisible = ref(false);
@@ -348,7 +371,7 @@ const passwordRule = computed(() => {
 });
 
 const certReq = reactive<CertificateRequirements>({
-  cert_name: '',
+  cert_name: { cn: '', ou: undefined },
   user_id: 0,
   validity_duration: 1,
   validity_unit: ValidityUnit.Year,
@@ -360,6 +383,8 @@ const certReq = reactive<CertificateRequirements>({
   renew_method: CertificateRenewMethod.None,
   ca_id: undefined
 });
+
+const showOUField = ref(false);
 
 const isMailValid = computed(() => {
   return (settings.value?.mail.smtp_host.length ?? 0) > 0 && (settings.value?.mail.smtp_port ?? 0) > 0;
@@ -404,13 +429,14 @@ const showGenerateModal = async () => {
 
 const closeGenerateModal = () => {
   isGenerateModalVisible.value = false;
-  certReq.cert_name = '';
+  certReq.cert_name = { cn: '', ou: undefined };
   certReq.user_id = 0;
   certReq.validity_duration = 1;
   certReq.validity_unit = ValidityUnit.Year;
   certReq.cert_password = '';
   certReq.notify_user = false;
   certReq.ca_id = undefined;
+  showOUField.value = false;
 };
 
 const createCertificate = async () => {

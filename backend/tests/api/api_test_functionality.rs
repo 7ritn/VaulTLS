@@ -147,7 +147,7 @@ async fn test_create_client_certificate() -> Result<()> {
     let valid_until = get_timestamp_ms(1);
 
     assert_eq!(cert.id, 1);
-    assert_eq!(cert.name, TEST_CLIENT_CERT_NAME);
+    assert_eq!(cert.name, TEST_CLIENT_CERT_NAME.into());
     assert!(now > cert.created_on && cert.created_on > now - 10000 /* 10 seconds */);
     assert!(valid_until > cert.valid_until && cert.valid_until > valid_until - 10000 /* 10 seconds */);
     assert_eq!(cert.certificate_type, CertificateType::TLSClient);
@@ -175,7 +175,7 @@ async fn test_fetch_client_certificates() -> Result<()> {
     let valid_until = get_timestamp_ms(1);
 
     assert_eq!(cert.id, 1);
-    assert_eq!(cert.name, TEST_CLIENT_CERT_NAME);
+    assert_eq!(cert.name, TEST_CLIENT_CERT_NAME.into());
     assert!(now > cert.created_on && cert.created_on > now - 10000 /* 10 seconds */);
     assert!(valid_until > cert.valid_until && cert.valid_until > valid_until - 10000 /* 10 seconds */);
     assert_eq!(cert.certificate_type, CertificateType::TLSClient);
@@ -364,7 +364,7 @@ async fn test_create_new_ca() -> Result<()> {
     let valid_until = get_timestamp_ms(15);
 
     assert_eq!(new_cas.len(), 2);
-    assert_eq!(new_cas[1].name, TEST_SECOND_CA_NAME.to_string());
+    assert_eq!(new_cas[1].name, TEST_SECOND_CA_NAME.to_string().into());
     assert_eq!(new_cas[1].id, 2);
     assert!(now >= new_cas[1].created_on && new_cas[1].created_on > now - 10000 /* 10 seconds */);
     assert!(valid_until >= new_cas[1].valid_until && new_cas[1].valid_until > valid_until - 10000 /* 10 seconds */);
@@ -404,7 +404,7 @@ async fn test_create_certificate_with_short_lived_ca() -> Result<()> {
     let client = VaulTLSClient::new_authenticated().await;
 
     let cert_req = CreateUserCertificateRequest {
-        cert_name: TEST_CLIENT_CERT_NAME.to_string(),
+        cert_name: TEST_CLIENT_CERT_NAME.into(),
         validity_duration: Some(2),
         validity_unit: Some(TimespanUnit::Year),
         user_id: 1,
@@ -457,7 +457,7 @@ async fn test_create_ssh_ca() -> Result<()> {
     let now = get_timestamp_ms(0);
 
     assert_eq!(ca.id, 2);
-    assert_eq!(ca.name, TEST_SSH_CA_NAME);
+    assert_eq!(ca.name, TEST_SSH_CA_NAME.into());
     assert!(now > ca.created_on && ca.created_on > now - 10000 /* 10 seconds */);
     assert_eq!(ca.ca_type, CAType::SSH);
     Ok(())
@@ -473,7 +473,7 @@ async fn test_create_ssh_client_certificate() -> Result<()> {
     let valid_until = get_timestamp_ms(1);
 
     assert_eq!(cert.id, 1);
-    assert_eq!(cert.name, TEST_SSH_CLIENT_CERT_NAME);
+    assert_eq!(cert.name, TEST_SSH_CLIENT_CERT_NAME.into());
     assert!(now > cert.created_on && cert.created_on > now - 10000 /* 10 seconds */);
     assert!(valid_until > cert.valid_until && cert.valid_until > valid_until - 10000 /* 10 seconds */);
     assert_eq!(cert.certificate_type, CertificateType::SSHClient);
