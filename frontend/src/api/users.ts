@@ -15,5 +15,5 @@ export const deleteUser = async (id: number): Promise<void> => {
 };
 
 export const updateUser = async (user: User): Promise<void> => {
-    return await ApiClient.put<void>(`/users`, user);
+    return await ApiClient.put<void>(`/users/${user.id}`, user);
 };
