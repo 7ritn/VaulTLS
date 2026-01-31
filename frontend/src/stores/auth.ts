@@ -4,6 +4,7 @@ import type {ChangePasswordReq} from "@/types/Login.ts";
 import {type User, UserRole} from "@/types/User.ts";
 import {argon2Verify} from 'hash-wasm';
 import {hashPassword} from "@/utils/hash.ts";
+import axios from 'axios';
 
 export const useAuthStore = defineStore('auth', {
     state: () => ({
@@ -69,7 +70,11 @@ export const useAuthStore = defineStore('auth', {
                 this.setAuthentication(true);
                 return true;
             } catch (err) {
-                this.error = 'Failed to login.';
+                if (axios.isAxiosError(err)) {
+                    this.error = 'Failed to login: ' + err.response?.data?.error;
+                } else {
+                    this.error = 'Failed to login';
+                }
                 console.error(err);
                 return false;
             }
@@ -88,7 +93,11 @@ export const useAuthStore = defineStore('auth', {
                 await change_password(changePasswordReq);
                 return true;
             } catch (err) {
-                this.error = 'Failed to change password.';
+                if (axios.isAxiosError(err)) {
+                    this.error = 'Failed to change password: ' + err.response?.data?.error;
+                } else {
+                    this.error = 'Failed to change password';
+                }
                 console.error(err);
                 return false;
             }
@@ -101,7 +110,11 @@ export const useAuthStore = defineStore('auth', {
                 this.current_user = (await current_user());
                 this.setAuthentication(true);
             } catch (err) {
-                this.error = 'Failed to fetch current user.';
+                if (axios.isAxiosError(err)) {
+                    this.error = 'Failed to fetch current user: ' + err.response?.data?.error;
+                } else {
+                    this.error = 'FFailed to fetch current user';
+                }
                 console.error(err);
                 await this.logout();
             }
@@ -132,7 +145,11 @@ export const useAuthStore = defineStore('auth', {
                 this.setAuthentication(false);
             } catch (err) {
                 // Can't fail
-                this.error = 'Failed to logout.';
+                if (axios.isAxiosError(err)) {
+                    this.error = 'Failed to logout: ' + err.response?.data?.error;
+                } else {
+                    this.error = 'Failed to logout';
+                }
                 console.error(err);
             }
         },

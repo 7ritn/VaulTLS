@@ -4,6 +4,7 @@ import {
     fetchSettings,
     putSettings
 } from '@/api/settings';
+import axios from 'axios';
 
 export const useSettingsStore = defineStore('settings', {
     state: () => ({
@@ -17,7 +18,11 @@ export const useSettingsStore = defineStore('settings', {
             try {
                 this.settings = await fetchSettings();
             } catch (err) {
-                this.error = 'Failed to fetch settings.';
+                if (axios.isAxiosError(err)) {
+                    this.error = 'Failed to fetch the settings: ' + err.response?.data?.error;
+                } else {
+                    this.error = 'Failed to fetch the settings';
+                }
                 console.error(err);
             }
         },
@@ -30,7 +35,11 @@ export const useSettingsStore = defineStore('settings', {
                     await putSettings(this.settings);
                     return true;
                 } catch (err) {
-                    this.error = 'Failed to download the certificate.';
+                    if (axios.isAxiosError(err)) {
+                        this.error = 'Failed to save the settings: ' + err.response?.data?.error;
+                    } else {
+                        this.error = 'Failed to save the settings';
+                    }
                     console.error(err);
                     return false;
                 }

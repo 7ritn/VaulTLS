@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import type {CA, CARequirements} from '@/types/CA';
 import {createCA, deleteCA, downloadCAByID, fetchCAs} from "@/api/cas.ts";
+import axios from 'axios';
 
 export const useCAStore = defineStore('ca', {
     state: () => ({
@@ -30,7 +31,11 @@ export const useCAStore = defineStore('ca', {
                 }
 
             } catch (err) {
-                this.error = 'Failed to fetch CA.';
+                if (axios.isAxiosError(err)) {
+                    this.error = 'Failed to fetch CAs: ' + err.response?.data?.error;
+                } else {
+                    this.error = 'Failed to fetch CAs';
+                }
                 console.error(err);
             } finally {
                 this.loading = false;
@@ -43,7 +48,11 @@ export const useCAStore = defineStore('ca', {
                 this.error = null;
                 await downloadCAByID(id);
             } catch (err) {
-                this.error = 'Failed to download the CA.';
+                if (axios.isAxiosError(err)) {
+                    this.error = 'Failed to download the CA: ' + err.response?.data?.error;
+                } else {
+                    this.error = 'Failed to download the CA';
+                }
                 console.error(err);
             }
         },
@@ -56,7 +65,11 @@ export const useCAStore = defineStore('ca', {
                 await createCA(certReq);
                 await this.fetchCAs();
             } catch (err) {
-                this.error = 'Failed to create the CA.';
+                if (axios.isAxiosError(err)) {
+                    this.error = 'Failed to create the CA: ' + err.response?.data?.error;
+                } else {
+                    this.error = 'Failed to create the CA';
+                }
                 console.error(err);
             } finally {
                 this.loading = false;
@@ -71,7 +84,11 @@ export const useCAStore = defineStore('ca', {
                 await deleteCA(id);
                 await this.fetchCAs();
             } catch (err) {
-                this.error = 'Failed to delete the CA.';
+                if (axios.isAxiosError(err)) {
+                    this.error = 'Failed to delete the CA: ' + err.response?.data?.error;
+                } else {
+                    this.error = 'Failed to delete the CA';
+                }
                 console.error(err);
             } finally {
                 this.loading = false;

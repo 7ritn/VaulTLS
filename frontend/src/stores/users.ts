@@ -2,6 +2,7 @@ import { defineStore } from 'pinia';
 import type {CreateUserRequest, User} from "@/types/User.ts";
 import {createUser, deleteUser, fetchUsers, updateUser} from "@/api/users.ts";
 import {hashPassword} from "@/utils/hash.ts";
+import axios from 'axios';
 
 export const useUserStore = defineStore('user', {
     state: () => ({
@@ -19,7 +20,11 @@ export const useUserStore = defineStore('user', {
                 try {
                     this.users = await fetchUsers();
                 } catch (err) {
-                    this.error = 'Failed to fetch users.';
+                    if (axios.isAxiosError(err)) {
+                        this.error = 'Failed to fetch the users: ' + err.response?.data?.error;
+                    } else {
+                        this.error = 'Failed to fetch the s';
+                    }
                     console.error(err);
                 } finally {
                     this.loading = false;
@@ -38,7 +43,11 @@ export const useUserStore = defineStore('user', {
                 await createUser(createUserReq);
                 this.users = await fetchUsers();
             } catch (err) {
-                this.error = 'Failed to create user.';
+                if (axios.isAxiosError(err)) {
+                    this.error = 'Failed to create the user: ' + err.response?.data?.error;
+                } else {
+                    this.error = 'Failed to create the user';
+                }
                 console.error(err);
             } finally {
                 this.loading = false;
@@ -55,7 +64,12 @@ export const useUserStore = defineStore('user', {
                 return true;
             } catch (err) {
                 this.loading = false;
-                this.error = 'Failed to create user.';
+                if (axios.isAxiosError(err)) {
+                    this.error = 'Failed to update the user: ' + err.response?.data?.error;
+                } else {
+                    this.error = 'Failed to update the user';
+                }
+                console.error(err);
                 return false;
             }
         },
@@ -65,10 +79,14 @@ export const useUserStore = defineStore('user', {
             this.loading = true;
             this.error = null;
             try {
-                await deleteUser(id); // This handles API deletion and fetch internally
-                this.users = await fetchUsers(); // Refresh the local state
+                await deleteUser(id);
+                this.users = await fetchUsers();
             } catch (err) {
-                this.error = 'Failed to delete the certificate.';
+                if (axios.isAxiosError(err)) {
+                    this.error = 'Failed to delete the user: ' + err.response?.data?.error;
+                } else {
+                    this.error = 'Failed to delete the user';
+                }
                 console.error(err);
             } finally {
                 this.loading = false;

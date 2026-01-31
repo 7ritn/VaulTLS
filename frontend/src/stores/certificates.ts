@@ -8,6 +8,7 @@ import {
     deleteCertificate,
 } from '../api/certificates';
 import type {CertificateRequirements} from "@/types/CertificateRequirements.ts";
+import axios from 'axios';
 
 export const useCertificateStore = defineStore('certificate', {
     state: () => ({
@@ -37,7 +38,11 @@ export const useCertificateStore = defineStore('certificate', {
                 }
 
             } catch (err) {
-                this.error = 'Failed to fetch certificates.';
+                if (axios.isAxiosError(err)) {
+                    this.error = 'Failed to fetch certificates: ' + err.response?.data?.error;
+                } else {
+                    this.error = 'Failed to fetch certificates';
+                }
                 console.error(err);
             } finally {
                 this.loading = false;
@@ -52,7 +57,11 @@ export const useCertificateStore = defineStore('certificate', {
                     current_cert.password = cert_password;
                 }
             } catch (err) {
-                this.error = 'Failed to fetch certificates.';
+                if (axios.isAxiosError(err)) {
+                    this.error = 'Failed to fetch the certificate password: ' + err.response?.data?.error;
+                } else {
+                    this.error = 'Failed to fetch the certificate password';
+                }
                 console.error(err);
             } finally {
                 this.loading = false;
@@ -65,7 +74,11 @@ export const useCertificateStore = defineStore('certificate', {
                 this.error = null;
                 await downloadCertificate(id);
             } catch (err) {
-                this.error = 'Failed to download the certificate.';
+                if (axios.isAxiosError(err)) {
+                    this.error = 'Failed to download the certificate: ' + err.response?.data?.error;
+                } else {
+                    this.error = 'Failed to download the certificate';
+                }
                 console.error(err);
             }
         },
@@ -78,7 +91,11 @@ export const useCertificateStore = defineStore('certificate', {
                 await createCertificate(certReq);
                 await this.fetchCertificates();
             } catch (err) {
-                this.error = 'Failed to create the certificate.';
+                if (axios.isAxiosError(err)) {
+                    this.error = 'Failed to create the certificate: ' + err.response?.data?.error;
+                } else {
+                    this.error = 'Failed to create the certificate';
+                }
                 console.error(err);
             } finally {
                 this.loading = false;
@@ -93,7 +110,11 @@ export const useCertificateStore = defineStore('certificate', {
                 await deleteCertificate(id);
                 await this.fetchCertificates();
             } catch (err) {
-                this.error = 'Failed to delete the certificate.';
+                if (axios.isAxiosError(err)) {
+                    this.error = 'Failed to delete the certificate: ' + err.response?.data?.error;
+                } else {
+                    this.error = 'Failed to delete the certificate';
+                }
                 console.error(err);
             } finally {
                 this.loading = false;
