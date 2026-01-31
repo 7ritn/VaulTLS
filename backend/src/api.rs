@@ -326,7 +326,7 @@ pub(crate) async fn create_user_certificate(
     let cert_password = get_password(use_random_password, &payload.cert_password);
     
     let mut ca = get_appropriate_ca(state, &payload).await?;
-    ca = ensure_ca_validity(&mut ca, state, &payload).await?;
+    ca = ensure_ca_validity(&mut ca, &payload).await?;
 
     let cert_validity = payload.validity_duration.unwrap_or(1);
     let cert_validity_unit = payload.validity_unit.unwrap_or(TimespanUnit::Year);
@@ -381,28 +381,16 @@ async fn get_appropriate_ca(state: &State<AppState>, payload: &CreateUserCertifi
     ca_result.map_err(|_| ApiError::BadRequest(format!("The CA id {:?} does not exist", payload.ca_id)))
 }
 
-async fn ensure_ca_validity(ca: &mut CA, state: &State<AppState>, payload: &CreateUserCertificateRequest) -> Result<CA, ApiError> {
+async fn ensure_ca_validity(ca: &mut CA, payload: &CreateUserCertificateRequest) -> Result<CA, ApiError> {
     let cert_validity = payload.validity_duration.unwrap_or(1);
     let cert_validity_unit = payload.validity_unit.unwrap_or(TimespanUnit::Year);
     let cert_validity_timestamp = get_timestamp(cert_validity, cert_validity_unit)?;
-    
+
     if ca.valid_until == -1 || cert_validity_timestamp.0 <= ca.valid_until {
         return Ok(ca.clone());
     }
-    
-    if payload.ca_id.is_some() {
-        return Err(ApiError::BadRequest("The CA to be used would expire before the certificate".to_string()));
-    }
-    
-    // Auto-renew CA if no specific CA was requested
-    if ca.ca_type == CAType::TLS {
-        let new_ca = TLSCertificateBuilder::try_from_ca(ca)?;
-        let renewed_ca = state.db.insert_ca(new_ca).await?;
-        save_ca(&renewed_ca)?;
-        Ok(renewed_ca)
-    } else {
-        Err(ApiError::Other("This error should never happen".to_string()))
-    }
+
+    Err(ApiError::BadRequest("The CA to be used would expire before the certificate".to_string()))
 }
 
 async fn build_certificate(

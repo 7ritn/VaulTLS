@@ -423,9 +423,7 @@ async fn test_create_certificate_with_short_lived_ca() -> Result<()> {
         .body(serde_json::to_string(&cert_req)?);
     let response = request.dispatch().await;
 
-    let certificate: Certificate = serde_json::from_str(&response.into_string().await.unwrap())?;
-
-    assert_eq!(certificate.ca_id, 2);
+    assert_eq!(response.status(), Status::BadRequest);
 
     Ok(())
 }
