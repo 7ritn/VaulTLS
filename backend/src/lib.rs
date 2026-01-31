@@ -92,7 +92,7 @@ pub async fn create_rocket() -> Rocket<Build> {
         true => None,
         false => {
             debug!("OIDC enabled. Trying to connect to {}.", oidc_settings.auth_url);
-            OidcAuth::new(&settings.get_oidc()).await.ok()
+            OidcAuth::new(&oidc_settings).await.ok()
         }
     };
 

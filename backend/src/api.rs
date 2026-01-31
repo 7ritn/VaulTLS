@@ -201,14 +201,36 @@ pub(crate) async fn oidc_login(
 
     match &mut *oidc_option {
         Some(oidc) => {
-            let url = oidc.generate_oidc_url().await?;
+            let url = oidc.generate_oidc_url()?;
             debug!(url=?url, "Redirecting to OIDC login URL");
             Ok(Redirect::to(url.to_string()))
 
         }
         None => {
-            warn!("A user tried to login with OIDC, but OIDC is not configured.");
-            Err(ApiError::BadRequest("OIDC not configured".to_string()))
+            // OIDC is not active? Maybe it has since become available
+            // Retry setting up OIDC
+            let oidc_settings = state.settings.get_oidc();
+            let oidc = match oidc_settings.auth_url.is_empty() {
+                true => None,
+                false => {
+                    debug!("OIDC enabled. Trying to connect to {}.", oidc_settings.auth_url);
+                    OidcAuth::new(&oidc_settings).await.ok()
+                }
+            };
+
+            match oidc {
+                Some(mut oidc) => {
+                    info!("OIDC is active.");
+                    let url = oidc.generate_oidc_url()?;
+                    *oidc_option = Some(oidc);
+                    debug!(url=?url, "Redirecting to OIDC login URL");
+                    Ok(Redirect::to(url.to_string()))
+                }
+                None => {
+                    warn!("A user tried to login with OIDC, but OIDC is not configured.");
+                    Err(ApiError::BadRequest("OIDC not configured".to_string()))
+                }
+            }
         },
     }
 }

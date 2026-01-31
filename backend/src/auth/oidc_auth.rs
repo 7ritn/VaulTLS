@@ -36,7 +36,7 @@ impl OidcAuth {
     }
 
     /// Generate OIDC authentication URL
-    pub(crate) async fn generate_oidc_url(&mut self) -> Result<Url, anyhow::Error> {
+    pub(crate) fn generate_oidc_url(&mut self) -> Result<Url, anyhow::Error> {
         let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
 
         let client = CoreClient::from_provider_metadata(
