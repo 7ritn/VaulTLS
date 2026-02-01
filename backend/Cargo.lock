@@ -242,7 +242,7 @@ dependencies = [
  "rusqlite",
  "rusqlite_migration",
  "rustls",
- "schemars",
+ "schemars 0.9.0",
  "serde",
  "serde_json",
  "serde_repr",
@@ -2162,7 +2162,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9a64853d7ab065474e87696f7601cee817d200e86c42e04004e005cb3e20c3c5"
 dependencies = [
  "log",
- "schemars",
+ "schemars 0.8.22",
  "serde",
  "serde_json",
 ]
@@ -2969,7 +2969,7 @@ dependencies = [
  "okapi",
  "rocket",
  "rocket_okapi_codegen",
- "schemars",
+ "schemars 0.8.22",
  "serde",
  "serde_json",
 ]
@@ -3166,7 +3166,20 @@ checksum = "3fbf2ae1b8bc8e02df939598064d22402220cd5bbcca1c76f7d6a310974d5615"
 dependencies = [
  "dyn-clone",
  "indexmap 1.9.3",
- "schemars_derive",
+ "schemars_derive 0.8.22",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "schemars"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4cd191f9397d57d581cddd31014772520aa448f65ef991055d7f61582c65165f"
+dependencies = [
+ "dyn-clone",
+ "ref-cast",
+ "schemars_derive 0.9.0",
  "serde",
  "serde_json",
 ]
@@ -3176,6 +3189,18 @@ name = "schemars_derive"
 version = "0.8.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32e265784ad618884abaea0600a9adf15393368d840e0222d101a072f3f7534d"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "serde_derive_internals",
+ "syn 2.0.104",
+]
+
+[[package]]
+name = "schemars_derive"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5016d94c77c6d32f0b8e08b781f7dc8a90c2007d4e77472cc2807bc10a8438fe"
 dependencies = [
  "proc-macro2",
  "quote",
