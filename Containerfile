@@ -11,7 +11,7 @@ COPY frontend/ ./
 RUN npm run build
 
 # Stage 2: Build the Rust backend binary
-FROM rust:1.87 AS backend-builder
+FROM rust:1.93 AS backend-builder
 
 ARG RUN_TESTS=false
 WORKDIR /app/backend
