@@ -54,6 +54,6 @@ zip = "7.2.0"
 rand_core = "0.10.0"
 
 [dev-dependencies]
-x509-parser = "0.18.0"
+x509-parser = "0.18.1"
 rustls = { version = "0.23.36", features = ["aws-lc-rs"] }
 tokio-rustls = "0.26.4"
