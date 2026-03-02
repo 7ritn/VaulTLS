@@ -13,13 +13,14 @@ use openssl::pkey::{PKey, Private};
 use openssl::stack::Stack;
 use openssl::x509::{X509Name, X509NameBuilder, X509};
 use openssl::x509::extension::{AuthorityKeyIdentifier, BasicConstraints, ExtendedKeyUsage, KeyUsage, SubjectAlternativeName, SubjectKeyIdentifier};
-use openssl::x509::X509Builder;
+use openssl::x509::{X509Builder};
+use rcgen::{CertificateRevocationListParams, Issuer, KeyIdMethod, KeyPair, RevocationReason, RevokedCertParams, SerialNumber};
+use rustls::pki_types::CertificateDer;
+use time::{OffsetDateTime, Duration};
 use tracing::info;
 use crate::constants::{CA_DIR_PATH, CA_FILE_PATTERN, CA_TLS_FILE_PATH};
 use crate::data::enums::{CAType, CertificateRenewMethod, CertificateType, TimespanUnit};
 use crate::data::enums::CertificateType::{TLSClient, TLSServer};
-#[cfg(not(feature = "test-mode"))]
-use crate::ApiError;
 use crate::certs::common::{Certificate, CA};
 use crate::data::enums::CAType::TLS;
 use crate::data::objects::Name;
@@ -247,7 +248,8 @@ impl TLSCertificateBuilder {
             password: self.pkcs12_password,
             ca_id,
             user_id,
-            renew_method: self.renew_method
+            renew_method: self.renew_method,
+            revoked_at: None
         })
     }
 }
@@ -346,6 +348,43 @@ fn get_short_lifetime() -> Result<(i64, Asn1Time), ErrorStack> {
 pub(crate) fn get_tls_pem(ca: &CA) -> Result<Vec<u8>, ErrorStack> {
     let cert = X509::from_der(&ca.cert)?;
     cert.to_pem()
+}
+
+pub fn extract_serial_number(cert: &Certificate) -> Result<Vec<u8>> {
+    let encrypted_p12 = Pkcs12::from_der(&cert.data)?;
+    let Some(cert) = encrypted_p12.parse2(&cert.password)?.cert else { return Err(anyhow::anyhow!("No certificate found in PKCS#12"))};
+    Ok(cert.serial_number().to_bn()?.to_vec())
+}
+
+pub fn generate_crl(ca: &CA, revoked_certs: Vec<(Vec<u8>, i64)>) -> Result<Vec<u8>> {
+    let ca_key_pair = KeyPair::try_from(ca.key.clone())?;
+    let cert_der = CertificateDer::from(ca.cert.clone());
+    let issuer = Issuer::from_ca_cert_der(&cert_der, ca_key_pair)?;
+
+    let now = OffsetDateTime::now_utc();
+    // ToDo Let next_update be settable from Settings, enabling different units of time i.e. Weeks, Days and Hours
+    let next_update = now + Duration::days(7);
+
+    let revoked_params = revoked_certs.into_iter().map(|(serial, revoked_at)| {
+        RevokedCertParams {
+            serial_number: SerialNumber::from(serial),
+            revocation_time: OffsetDateTime::from_unix_timestamp(revoked_at).unwrap_or(now),
+            reason_code: Some(RevocationReason::Unspecified),
+            invalidity_date: None,
+        }
+    }).collect();
+
+    let crl_params = CertificateRevocationListParams {
+        this_update: now,
+        next_update,
+        crl_number: SerialNumber::from(1),
+        issuing_distribution_point: None,
+        revoked_certs: revoked_params,
+        key_identifier_method: KeyIdMethod::Sha256,
+    };
+
+    let crl = crl_params.signed_by(&issuer)?;
+    Ok(crl.der().to_vec())
 }
 
 /// Migrates the Certificate Authority (CA) storage to a separate directory.

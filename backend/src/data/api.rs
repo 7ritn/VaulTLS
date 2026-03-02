@@ -132,3 +132,49 @@ pub struct CreateUserRequest {
     pub password: Option<String>,
     pub role: UserRole
 }
+
+#[derive(Deserialize, Serialize, Debug)]
+pub struct CRLResponse(pub Vec<u8>);
+
+impl CRLResponse {
+    pub fn new(content: Vec<u8>) -> Self {
+        Self(content)
+    }
+}
+
+impl<'r> Responder<'r, 'static> for CRLResponse {
+    fn respond_to(self, _req: &'r Request<'_>) -> rocket::response::Result<'static> {
+        Response::build()
+            .status(Status::Ok)
+            .header(ContentType::new("application", "pkix-crl"))
+            .sized_body(self.0.len(), Cursor::new(self.0))
+            .ok()
+    }
+}
+
+impl OpenApiResponderInner for CRLResponse {
+    fn responses(_gen: &mut OpenApiGenerator) -> Result<Responses, OpenApiError> {
+        let mut responses = Responses::default();
+
+        responses.responses.insert(
+            "200".to_string(),
+            RefOr::Object(OAResponse {
+                description: "Certificate Revocation List (CRL)".to_string(),
+                content: {
+                    let mut content = okapi::Map::new();
+                    content.insert(
+                        "application/pkix-crl".to_string(),
+                        MediaType {
+                            schema: None,
+                            ..Default::default()
+                        },
+                    );
+                    content
+                },
+                ..Default::default()
+            }),
+        );
+
+        Ok(responses)
+    }
+}

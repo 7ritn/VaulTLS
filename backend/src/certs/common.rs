@@ -15,6 +15,7 @@ pub struct Certificate {
     pub user_id: i64,
     pub renew_method: CertificateRenewMethod,
     pub ca_id: i64,
+    pub revoked_at: Option<i64>,
     #[serde(skip)]
     pub data: Vec<u8>,
     #[serde(skip)]

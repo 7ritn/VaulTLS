@@ -9,9 +9,9 @@ use crate::auth::password_auth::Password;
 use crate::auth::session_auth::{generate_token, invalidate_token, Authenticated, AuthenticatedPrivileged};
 use crate::certs::common::{get_password, save_ca, Certificate, CA};
 use crate::certs::ssh_cert::{get_ssh_pem, SSHCertificateBuilder};
-use crate::certs::tls_cert::{get_timestamp, get_tls_pem, TLSCertificateBuilder};
+use crate::certs::tls_cert::{generate_crl, get_timestamp, get_tls_pem, TLSCertificateBuilder};
 use crate::constants::VAULTLS_VERSION;
-use crate::data::api::{CallbackQuery, ChangePasswordRequest, CreateCARequest, CreateUserCertificateRequest, CreateUserRequest, DownloadResponse, IsSetupResponse, LoginRequest, SetupRequest};
+use crate::data::api::{CallbackQuery, ChangePasswordRequest, CreateCARequest, CreateUserCertificateRequest, CreateUserRequest, CRLResponse, DownloadResponse, IsSetupResponse, LoginRequest, SetupRequest};
 use crate::data::enums::{CAType, CertificateType, PasswordRule, TimespanUnit, UserRole};
 use crate::data::error::ApiError;
 use crate::data::objects::{AppState, Name, User};
@@ -344,7 +344,7 @@ pub(crate) async fn create_user_certificate(
     debug!(cert_name=?payload.cert_name, "Creating certificate");
     trace!("{:?}", payload);
 
-    let use_random_password = should_use_random_password(&state, &payload);
+    let use_random_password = should_use_random_password(state, &payload);
     let cert_password = get_password(use_random_password, &payload.cert_password);
     
     let mut ca = get_appropriate_ca(state, &payload).await?;
@@ -618,6 +618,47 @@ pub(crate) async fn delete_user_cert(
 ) -> Result<(), ApiError> {
     state.db.delete_user_cert(id).await?;
     Ok(())
+}
+
+#[openapi(tag = "Certificates")]
+#[post("/certificates/<id>/revoke")]
+/// Revoke a user-owned certificate. Requires admin role.
+pub(crate) async fn revoke_certificate(
+    state: &State<AppState>,
+    id: i64,
+    authentication: AuthenticatedPrivileged
+) -> Result<(), ApiError> {
+    let (user_id, _, _, _) = state.db.get_user_cert_data(id).await?;
+    if user_id != authentication._claims.id && authentication._claims.role != UserRole::Admin { return Err(ApiError::Forbidden(None)) }
+    state.db.revoke_user_cert(id).await.map_err(|e| ApiError::Other(e.to_string()))?;
+    Ok(())
+}
+
+#[openapi(tag = "Certificates")]
+#[get("/ca/<id>/crl")]
+/// Get the Certificate Revocation List (CRL) for a TLS CA.
+pub(crate) async fn get_crl(
+    state: &State<AppState>,
+    id: i64,
+) -> Result<CRLResponse, ApiError> {
+    let ca = state.db.get_ca_by_id(id).await.map_err(|_| ApiError::NotFound(None))?;
+    if ca.ca_type != CAType::TLS {
+        return Err(ApiError::Other("CRL is only supported for TLS CAs".to_string()));
+    }
+
+    let revoked_certs = state.db.get_revoked_certs_by_ca(id).await.map_err(|e| ApiError::Other(e.to_string()))?;
+    
+    let mut revoked_params = Vec::new();
+    for cert in revoked_certs {
+        let serial = crate::certs::tls_cert::extract_serial_number(&cert)
+            .map_err(|_| ApiError::Other("Could not retrieve serial number from certificate to create CRL".to_string()))?;
+
+        revoked_params.push((serial, cert.revoked_at.unwrap_or(0)));
+    }
+
+    let crl_pem = generate_crl(&ca, revoked_params).map_err(|e| ApiError::Other(e.to_string()))?;
+
+    Ok(CRLResponse::new(crl_pem))
 }
 
 #[openapi(tag = "Settings")]

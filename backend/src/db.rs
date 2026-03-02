@@ -273,8 +273,8 @@ impl VaulTLSDB {
     pub(crate) async fn get_all_user_cert(&self, user_id: Option<i64>) -> Result<Vec<Certificate>> {
         db_do!(self.pool, |conn: &Connection| {
             let query = match user_id {
-                Some(_) => "SELECT id, name, created_on, valid_until, data, password, user_id, type, renew_method, ca_id FROM user_certificates WHERE user_id = ?1",
-                None => "SELECT id, name, created_on, valid_until, data, password, user_id, type, renew_method, ca_id FROM user_certificates"
+                Some(_) => "SELECT id, name, created_on, valid_until, data, password, user_id, type, renew_method, ca_id, revoked_at FROM user_certificates WHERE user_id = ?1",
+                None => "SELECT id, name, created_on, valid_until, data, password, user_id, type, renew_method, ca_id, revoked_at FROM user_certificates"
             };
             let mut stmt = conn.prepare(query)?;
             let rows = match user_id {
@@ -292,7 +292,8 @@ impl VaulTLSDB {
                     user_id: row.get(6)?,
                     certificate_type: row.get(7)?,
                     renew_method: row.get(8)?,
-                    ca_id: row.get(9)?
+                    ca_id: row.get(9)?,
+                    revoked_at: row.get(10)?
                 })
             })
             .collect()?)
@@ -356,6 +357,37 @@ impl VaulTLSDB {
                 "UPDATE user_certificates SET renew_method = ?1 WHERE id=?2",
                 params![renew_method as u8, id]
             ).map(|_| ())?)
+        })
+    }
+
+    pub(crate) async fn revoke_user_cert(&self, id: i64) -> Result<()> {
+        db_do!(self.pool, |conn: &Connection| {
+            Ok(conn.execute(
+                "UPDATE user_certificates SET revoked_at = ?1 WHERE id=?2",
+                params![chrono::Utc::now().timestamp(), id]
+            ).map(|_| ())?)
+        })
+    }
+
+    pub(crate) async fn get_revoked_certs_by_ca(&self, ca_id: i64) -> Result<Vec<Certificate>> {
+        db_do!(self.pool, |conn: &Connection| {
+            let mut stmt = conn.prepare("SELECT id, name, created_on, valid_until, data, password, user_id, type, renew_method, ca_id, revoked_at FROM user_certificates WHERE ca_id = ?1 AND revoked_at IS NOT NULL")?;
+            let rows = stmt.query(params![ca_id])?;
+            Ok(rows.map(|row| {
+                Ok(Certificate {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    created_on: row.get(2)?,
+                    valid_until: row.get(3)?,
+                    data: row.get(4)?,
+                    password: row.get(5).unwrap_or_default(),
+                    user_id: row.get(6)?,
+                    certificate_type: row.get(7)?,
+                    renew_method: row.get(8)?,
+                    ca_id: row.get(9)?,
+                    revoked_at: row.get(10)?
+                })
+            }).collect()?)
         })
     }
 
