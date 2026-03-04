@@ -5,8 +5,7 @@ use std::sync::Arc;
 use derive_deref::Deref;
 use openssl::base64;
 use parking_lot::RwLock;
-use rand::rand_core::OsRng;
-use rand::TryRngCore;
+use rand::fill;
 use rocket::serde;
 use rocket::serde::json::serde_json;
 use rocket::serde::{Deserialize, Serialize};
@@ -245,7 +244,7 @@ pub(crate) struct Logic {
 /// Generates a new JWT key.
 fn generate_jwt_key() -> String {
     let mut secret = [0u8; 32];
-    OsRng.try_fill_bytes(&mut secret).expect("Failed to generate JWT key");
+    fill(&mut secret);
     base64::encode_block(&secret)
 }
 

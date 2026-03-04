@@ -1,5 +1,5 @@
 # Stage 1: Build the Vue.js frontend
-FROM node:23 AS frontend-builder
+FROM node:25 AS frontend-builder
 
 COPY assets/logo.png /app/assets/logo.png
 
