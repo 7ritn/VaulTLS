@@ -656,7 +656,9 @@ pub(crate) async fn get_crl(
         revoked_params.push((serial, cert.revoked_at.unwrap_or(0)));
     }
 
-    let crl_pem = generate_crl(&ca, revoked_params).map_err(|e| ApiError::Other(e.to_string()))?;
+    let crl_next_update_hours = state.settings.get_crl_next_update_hours();
+
+    let crl_pem = generate_crl(&ca, revoked_params, crl_next_update_hours).map_err(|e| ApiError::Other(e.to_string()))?;
 
     Ok(CRLResponse::new(crl_pem))
 }

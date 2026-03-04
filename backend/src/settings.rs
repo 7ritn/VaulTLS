@@ -128,12 +128,13 @@ impl JsonSchema for FrontendSettings {
 }
 
 /// Common settings for the backend.
-#[derive(Serialize, Deserialize, JsonSchema, Clone, Default, Debug)]
+#[derive(Serialize, Deserialize, JsonSchema, Clone, Debug)]
 pub(crate) struct Common {
     password_enabled: bool,
     vaultls_url: String,
     #[serde(default)]
     password_rule: PasswordRule,
+    crl_next_update_hours: i64,
 }
 
 impl Common {
@@ -144,6 +145,17 @@ impl Common {
         }
         if let Ok(vaultls_url) = env::var("VAULTLS_URL") {
             self.vaultls_url = vaultls_url;
+        }
+    }
+}
+
+impl Default for Common {
+    fn default() -> Self {
+        Self{
+            password_enabled: Default::default(),
+            vaultls_url: Default::default(),
+            password_rule: Default::default(),
+            crl_next_update_hours: 7 * 24, // 7 days
         }
     }
 }
@@ -286,6 +298,7 @@ impl InnerSettings {
     fn get_mail(&self) -> &Mail { &self.mail }
     fn get_oidc(&self) -> &OIDC { &self.oidc }
     fn get_vaultls_url(&self) -> &str { &self.common.vaultls_url }
+    fn get_crl_next_update_hours(&self) -> i64 { self.common.crl_next_update_hours }
     fn get_db_encrypted(&self) -> bool { self.logic.db_encrypted }
 
     fn set_password_enabled(&mut self, password_enabled: bool) -> Result<(), ApiError>{
@@ -341,6 +354,10 @@ impl Settings {
     pub(crate) fn get_vaultls_url(&self) -> String {
         let settings = self.0.read();
         settings.get_vaultls_url().to_string()
+    }
+    pub(crate) fn get_crl_next_update_hours(&self) -> i64 {
+        let settings = self.0.read();
+        settings.get_crl_next_update_hours()
     }
     pub(crate) fn get_db_encrypted(&self) -> bool {
         let settings = self.0.read();

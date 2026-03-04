@@ -356,14 +356,13 @@ pub fn extract_serial_number(cert: &Certificate) -> Result<Vec<u8>> {
     Ok(cert.serial_number().to_bn()?.to_vec())
 }
 
-pub fn generate_crl(ca: &CA, revoked_certs: Vec<(Vec<u8>, i64)>) -> Result<Vec<u8>> {
+pub fn generate_crl(ca: &CA, revoked_certs: Vec<(Vec<u8>, i64)>, crl_next_update_hours: i64) -> Result<Vec<u8>> {
     let ca_key_pair = KeyPair::try_from(ca.key.clone())?;
     let cert_der = CertificateDer::from(ca.cert.clone());
     let issuer = Issuer::from_ca_cert_der(&cert_der, ca_key_pair)?;
 
     let now = OffsetDateTime::now_utc();
-    // ToDo Let next_update be settable from Settings, enabling different units of time i.e. Weeks, Days and Hours
-    let next_update = now + Duration::days(7);
+    let next_update = now + Duration::hours(crl_next_update_hours);
 
     let revoked_params = revoked_certs.into_iter().map(|(serial, revoked_at)| {
         RevokedCertParams {
