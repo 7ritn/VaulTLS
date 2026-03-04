@@ -41,6 +41,27 @@
               <option :value="PasswordRule.System">System Generated</option>
             </select>
           </div>
+          <div class="mb-3">
+            <label for="crl-next-update" class="form-label">CRL Validity</label>
+            <div class="input-group">
+              <input
+                  id="crl-next-update"
+                  v-model="crlNextUpdateValue"
+                  type="number"
+                  class="form-control"
+                  @input="updateCrlNextUpdate"
+              />
+              <select
+                  v-model="crlNextUpdateUnit"
+                  class="form-select"
+                  @change="updateCrlNextUpdate"
+              >
+                <option value="hours">Hour(s)</option>
+                <option value="days">Day(s)</option>
+                <option value="weeks">Week(s)</option>
+              </select>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -272,6 +293,18 @@ const confirmPassword = ref('');
 const editableUser = ref<User | null>(null);
 const saved_successfully = ref(false);
 
+const crlNextUpdateValue = ref(7);
+const crlNextUpdateUnit = ref('days');
+
+const updateCrlNextUpdate = () => {
+  if (settings.value) {
+    let multiplier = 1;
+    if (crlNextUpdateUnit.value === 'days') multiplier = 24;
+    else if (crlNextUpdateUnit.value === 'weeks') multiplier = 168;
+    settings.value.common.crl_next_update_hours = crlNextUpdateValue.value * multiplier;
+  }
+};
+
 // Methods
 const changePassword = async () => {
   await authStore.changePassword(changePasswordReq.value.oldPassword, changePasswordReq.value.newPassword);
@@ -300,6 +333,19 @@ const saveSettings = async () => {
 onMounted(async () => {
   if (authStore.isAdmin) {
     await settingsStore.fetchSettings();
+    if (settings.value) {
+      const hours = settings.value.common.crl_next_update_hours;
+      if (hours % 168 === 0) {
+        crlNextUpdateUnit.value = 'weeks';
+        crlNextUpdateValue.value = hours / 168;
+      } else if (hours % 24 === 0) {
+        crlNextUpdateUnit.value = 'days';
+        crlNextUpdateValue.value = hours / 24;
+      } else {
+        crlNextUpdateUnit.value = 'hours';
+        crlNextUpdateValue.value = hours;
+      }
+    }
   }
   if (current_user.value) {
     editableUser.value = { ...current_user.value };

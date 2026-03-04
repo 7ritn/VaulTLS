@@ -22,3 +22,7 @@ export const createCertificate = async (certReq: CertificateRequirements): Promi
 export const deleteCertificate = async (id: number): Promise<void> => {
     await ApiClient.delete<void>(`/certificates/${id}`);
 };
+
+export const revokeCertificate = async (id: number): Promise<void> => {
+    await ApiClient.post<void>(`/certificates/${id}/revoke`);
+};
