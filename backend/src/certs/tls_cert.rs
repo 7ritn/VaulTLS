@@ -254,45 +254,6 @@ impl TLSCertificateBuilder {
     }
 }
 
-// impl Certificate {
-//     fn revoke_cert(
-//     ) -> Result<()> {
-//         let mut rng = rng();
-//         let serial_number = SerialNumber::generate(&mut rng);
-//         let validity = Validity::from_now(Duration::new(5, 0))?;
-//         let subject =
-//             Name::from_str("CN=World domination corporation,O=World domination Inc,C=US")?;
-//         let profile = profile::cabf::Root::new(false, subject).expect("create root profile");
-//         let pub_key = SubjectPublicKeyInfo::try_from(PKCS8_PUBLIC_KEY_DER).expect("get ecdsa pub key");
-//
-//         let secret_key = p256::SecretKey::from_pkcs8_der(PKCS8_PRIVATE_KEY_DER).unwrap();
-//         let signer = p256::ecdsa::SigningKey::random(&mut rng);
-//
-//         let cert_der = Vec::new();
-//         let certificate = x509_cert::Certificate::from_der(&cert_der)?;
-//
-//         let crl_number = CrlNumber::try_from(1)?;
-//
-//         let builder = CrlBuilder::<Rfc5280>::new(&certificate, crl_number)?
-//             .with_certificates(
-//                 vec![
-//                     RevokedCert {
-//                         serial_number: SerialNumber::from(1),
-//                         revocation_date: Time::now()?,
-//                         crl_entry_extensions: None,
-//                     },
-//                 ]
-//                     .into_iter(),
-//             );
-//
-//         let crl = builder.build::<_, ecdsa::der::Signature<_>>(&signer).unwrap();
-//
-//         let pem = crl.to_pem(LineEnding::LF)?;
-//
-//         Ok(())
-//     }
-// }
-
 /// Generates a new private key.
 fn generate_private_key() -> Result<PKey<Private>, ErrorStack> {
     let group = EcGroup::from_curve_name(Nid::X9_62_PRIME256V1)?;
