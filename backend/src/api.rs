@@ -290,7 +290,7 @@ pub(crate) async fn get_certificates(
         UserRole::User => Some(authentication.claims.id),
         UserRole::Admin => None
     };
-    let certificates = state.db.get_all_user_cert(user_id).await?;
+    let certificates = state.db.get_user_certs(user_id, None, None).await?;
     Ok(Json(certificates))
 }
 
@@ -646,7 +646,7 @@ pub(crate) async fn get_crl(
         return Err(ApiError::Other("CRL is only supported for TLS CAs".to_string()));
     }
 
-    let revoked_certs = state.db.get_revoked_certs_by_ca(id).await.map_err(|e| ApiError::Other(e.to_string()))?;
+    let revoked_certs = state.db.get_user_certs(None, Some(id), Some(true)).await.map_err(|e| ApiError::Other(e.to_string()))?;
     
     let mut revoked_params = Vec::new();
     for cert in revoked_certs {

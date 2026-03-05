@@ -267,36 +267,38 @@ impl VaulTLSDB {
     }
 
 
-    /// Retrieve all user certificates from the database
+    /// Retrieve user certificates from the database
     /// If user_id is Some, only certificates for that user are returned
-    /// If user_id is None, all certificates are returned
-    pub(crate) async fn get_all_user_cert(&self, user_id: Option<i64>) -> Result<Vec<Certificate>> {
+    /// If ca_id is Some, only certificates signed by that CA are returned
+    /// If filter_revoked is Some, only certificates that are (not) revoked are returned
+    pub(crate) async fn get_user_certs(&self, user_id: Option<i64>, ca_id: Option<i64>, filter_revoked: Option<bool>) -> Result<Vec<Certificate>> {
         db_do!(self.pool, |conn: &Connection| {
-            let query = match user_id {
-                Some(_) => "SELECT id, name, created_on, valid_until, data, password, user_id, type, renew_method, ca_id, revoked_at FROM user_certificates WHERE user_id = ?1",
-                None => "SELECT id, name, created_on, valid_until, data, password, user_id, type, renew_method, ca_id, revoked_at FROM user_certificates"
-            };
-            let mut stmt = conn.prepare(query)?;
-            let rows = match user_id {
-                Some(id) => stmt.query(params![id])?,
-                None => stmt.query([])?,
-            };
-            Ok(rows.map(|row| {
-                Ok(Certificate {
-                    id: row.get(0)?,
-                    name: row.get(1)?,
-                    created_on: row.get(2)?,
-                    valid_until: row.get(3)?,
-                    data: row.get(4)?,
-                    password: row.get(5).unwrap_or_default(),
-                    user_id: row.get(6)?,
-                    certificate_type: row.get(7)?,
-                    renew_method: row.get(8)?,
-                    ca_id: row.get(9)?,
-                    revoked_at: row.get(10)?
-                })
-            })
-            .collect()?)
+            let mut query = String::from("SELECT id, name, created_on, valid_until, data, password, user_id, type, renew_method, ca_id, revoked_at FROM user_certificates WHERE 1=1");
+            let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+
+            if let Some(id) = user_id {
+                query.push_str(" AND user_id = ?");
+                params.push(Box::new(id));
+            }
+
+            if let Some(id) = ca_id {
+                query.push_str(" AND ca_id = ?");
+                params.push(Box::new(id));
+            }
+
+            if let Some(revoked) = filter_revoked {
+                let query_str = match revoked {
+                    true => " AND revoked_at IS NOT NULL",
+                    false => " AND revoked_at IS NULL"
+                };
+                query.push_str(query_str);
+            }
+
+            let mut stmt = conn.prepare(&query)?;
+            let rows = stmt.query(rusqlite::params_from_iter(params))?;
+
+            let certs = rows.mapped(Certificate::from_row).collect::<rusqlite::Result<Vec<_>>>()?;
+            Ok(certs)
         })
     }
 
@@ -366,28 +368,6 @@ impl VaulTLSDB {
                 "UPDATE user_certificates SET revoked_at = ?1 WHERE id=?2",
                 params![chrono::Utc::now().timestamp(), id]
             ).map(|_| ())?)
-        })
-    }
-
-    pub(crate) async fn get_revoked_certs_by_ca(&self, ca_id: i64) -> Result<Vec<Certificate>> {
-        db_do!(self.pool, |conn: &Connection| {
-            let mut stmt = conn.prepare("SELECT id, name, created_on, valid_until, data, password, user_id, type, renew_method, ca_id, revoked_at FROM user_certificates WHERE ca_id = ?1 AND revoked_at IS NOT NULL")?;
-            let rows = stmt.query(params![ca_id])?;
-            Ok(rows.map(|row| {
-                Ok(Certificate {
-                    id: row.get(0)?,
-                    name: row.get(1)?,
-                    created_on: row.get(2)?,
-                    valid_until: row.get(3)?,
-                    data: row.get(4)?,
-                    password: row.get(5).unwrap_or_default(),
-                    user_id: row.get(6)?,
-                    certificate_type: row.get(7)?,
-                    renew_method: row.get(8)?,
-                    ca_id: row.get(9)?,
-                    revoked_at: row.get(10)?
-                })
-            }).collect()?)
         })
     }
 
