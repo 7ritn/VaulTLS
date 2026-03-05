@@ -1,3 +1,5 @@
+#[cfg(feature = "test-mode")]
+use std::env::temp_dir;
 use std::fs;
 use std::time::{SystemTime, UNIX_EPOCH};
 use anyhow::anyhow;
@@ -18,6 +20,10 @@ use rcgen::{CertificateRevocationListParams, Issuer, KeyIdMethod, KeyPair, Revoc
 use rustls::pki_types::CertificateDer;
 use time::{OffsetDateTime, Duration};
 use tracing::info;
+use crate::ApiError;
+#[cfg(not(feature = "test-mode"))]
+use crate::constants::{CA_DIR_PATH, CA_FILE_PATTERN, CA_TLS_FILE_PATH, CRL_DIR_PATH, CRL_FILE_PATTERN};
+#[cfg(feature = "test-mode")]
 use crate::constants::{CA_DIR_PATH, CA_FILE_PATTERN, CA_TLS_FILE_PATH};
 use crate::data::enums::{CAType, CertificateRenewMethod, CertificateType, TimespanUnit};
 use crate::data::enums::CertificateType::{TLSClient, TLSServer};
@@ -317,7 +323,25 @@ pub fn extract_serial_number(cert: &Certificate) -> Result<Vec<u8>> {
     Ok(cert.serial_number().to_bn()?.to_vec())
 }
 
-pub fn generate_crl(ca: &CA, revoked_certs: Vec<(Vec<u8>, i64)>, crl_next_update_hours: i64) -> Result<Vec<u8>> {
+#[cfg(not(feature = "test-mode"))]
+pub(crate) fn retrieve_crl(ca_id: i64) -> Result<Vec<u8>> {
+    let ca_id_file_path = CRL_FILE_PATTERN.replace("{}", &ca_id.to_string());
+    Ok(fs::read(ca_id_file_path)?)
+}
+
+#[cfg(feature = "test-mode")]
+pub(crate) fn retrieve_crl(ca_id: i64) -> Result<Vec<u8>> {
+    let mut path = temp_dir();
+    path.push(format!("crl-{}.crl", ca_id));
+    Ok(fs::read(path)?)
+}
+
+pub(crate) fn create_and_save_crl(ca: &CA, revoked_certs: Vec<(Vec<u8>, i64)>, crl_next_update_hours: i64) -> Result<()> {
+    let crl_der = create_crl(ca, revoked_certs, crl_next_update_hours)?;
+    save_crl(crl_der, ca.id)
+}
+
+pub(crate) fn create_crl(ca: &CA, revoked_certs: Vec<(Vec<u8>, i64)>, crl_next_update_hours: i64) -> Result<Vec<u8>> {
     let ca_key_pair = KeyPair::try_from(ca.key.clone())?;
     let cert_der = CertificateDer::from(ca.cert.clone());
     let issuer = Issuer::from_ca_cert_der(&cert_der, ca_key_pair)?;
@@ -345,6 +369,22 @@ pub fn generate_crl(ca: &CA, revoked_certs: Vec<(Vec<u8>, i64)>, crl_next_update
 
     let crl = crl_params.signed_by(&issuer)?;
     Ok(crl.der().to_vec())
+}
+
+#[cfg(not(feature = "test-mode"))]
+pub(crate) fn save_crl(crl_der: Vec<u8>, ca_id: i64) -> Result<()> {
+    let ca_id_file_path = CRL_FILE_PATTERN.replace("{}", &ca_id.to_string());
+    fs::create_dir_all(CRL_DIR_PATH)?;
+    fs::write(ca_id_file_path, crl_der).map_err(|e| ApiError::Other(e.to_string()))?;
+    Ok(())
+}
+
+#[cfg(feature = "test-mode")]
+pub(crate) fn save_crl(crl_der: Vec<u8>, ca_id: i64) -> Result<()> {
+    let mut path = temp_dir();
+    path.push(format!("crl-{}.crl", ca_id));
+    fs::write(path, crl_der).map_err(|e| ApiError::Other(e.to_string()))?;
+    Ok(())
 }
 
 /// Migrates the Certificate Authority (CA) storage to a separate directory.

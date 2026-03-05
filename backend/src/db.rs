@@ -1,6 +1,6 @@
 use crate::constants::{DB_FILE_PATH, TEMP_DB_FILE_PATH};
-use crate::data::enums::{CAType, CertificateRenewMethod, CertificateType, UserRole};
-use crate::data::objects::{Name, User};
+use crate::data::enums::{CAType, CertificateRenewMethod, UserRole};
+use crate::data::objects::User;
 use crate::helper::get_secret;
 use anyhow::anyhow;
 use anyhow::Result;
@@ -304,14 +304,13 @@ impl VaulTLSDB {
 
     /// Retrieve the certificate's cert data with id from the database
     /// Returns the id of the user the certificate belongs to and the cert data
-    pub(crate) async fn get_user_cert_data(&self, id: i64) -> Result<(i64, Name, Vec<u8>, CertificateType)> {
+    pub(crate) async fn get_user_cert_by_id(&self, id: i64) -> Result<Certificate> {
         db_do!(self.pool, |conn: &Connection| {
-            let mut stmt = conn.prepare("SELECT user_id, name, data, type FROM user_certificates WHERE id = ?1")?;
+            let mut stmt = conn.prepare("SELECT id, name, created_on, valid_until, data, password, user_id, type, renew_method, ca_id, revoked_at FROM user_certificates WHERE id = ?1")?;
 
-            Ok(stmt.query_row(
-                params![id],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
-            )?)
+            let cert = stmt.query_row(rusqlite::params_from_iter([id]), |row| Certificate::from_row(row))?;
+
+            Ok(cert)
         })
     }
 
