@@ -11,7 +11,7 @@ use crate::certs::common::{get_password, save_ca, Certificate, CA};
 use crate::certs::ssh_cert::{get_ssh_pem, SSHCertificateBuilder};
 use crate::certs::tls_cert::{create_and_save_crl, create_crl, get_timestamp, get_tls_pem, retrieve_crl, save_crl, TLSCertificateBuilder};
 use crate::constants::VAULTLS_VERSION;
-use crate::data::api::{CallbackQuery, ChangePasswordRequest, CreateCARequest, CreateUserCertificateRequest, CreateUserRequest, CRLResponse, DownloadResponse, IsSetupResponse, LoginRequest, SetupRequest};
+use crate::data::api::{CallbackQuery, ChangePasswordRequest, CreateCARequest, CreateUserCertificateRequest, CreateUserRequest, DownloadResponse, IsSetupResponse, LoginRequest, SetupRequest};
 use crate::data::enums::{CAType, CertificateType, PasswordRule, TimespanUnit, UserRole};
 use crate::data::error::ApiError;
 use crate::data::objects::{AppState, Name, User};
@@ -663,10 +663,10 @@ pub(crate) async fn revoke_certificate(
 #[openapi(tag = "Certificates")]
 #[get("/ca/<id>/crl")]
 /// Get the Certificate Revocation List (CRL) for a TLS CA.
-pub(crate) async fn get_crl(
+pub(crate) async fn download_crl(
     state: &State<AppState>,
     id: i64,
-) -> Result<CRLResponse, ApiError> {
+) -> Result<DownloadResponse, ApiError> {
     let crl_der = match retrieve_crl(id) {
         Ok(crl_der) => crl_der,
         Err(_) => {
@@ -678,7 +678,7 @@ pub(crate) async fn get_crl(
             crl_der
         }
     };
-    Ok(CRLResponse::new(crl_der))
+    Ok(DownloadResponse::new(crl_der, &format!("crl-{}.crl", id)))
 }
 
 #[openapi(tag = "Settings")]

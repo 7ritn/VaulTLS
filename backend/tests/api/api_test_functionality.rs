@@ -543,7 +543,6 @@ async fn test_revocation_and_crl() -> Result<()> {
     let request = client.get(formatcp!("/ca/1/crl"));
     let response = request.dispatch().await;
     assert_eq!(response.status(), Status::Ok);
-    assert_eq!(response.content_type(), Some(ContentType::new("application", "pkix-crl")));
 
     let crl_data = response.into_bytes().await.unwrap();
     
