@@ -193,6 +193,7 @@ impl TLSCertificateBuilder {
             ca_type: CAType::TLS,
             cert: cert.to_der()?,
             key: self.private_key.private_key_to_der()?,
+            crl_number: 0,
         })
     }
 
@@ -336,18 +337,20 @@ pub(crate) fn retrieve_crl(ca_id: i64) -> Result<Vec<u8>> {
     Ok(fs::read(path)?)
 }
 
-pub(crate) fn create_and_save_crl(ca: &CA, revoked_certs: Vec<(Vec<u8>, i64)>, crl_next_update_hours: i64) -> Result<()> {
+pub(crate) fn create_and_save_crl(ca: &mut CA, revoked_certs: Vec<(Vec<u8>, i64)>, crl_next_update_hours: i64) -> Result<()> {
     let crl_der = create_crl(ca, revoked_certs, crl_next_update_hours)?;
     save_crl(crl_der, ca.id)
 }
 
-pub(crate) fn create_crl(ca: &CA, revoked_certs: Vec<(Vec<u8>, i64)>, crl_next_update_hours: i64) -> Result<Vec<u8>> {
+pub(crate) fn create_crl(ca: &mut CA, revoked_certs: Vec<(Vec<u8>, i64)>, crl_next_update_hours: i64) -> Result<Vec<u8>> {
     let ca_key_pair = KeyPair::try_from(ca.key.clone())?;
     let cert_der = CertificateDer::from(ca.cert.clone());
     let issuer = Issuer::from_ca_cert_der(&cert_der, ca_key_pair)?;
 
     let now = OffsetDateTime::now_utc();
     let next_update = now + Duration::hours(crl_next_update_hours);
+    ca.crl_number += 1;
+    let crl_number = ca.crl_number;
 
     let revoked_params = revoked_certs.into_iter().map(|(serial, revoked_at)| {
         RevokedCertParams {
@@ -361,7 +364,7 @@ pub(crate) fn create_crl(ca: &CA, revoked_certs: Vec<(Vec<u8>, i64)>, crl_next_u
     let crl_params = CertificateRevocationListParams {
         this_update: now,
         next_update,
-        crl_number: SerialNumber::from(1),
+        crl_number: SerialNumber::from(crl_number.unsigned_abs()),
         issuing_distribution_point: None,
         revoked_certs: revoked_params,
         key_identifier_method: KeyIdMethod::Sha256,

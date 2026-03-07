@@ -653,9 +653,9 @@ pub(crate) async fn revoke_certificate(
     if cert.user_id != authentication._claims.id && authentication._claims.role != UserRole::Admin { return Err(ApiError::Forbidden(None)) }
     state.db.revoke_user_cert(id).await.map_err(|e| ApiError::Other(e.to_string()))?;
 
-    let (ca, revoked_params, crl_next_update_hours) = create_crl_params(state, cert.ca_id).await?;
-
-    create_and_save_crl(&ca, revoked_params, crl_next_update_hours)?;
+    let (mut ca, revoked_params, crl_next_update_hours) = create_crl_params(state, cert.ca_id).await?;
+    create_and_save_crl(&mut ca, revoked_params, crl_next_update_hours)?;
+    state.db.increase_ca_crl_number(ca.id, ca.crl_number).await?;
 
     Ok(())
 }
@@ -671,8 +671,9 @@ pub(crate) async fn get_crl(
         Ok(crl_der) => crl_der,
         Err(_) => {
             // Probably no CRLs revoked yet, need to create empty CRL
-            let (ca, revoked_params, crl_next_update_hours) = create_crl_params(state, id).await?;
-            let crl_der = create_crl(&ca, revoked_params, crl_next_update_hours)?;
+            let (mut ca, revoked_params, crl_next_update_hours) = create_crl_params(state, id).await?;
+            let crl_der = create_crl(&mut ca, revoked_params, crl_next_update_hours)?;
+            state.db.increase_ca_crl_number(ca.id, ca.crl_number).await?;
             let _ = save_crl(crl_der.clone(), id); // Ignore errors
             crl_der
         }

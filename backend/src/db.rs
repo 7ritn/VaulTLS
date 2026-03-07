@@ -180,8 +180,8 @@ impl VaulTLSDB {
     ) -> Result<CA> {
         db_do!(self.pool, |conn: &Connection| {
             conn.execute(
-                "INSERT INTO ca_certificates (name, created_on, valid_until, type, certificate, key) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-                params![ca.name, ca.created_on, ca.valid_until, ca.ca_type as u8, ca.cert, ca.key],
+                "INSERT INTO ca_certificates (name, created_on, valid_until, type, certificate, key, crl_number) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                params![ca.name, ca.created_on, ca.valid_until, ca.ca_type as u8, ca.cert, ca.key, ca.crl_number],
             )?;
             ca.id = conn.last_insert_rowid();
             Ok(ca)
@@ -199,17 +199,17 @@ impl VaulTLSDB {
     }
 
     pub(crate) async fn get_latest_tls_ca(&self) -> Result<CA> {
-        let query = formatcp!("SELECT id, name, created_on, valid_until, type, certificate, key FROM ca_certificates WHERE type = {} ORDER BY id DESC LIMIT 1", CAType::TLS as u8);
+        let query = formatcp!("SELECT id, name, created_on, valid_until, type, certificate, key, crl_number FROM ca_certificates WHERE type = {} ORDER BY id DESC LIMIT 1", CAType::TLS as u8);
         self.get_ca_by_query(query.to_string(), None).await
     }
 
     pub(crate) async fn get_latest_ssh_ca(&self) -> Result<CA> {
-        let query = formatcp!("SELECT id, name, created_on, valid_until, type, certificate, key FROM ca_certificates WHERE type = {} ORDER BY id DESC LIMIT 1", CAType::SSH as u8);
+        let query = formatcp!("SELECT id, name, created_on, valid_until, type, certificate, key, crl_number FROM ca_certificates WHERE type = {} ORDER BY id DESC LIMIT 1", CAType::SSH as u8);
         self.get_ca_by_query(query.to_string(), None).await
     }
 
     pub(crate) async fn get_ca_by_id(&self, ca_id: i64) -> Result<CA> {
-        let query = "SELECT id, name, created_on, valid_until, type, certificate, key FROM ca_certificates WHERE id = ?1";
+        let query = "SELECT id, name, created_on, valid_until, type, certificate, key, crl_number FROM ca_certificates WHERE id = ?1";
         self.get_ca_by_query(query.to_string(), Some(ca_id)).await
     }
 
@@ -230,7 +230,8 @@ impl VaulTLSDB {
                 valid_until: row.get(3)?,
                 ca_type: row.get(4)?,
                 cert: row.get(5)?,
-                key: row.get(6)?
+                key: row.get(6)?,
+                crl_number: row.get(7)?,
             })
         })
     }
@@ -238,7 +239,7 @@ impl VaulTLSDB {
     /// Retrieve all CA certificates from the database
     pub(crate) async fn get_all_ca(&self) -> Result<Vec<CA>> {
         db_do!(self.pool, |conn: &Connection| {
-            let mut stmt = conn.prepare("SELECT id, name, created_on, valid_until, type, certificate, key FROM ca_certificates ORDER BY id ASC")?;
+            let mut stmt = conn.prepare("SELECT id, name, created_on, valid_until, type, certificate, key, crl_number FROM ca_certificates ORDER BY id ASC")?;
             let query = stmt.query([])?;
             Ok(query.map(|row| {
                 Ok(CA{
@@ -248,7 +249,8 @@ impl VaulTLSDB {
                     valid_until: row.get(3)?,
                     ca_type: row.get(4)?,
                     cert: row.get(5)?,
-                    key: row.get(6)?
+                    key: row.get(6)?,
+                    crl_number: row.get(7)?,
                 })
             })
             .collect()?)
@@ -263,6 +265,15 @@ impl VaulTLSDB {
                 params![ca_id],
                 |row| row.get(0)
             )?)
+        })
+    }
+
+    pub(crate) async fn increase_ca_crl_number(&self, ca_id: i64, crl_number: i64) -> Result<()> {
+        db_do!(self.pool, |conn: &Connection| {
+            Ok(conn.execute(
+                "UPDATE ca_certificates SET crl_number = ?1 WHERE id=?2",
+                params![crl_number, ca_id]
+            ).map(|_| ())?)
         })
     }
 

@@ -106,6 +106,7 @@ impl SSHCertificateBuilder {
             ca_type: SSH,
             cert: Vec::new(),
             key,
+            crl_number: 0,
         })
     }
 
