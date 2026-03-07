@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import type {CA, CARequirements} from '@/types/CA';
-import {createCA, deleteCA, downloadCAByID, fetchCAs} from "@/api/cas.ts";
+import {createCA, deleteCA, downloadCAByID, downloadCRL, fetchCAs} from "@/api/cas.ts";
 import axios from 'axios';
 
 export const useCAStore = defineStore('ca', {
@@ -18,9 +18,7 @@ export const useCAStore = defineStore('ca', {
             try {
                 const new_cas = await fetchCAs();
                 for (const ca of new_cas) {
-                    if (!this.cas.has(ca.id)) {
-                        this.cas.set(ca.id, ca);
-                    }
+                    this.cas.set(ca.id, ca);
                 }
 
                 const newIds = new Set<number>(new_cas.map(ca => ca.id));
@@ -92,6 +90,20 @@ export const useCAStore = defineStore('ca', {
                 console.error(err);
             } finally {
                 this.loading = false;
+            }
+        },
+
+        async downloadCRL(id: number): Promise<void> {
+            try {
+                this.error = null;
+                await downloadCRL(id);
+            } catch (err) {
+                if (axios.isAxiosError(err)) {
+                    this.error = 'Failed to download the CRL: ' + err.response?.data?.error;
+                } else {
+                    this.error = 'Failed to download the CRL';
+                }
+                console.error(err);
             }
         },
     },

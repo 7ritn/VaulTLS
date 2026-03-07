@@ -15,10 +15,29 @@ pub struct Certificate {
     pub user_id: i64,
     pub renew_method: CertificateRenewMethod,
     pub ca_id: i64,
+    pub revoked_at: Option<i64>,
     #[serde(skip)]
     pub data: Vec<u8>,
     #[serde(skip)]
     pub password: String
+}
+
+impl Certificate {
+    pub(crate) fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        Ok(Certificate {
+            id: row.get(0)?,
+            name: row.get(1)?,
+            created_on: row.get(2)?,
+            valid_until: row.get(3)?,
+            data: row.get(4)?,
+            password: row.get(5).unwrap_or_default(),
+            user_id: row.get(6)?,
+            certificate_type: row.get(7)?,
+            renew_method: row.get(8)?,
+            ca_id: row.get(9)?,
+            revoked_at: row.get(10)?
+        })
+    }
 }
 
 #[derive(Clone, Serialize, Deserialize, JsonSchema, Debug)]
@@ -32,6 +51,8 @@ pub struct CA {
     pub cert: Vec<u8>,
     #[serde(skip)]
     pub key: Vec<u8>,
+    #[serde(skip)]
+    pub crl_number: i64,
 }
 
 /// Saves the CA certificate to a file for filesystem access.

@@ -1,3 +1,4 @@
+use x509_parser::revocation_list::CertificateRevocationList;
 use crate::common::constants::*;
 use crate::common::helper::{extract_ssh_cert_key_bundle, get_timestamp_ms, get_timestamp_s};
 use crate::common::test_client::VaulTLSClient;
@@ -16,13 +17,15 @@ use argon2::password_hash::SaltString;
 use argon2::PasswordHasher;
 use serde_json::Value;
 use ssh_key::certificate::CertType;
+use time::ext::NumericalDuration;
+use time::OffsetDateTime;
 use tokio::io::{duplex, AsyncReadExt, AsyncWriteExt};
 use tokio::time::sleep;
 use tokio_rustls::{TlsAcceptor, TlsConnector};
 use vaultls::data::enums::{CAType, CertificateRenewMethod, CertificateType, TimespanUnit, UserRole};
 use vaultls::data::objects::User;
 use x509_parser::asn1_rs::FromDer;
-use x509_parser::prelude::X509Certificate;
+use x509_parser::prelude::{RevokedCertificate, X509Certificate};
 use vaultls::certs::common::{Certificate, CA};
 use vaultls::constants::ARGON2;
 use vaultls::data::api::{CreateUserCertificateRequest, IsSetupResponse, SetupRequest};
@@ -518,6 +521,53 @@ async fn test_download_ssh_client_certificate() -> Result<()> {
     assert_eq!(cert.valid_principals(), vec!["test.example.com".to_string()]);
     let fingerprint = ca.fingerprint(Default::default());
     assert!(cert.validate(vec![&fingerprint]).is_ok());
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_revocation_and_crl() -> Result<()> {
+    let client = VaulTLSClient::new_with_cert().await;
+    let request = client
+        .get("/certificates/1/download");
+    let response = request.dispatch().await;
+    assert_eq!(response.status(), Status::Ok);
+    let Some(ref client_cert_p12) = response.into_bytes().await else { return Err(anyhow::anyhow!("No body")) };
+
+    // Revoke certificate
+    let request = client.post(formatcp!("/certificates/1/revoke"));
+    let response = request.dispatch().await;
+    assert_eq!(response.status(), Status::Ok);
+
+    // Check CRL
+    let request = client.get(formatcp!("/ca/1/crl"));
+    let response = request.dispatch().await;
+    assert_eq!(response.status(), Status::Ok);
+
+    let crl_data = response.into_bytes().await.unwrap();
+    
+    // Parse CRL and verify revoked serial
+    let (_, crl) = CertificateRevocationList::from_der(&crl_data)?;
+    
+    // Get actual serial number from original cert to compare
+    let p12 = Pkcs12::from_der(client_cert_p12)?;
+    let p12_parsed = p12.parse2(TEST_PASSWORD)?;
+    let openssl_cert = p12_parsed.cert.unwrap();
+    let serial_bn = openssl_cert.serial_number().to_bn()?;
+
+    let revoked_certs: Vec<&RevokedCertificate> =  crl.iter_revoked_certificates().collect();
+    assert_eq!(revoked_certs.len(), 1);
+
+    let revoked_cert = revoked_certs[0];
+
+    let revoked_serial_bn = openssl::bn::BigNum::from_slice(revoked_cert.raw_serial())?;
+    assert_eq!(revoked_serial_bn, serial_bn);
+
+    let after = OffsetDateTime::now_utc();
+    let before = after.checked_sub(10.seconds()).unwrap();
+    assert!(revoked_cert.revocation_date.to_datetime() <= after);
+    assert!(revoked_cert.revocation_date.to_datetime() >= before);
+    println!("{:?}", revoked_cert);
 
     Ok(())
 }

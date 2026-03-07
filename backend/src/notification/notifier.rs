@@ -24,9 +24,9 @@ pub(crate) async fn watch_expiry(db: VaulTLSDB, mailer_mutex: Arc<Mutex<Option<M
 
 
     loop {
-        trace!("Checking for certificates that are about to expire.");
+        trace!("Checking for active certificates that are about to expire.");
 
-        if let Ok(certs) = db.get_all_user_cert(None).await {
+        if let Ok(certs) = db.get_user_certs(None, None, Some(false)).await {
             let in_a_week = chrono::Utc::now().timestamp_millis() + 1000 * 60 * 60 * 24 * 7;
             for cert in certs.iter().filter(|a| a.renew_method != CertificateRenewMethod::None && a.valid_until < in_a_week) {
                 if handle_expiry(cert, &db, mailer_mutex.clone()).await.is_ok() {

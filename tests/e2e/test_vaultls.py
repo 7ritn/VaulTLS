@@ -22,7 +22,7 @@ def wait_for_email(subject_keyword, timeout=10):
 def delete_all_emails():
     requests.delete(MAILHOG_API_URL + "/api/v1/messages")
 
-def count_table_data_rows(page, table_selector="table"):
+def count_table_data_rows(page, table_selector=".active-certs"):
     # Count only tbody tr elements (excludes header rows in thead)
     rows = page.locator(f"{table_selector} tbody tr")
     return rows.count()
@@ -157,7 +157,7 @@ def test_create_ca_and_certificate_with_ca_verification(page):
     page.wait_for_url("**/ca")
     assert "Certificate Authorities" in page.locator("h1").inner_text()
 
-    initial_ca_count = count_table_data_rows(page)
+    initial_ca_count = count_table_data_rows(page, "table")
     
     # Create new CA
     page.click("#CreateCAButton")
@@ -168,7 +168,7 @@ def test_create_ca_and_certificate_with_ca_verification(page):
     
     # Wait for CA creation and verify it was created
     page.wait_for_timeout(2000)
-    assert count_table_data_rows(page) == initial_ca_count + 1
+    assert count_table_data_rows(page, "table") == initial_ca_count + 1
     
     # Get the ID of the newly created CA
     new_ca_id_element = page.locator("tbody tr").last.locator("td[id^='CaId-']")

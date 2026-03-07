@@ -10,6 +10,10 @@ pub(crate) const CA_FILE_PATTERN: &str = "./ca/ca-{}.pem";
 pub(crate) const CA_TLS_FILE_PATH: &str = "./ca/ca-tls.cert";
 #[cfg(not(feature = "test-mode"))]
 pub(crate) const CA_SSH_FILE_PATH: &str = "./ca/ca-ssh.cert";
+#[cfg(not(feature = "test-mode"))]
+pub(crate) const CRL_DIR_PATH: &str = "./crl";
+#[cfg(not(feature = "test-mode"))]
+pub(crate) const CRL_FILE_PATTERN: &str = "./crl/crl-{}.crl";
 pub(crate) const API_PORT: u16 = 3737;
 pub const VAULTLS_VERSION: &str = formatcp!("v{}", env!("CARGO_PKG_VERSION"));
 

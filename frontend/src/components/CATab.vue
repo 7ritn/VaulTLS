@@ -33,6 +33,14 @@
                 Download
               </button>
               <button
+                  v-if="ca.ca_type === CAType.TLS"
+                  :id="'CRLButton-' + ca.id"
+                  class="btn btn-outline-primary btn-sm flex-grow-1"
+                  @click="downloadCRL(ca.id)"
+              >
+                CRL
+              </button>
+              <button
                   :id="'DeleteButton-' + ca.id"
                   v-if="authStore.isAdmin"
                   class="btn btn-danger btn-sm flex-grow-1"
@@ -243,8 +251,8 @@ const createCA = async () => {
   closeCreateModal();
 };
 
-const confirmDeletion = (cert: CA) => {
-  caToDelete.value = cert;
+const confirmDeletion = (ca: CA) => {
+  caToDelete.value = ca;
   isDeleteModalVisible.value = true;
 };
 
@@ -262,6 +270,10 @@ const deleteCA = async () => {
 
 const downloadCA = async (caId: number) => {
   await caStore.downloadCA(caId);
+};
+
+const downloadCRL = async (caId: number) => {
+  await caStore.downloadCRL(caId);
 };
 </script>
 

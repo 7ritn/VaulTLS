@@ -106,6 +106,7 @@ impl SSHCertificateBuilder {
             ca_type: SSH,
             cert: Vec::new(),
             key,
+            crl_number: 0,
         })
     }
 
@@ -157,6 +158,7 @@ impl SSHCertificateBuilder {
             ca_id,
             data,
             password: self.password.unwrap_or_default(),
+            revoked_at: None
         })
     }
 
@@ -200,6 +202,7 @@ impl SSHCertificateBuilder {
             ca_id,
             data,
             password: self.password.unwrap_or_default(),
+            revoked_at: None
         })
     }
 

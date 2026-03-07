@@ -6,6 +6,7 @@ import {
     downloadCertificate,
     createCertificate,
     deleteCertificate,
+    revokeCertificate,
 } from '../api/certificates';
 import type {CertificateRequirements} from "@/types/CertificateRequirements.ts";
 import axios from 'axios';
@@ -25,9 +26,7 @@ export const useCertificateStore = defineStore('certificate', {
             try {
                 const new_certs = await fetchCertificates();
                 for (const cert of new_certs) {
-                    if (!this.certificates.has(cert.id)) {
-                        this.certificates.set(cert.id, cert);
-                    }
+                    this.certificates.set(cert.id, cert);
                 }
 
                 const newIds = new Set<number>(new_certs.map(cert => cert.id));
@@ -114,6 +113,25 @@ export const useCertificateStore = defineStore('certificate', {
                     this.error = 'Failed to delete the certificate: ' + err.response?.data?.error;
                 } else {
                     this.error = 'Failed to delete the certificate';
+                }
+                console.error(err);
+            } finally {
+                this.loading = false;
+            }
+        },
+
+        // Revoke a certificate by ID and fetch the updated list
+        async revokeCertificate(id: number): Promise<void> {
+            this.loading = true;
+            this.error = null;
+            try {
+                await revokeCertificate(id);
+                await this.fetchCertificates();
+            } catch (err) {
+                if (axios.isAxiosError(err)) {
+                    this.error = 'Failed to revoke the certificate: ' + err.response?.data?.error;
+                } else {
+                    this.error = 'Failed to revoke the certificate';
                 }
                 console.error(err);
             } finally {
