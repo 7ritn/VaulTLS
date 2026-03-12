@@ -17,7 +17,7 @@ use openssl::x509::{X509Name, X509NameBuilder, X509};
 use openssl::x509::extension::{AuthorityKeyIdentifier, BasicConstraints, ExtendedKeyUsage, KeyUsage, SubjectAlternativeName, SubjectKeyIdentifier};
 use openssl::x509::{X509Builder};
 use rcgen::{CertificateRevocationListParams, Issuer, KeyIdMethod, KeyPair, RevocationReason, RevokedCertParams, SerialNumber};
-use rustls::pki_types::CertificateDer;
+use rustls_pki_types::CertificateDer;
 use time::{OffsetDateTime, Duration};
 use tracing::info;
 use crate::ApiError;
