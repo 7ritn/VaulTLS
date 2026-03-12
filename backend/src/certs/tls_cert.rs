@@ -25,7 +25,7 @@ use crate::ApiError;
 use crate::constants::{CA_DIR_PATH, CA_FILE_PATTERN, CA_TLS_FILE_PATH, CRL_DIR_PATH, CRL_FILE_PATTERN};
 #[cfg(feature = "test-mode")]
 use crate::constants::{CA_DIR_PATH, CA_FILE_PATTERN, CA_TLS_FILE_PATH};
-use crate::data::enums::{CAType, CertificateRenewMethod, CertificateType, TimespanUnit};
+use crate::data::enums::{CertificateRenewMethod, CertificateType, TimespanUnit};
 use crate::data::enums::CertificateType::{TLSClient, TLSServer};
 use crate::certs::common::{Certificate, CA};
 use crate::data::enums::CAType::TLS;
@@ -190,7 +190,7 @@ impl TLSCertificateBuilder {
             name,
             created_on: self.created_on,
             valid_until,
-            ca_type: CAType::TLS,
+            ca_type: TLS,
             cert: cert.to_der()?,
             key: self.private_key.private_key_to_der()?,
             crl_number: 0,
@@ -392,13 +392,11 @@ pub(crate) fn save_crl(crl_der: Vec<u8>, ca_id: i64) -> Result<()> {
 
 /// Migrates the Certificate Authority (CA) storage to a separate directory.
 pub(crate) fn migrate_ca_storage() -> Result<()> {
-    if let Ok(exists) = fs::exists("./ca.cert") {
-        if exists {
-            info!("Migrating CA storage to separate directory");
-            fs::create_dir(CA_DIR_PATH)?;
-            fs::rename("./ca.cert", CA_TLS_FILE_PATH)?;
-            fs::copy(CA_TLS_FILE_PATH, CA_FILE_PATTERN.replace("{}", "1"))?;
-        }
+    if fs::exists("./ca.cert").is_ok_and(|exists| exists) {
+        info!("Migrating CA storage to separate directory");
+        fs::create_dir(CA_DIR_PATH)?;
+        fs::rename("./ca.cert", CA_TLS_FILE_PATH)?;
+        fs::copy(CA_TLS_FILE_PATH, CA_FILE_PATTERN.replace("{}", "1"))?;
     }
     Ok(())
 }

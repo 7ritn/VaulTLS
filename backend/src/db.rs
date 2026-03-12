@@ -96,26 +96,24 @@ impl VaulTLSDB {
         Self::migrate_database(&mut connection)?;
 
         // ToDo fix when to migrate
-        if !db_encrypted {
-            if let Ok(ref db_secret_result) = db_secret_result {
-                let db_secret = db_secret_result.clone();
-                Self::create_encrypt_db(&connection, &db_secret)?;
-                drop(connection);
-                Self::migrate_to_encrypted_db()?;
-                info!("Migrated to encrypted database");
-                let manager = SqliteConnectionManager::file(DB_FILE_PATH)
-                    .with_init(move |conn| {
-                        conn.pragma_update(None, "key", db_secret.clone())?;
-                        conn.pragma_update(None, "foreign_keys", "ON")?;
-                        Ok(())
-                    });
+        if !db_encrypted && let Ok(ref db_secret_result) = db_secret_result {
+            let db_secret = db_secret_result.clone();
+            Self::create_encrypt_db(&connection, &db_secret)?;
+            drop(connection);
+            Self::migrate_to_encrypted_db()?;
+            info!("Migrated to encrypted database");
+            let manager = SqliteConnectionManager::file(DB_FILE_PATH)
+                .with_init(move |conn| {
+                    conn.pragma_update(None, "key", db_secret.clone())?;
+                    conn.pragma_update(None, "foreign_keys", "ON")?;
+                    Ok(())
+                });
 
-                let pool = Pool::builder()
-                    .max_size(1)
-                    .build(manager)?;
+            let pool = Pool::builder()
+                .max_size(1)
+                .build(manager)?;
 
-                return Ok(Self { pool });
-            }
+            return Ok(Self { pool });
         }
 
         Ok(Self { pool })
@@ -161,12 +159,10 @@ impl VaulTLSDB {
 
         for id in users.iter().map(|user| user.id) {
             let user = self.get_user(id).await?;
-            if let Some(stored_password) = user.password_hash {
-                if stored_password.verify("") {
-                    // Password stored is empty
-                    info!("Password for user {} is empty, disabling password", user.name);
-                    self.unset_user_password(user.id).await?;
-                }
+            if let Some(stored_password) = user.password_hash && stored_password.verify("") {
+                // Password stored is empty
+                info!("Password for user {} is empty, disabling password", user.name);
+                self.unset_user_password(user.id).await?;
             }
         }
         Ok(())
@@ -319,7 +315,7 @@ impl VaulTLSDB {
         db_do!(self.pool, |conn: &Connection| {
             let mut stmt = conn.prepare("SELECT id, name, created_on, valid_until, data, password, user_id, type, renew_method, ca_id, revoked_at FROM user_certificates WHERE id = ?1")?;
 
-            let cert = stmt.query_row(rusqlite::params_from_iter([id]), |row| Certificate::from_row(row))?;
+            let cert = stmt.query_row(rusqlite::params_from_iter([id]), Certificate::from_row)?;
 
             Ok(cert)
         })
