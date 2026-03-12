@@ -72,12 +72,18 @@ pub async fn create_rocket() -> Rocket<Build> {
 
     let db_path = Path::new(DB_FILE_PATH);
     let db_initialized = db_path.exists();
-    let encrypted = settings.get_db_encrypted();
+    let mut encrypted = settings.get_db_encrypted();
+
+    if !encrypted && let Ok(db_secret) = get_secret("VAULTLS_DB_SECRET") {
+        if db_initialized {
+            VaulTLSDB::migrate_to_encrypted(&db_secret).expect("Failed to migrate database to encrypted");
+        }
+        settings.set_db_encrypted().expect("Failed to set database to encrypted in settings");
+        encrypted = true;
+    }
+
     let db = VaulTLSDB::new(encrypted, false).expect("Failed opening SQLite database");
     db.fix_password().await.expect("Failed fixing passwords");
-    if !encrypted && env::var("VAULTLS_DB_SECRET").is_ok() {
-        settings.set_db_encrypted().unwrap()
-    }
     if !db_initialized {
         info!("New database. Set initial database file permissions to 0600");
         // Adjust permissions
