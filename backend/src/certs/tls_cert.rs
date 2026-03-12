@@ -1,3 +1,5 @@
+#[cfg(feature = "test-mode")]
+use std::env::temp_dir;
 use std::fs;
 use std::time::{SystemTime, UNIX_EPOCH};
 use anyhow::anyhow;
@@ -13,13 +15,18 @@ use openssl::pkey::{PKey, Private};
 use openssl::stack::Stack;
 use openssl::x509::{X509Name, X509NameBuilder, X509};
 use openssl::x509::extension::{AuthorityKeyIdentifier, BasicConstraints, ExtendedKeyUsage, KeyUsage, SubjectAlternativeName, SubjectKeyIdentifier};
-use openssl::x509::X509Builder;
+use openssl::x509::{X509Builder};
+use rcgen::{CertificateRevocationListParams, Issuer, KeyIdMethod, KeyPair, RevocationReason, RevokedCertParams, SerialNumber};
+use rustls::pki_types::CertificateDer;
+use time::{OffsetDateTime, Duration};
 use tracing::info;
+use crate::ApiError;
+#[cfg(not(feature = "test-mode"))]
+use crate::constants::{CA_DIR_PATH, CA_FILE_PATTERN, CA_TLS_FILE_PATH, CRL_DIR_PATH, CRL_FILE_PATTERN};
+#[cfg(feature = "test-mode")]
 use crate::constants::{CA_DIR_PATH, CA_FILE_PATTERN, CA_TLS_FILE_PATH};
 use crate::data::enums::{CAType, CertificateRenewMethod, CertificateType, TimespanUnit};
 use crate::data::enums::CertificateType::{TLSClient, TLSServer};
-#[cfg(not(feature = "test-mode"))]
-use crate::ApiError;
 use crate::certs::common::{Certificate, CA};
 use crate::data::enums::CAType::TLS;
 use crate::data::objects::Name;
@@ -186,6 +193,7 @@ impl TLSCertificateBuilder {
             ca_type: CAType::TLS,
             cert: cert.to_der()?,
             key: self.private_key.private_key_to_der()?,
+            crl_number: 0,
         })
     }
 
@@ -247,49 +255,11 @@ impl TLSCertificateBuilder {
             password: self.pkcs12_password,
             ca_id,
             user_id,
-            renew_method: self.renew_method
+            renew_method: self.renew_method,
+            revoked_at: None
         })
     }
 }
-
-// impl Certificate {
-//     fn revoke_cert(
-//     ) -> Result<()> {
-//         let mut rng = rng();
-//         let serial_number = SerialNumber::generate(&mut rng);
-//         let validity = Validity::from_now(Duration::new(5, 0))?;
-//         let subject =
-//             Name::from_str("CN=World domination corporation,O=World domination Inc,C=US")?;
-//         let profile = profile::cabf::Root::new(false, subject).expect("create root profile");
-//         let pub_key = SubjectPublicKeyInfo::try_from(PKCS8_PUBLIC_KEY_DER).expect("get ecdsa pub key");
-//
-//         let secret_key = p256::SecretKey::from_pkcs8_der(PKCS8_PRIVATE_KEY_DER).unwrap();
-//         let signer = p256::ecdsa::SigningKey::random(&mut rng);
-//
-//         let cert_der = Vec::new();
-//         let certificate = x509_cert::Certificate::from_der(&cert_der)?;
-//
-//         let crl_number = CrlNumber::try_from(1)?;
-//
-//         let builder = CrlBuilder::<Rfc5280>::new(&certificate, crl_number)?
-//             .with_certificates(
-//                 vec![
-//                     RevokedCert {
-//                         serial_number: SerialNumber::from(1),
-//                         revocation_date: Time::now()?,
-//                         crl_entry_extensions: None,
-//                     },
-//                 ]
-//                     .into_iter(),
-//             );
-//
-//         let crl = builder.build::<_, ecdsa::der::Signature<_>>(&signer).unwrap();
-//
-//         let pem = crl.to_pem(LineEnding::LF)?;
-//
-//         Ok(())
-//     }
-// }
 
 /// Generates a new private key.
 fn generate_private_key() -> Result<PKey<Private>, ErrorStack> {
@@ -346,6 +316,78 @@ fn get_short_lifetime() -> Result<(i64, Asn1Time), ErrorStack> {
 pub(crate) fn get_tls_pem(ca: &CA) -> Result<Vec<u8>, ErrorStack> {
     let cert = X509::from_der(&ca.cert)?;
     cert.to_pem()
+}
+
+pub fn extract_serial_number(cert: &Certificate) -> Result<Vec<u8>> {
+    let encrypted_p12 = Pkcs12::from_der(&cert.data)?;
+    let Some(cert) = encrypted_p12.parse2(&cert.password)?.cert else { return Err(anyhow::anyhow!("No certificate found in PKCS#12"))};
+    Ok(cert.serial_number().to_bn()?.to_vec())
+}
+
+#[cfg(not(feature = "test-mode"))]
+pub(crate) fn retrieve_crl(ca_id: i64) -> Result<Vec<u8>> {
+    let ca_id_file_path = CRL_FILE_PATTERN.replace("{}", &ca_id.to_string());
+    Ok(fs::read(ca_id_file_path)?)
+}
+
+#[cfg(feature = "test-mode")]
+pub(crate) fn retrieve_crl(ca_id: i64) -> Result<Vec<u8>> {
+    let mut path = temp_dir();
+    path.push(format!("crl-{}.crl", ca_id));
+    Ok(fs::read(path)?)
+}
+
+pub(crate) fn create_and_save_crl(ca: &mut CA, revoked_certs: Vec<(Vec<u8>, i64)>, crl_next_update_hours: i64) -> Result<()> {
+    let crl_der = create_crl(ca, revoked_certs, crl_next_update_hours)?;
+    save_crl(crl_der, ca.id)
+}
+
+pub(crate) fn create_crl(ca: &mut CA, revoked_certs: Vec<(Vec<u8>, i64)>, crl_next_update_hours: i64) -> Result<Vec<u8>> {
+    let ca_key_pair = KeyPair::try_from(ca.key.clone())?;
+    let cert_der = CertificateDer::from(ca.cert.clone());
+    let issuer = Issuer::from_ca_cert_der(&cert_der, ca_key_pair)?;
+
+    let now = OffsetDateTime::now_utc();
+    let next_update = now + Duration::hours(crl_next_update_hours);
+    ca.crl_number += 1;
+    let crl_number = ca.crl_number;
+
+    let revoked_params = revoked_certs.into_iter().map(|(serial, revoked_at)| {
+        RevokedCertParams {
+            serial_number: SerialNumber::from(serial),
+            revocation_time: OffsetDateTime::from_unix_timestamp(revoked_at).unwrap_or(now),
+            reason_code: Some(RevocationReason::Unspecified),
+            invalidity_date: None,
+        }
+    }).collect();
+
+    let crl_params = CertificateRevocationListParams {
+        this_update: now,
+        next_update,
+        crl_number: SerialNumber::from(crl_number.unsigned_abs()),
+        issuing_distribution_point: None,
+        revoked_certs: revoked_params,
+        key_identifier_method: KeyIdMethod::Sha256,
+    };
+
+    let crl = crl_params.signed_by(&issuer)?;
+    Ok(crl.der().to_vec())
+}
+
+#[cfg(not(feature = "test-mode"))]
+pub(crate) fn save_crl(crl_der: Vec<u8>, ca_id: i64) -> Result<()> {
+    let ca_id_file_path = CRL_FILE_PATTERN.replace("{}", &ca_id.to_string());
+    fs::create_dir_all(CRL_DIR_PATH)?;
+    fs::write(ca_id_file_path, crl_der).map_err(|e| ApiError::Other(e.to_string()))?;
+    Ok(())
+}
+
+#[cfg(feature = "test-mode")]
+pub(crate) fn save_crl(crl_der: Vec<u8>, ca_id: i64) -> Result<()> {
+    let mut path = temp_dir();
+    path.push(format!("crl-{}.crl", ca_id));
+    fs::write(path, crl_der).map_err(|e| ApiError::Other(e.to_string()))?;
+    Ok(())
 }
 
 /// Migrates the Certificate Authority (CA) storage to a separate directory.

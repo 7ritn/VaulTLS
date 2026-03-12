@@ -52,6 +52,9 @@ ssh-key = { version = "0.6.7", features = ["ed25519", "alloc", "serde", "encrypt
 rand = "0.10.0"
 zip = "8.2.0"
 rand_core = "0.10.0"
+rcgen = { version = "0.14.7", features = ["pem", "x509-parser", "crypto", "aws_lc_rs"] }
+rustls = "0.23.36"
+time = "0.3.37"
 
 [dev-dependencies]
 x509-parser = "0.18.1"

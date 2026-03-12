@@ -3,7 +3,7 @@
     <h1>Certificates</h1>
     <hr />
     <div class="table-responsive">
-      <table class="table table-striped">
+      <table class="table table-striped active-certs">
         <thead>
           <tr>
             <th v-if="authStore.isAdmin">User</th>
@@ -19,7 +19,7 @@
           </tr>
         </thead>
         <tbody>
-          <tr v-for="cert in certificates.values()" :key="cert.id">
+          <tr v-for="cert in activeCertificates" :key="cert.id">
             <td :id="'UserId-' + cert.id" v-if="authStore.isAdmin">{{ userStore.idToName(cert.user_id) }}</td>
             <td :id="'CertName-' + cert.id" >{{ cert.name.cn }}</td>
             <td :id="'CertGroup-' + cert.id" v-if="hasAnyOU">{{ cert.name.ou ?? '' }}</td>
@@ -63,12 +63,11 @@
                   Download
                 </button>
                 <button
-                    :id="'DeleteButton-' + cert.id"
-                    v-if="authStore.isAdmin"
-                    class="btn btn-danger btn-sm flex-grow-1"
-                    @click="confirmDeletion(cert)"
+                    v-if="cert.certificate_type === CertificateType.TLSClient || cert.certificate_type === CertificateType.TLSServer"
+                    class="btn btn-warning btn-sm flex-grow-1"
+                    @click="confirmRevocation(cert)"
                 >
-                  Delete
+                  Revoke
                 </button>
               </div>
             </td>
@@ -88,6 +87,63 @@
 
     <div v-if="loading" class="text-center mt-3">Loading certificates...</div>
     <div v-if="error" class="alert alert-danger mt-3">{{ error }}</div>
+
+    <div class="mt-5 pt-3 border-top">
+      <div
+          class="d-flex align-items-center text-muted"
+          style="cursor: pointer; user-select: none;"
+          @click="showRevoked = !showRevoked"
+      >
+        <h6 class="mb-0 text-uppercase fw-bold" style="font-size: 0.85rem; letter-spacing: 0.05rem;">
+          Revoked Certificates
+        </h6>
+        <span class="ms-2 small">{{ showRevoked ? '−' : '+' }}</span>
+      </div>
+
+      <div v-if="showRevoked" class="mt-3">
+        <div class="table-responsive">
+          <table class="table table-sm table-borderless align-middle revoked-certificates-table">
+            <thead>
+            <tr class="text-muted border-bottom" style="font-size: 0.8rem;">
+              <th v-if="authStore.isAdmin">User</th>
+              <th>Name</th>
+              <th v-if="hasAnyOU">Group</th>
+              <th class="d-none d-md-table-cell">Type</th>
+              <th class="d-none d-md-table-cell">Created</th>
+              <th>Revoked</th>
+              <th class="d-none d-md-table-cell text-end">CA ID</th>
+              <th class="text-end">Actions</th>
+            </tr>
+            </thead>
+            <tbody class="text-muted" style="font-size: 0.85rem;">
+            <tr v-for="cert in revokedCertificates" :key="cert.id" class="opacity-75">
+              <td v-if="authStore.isAdmin">{{ userStore.idToName(cert.user_id) }}</td>
+              <td class="fw-medium">{{ cert.name.cn }}</td>
+              <td v-if="hasAnyOU">{{ cert.name.ou ?? '' }}</td>
+              <td class="d-none d-md-table-cell">{{ CertificateType[cert.certificate_type] }}</td>
+              <td class="d-none d-md-table-cell">{{ new Date(cert.created_on).toLocaleDateString() }}</td>
+              <td>{{ cert.revoked_at ? new Date(cert.revoked_at * 1000).toLocaleDateString() : 'Unknown' }}</td>
+              <td class="d-none d-md-table-cell text-end">{{ cert.ca_id }}</td>
+              <td class="text-end">
+                <button
+                    class="btn btn-link btn-sm text-decoration-none text-secondary p-0"
+                    title="Delete Record"
+                    @click="confirmDeletion(cert)"
+                >
+                  <small>Delete</small>
+                </button>
+              </td>
+            </tr>
+            <tr v-if="revokedCertificates.length === 0">
+              <td colspan="7" class="text-center py-4 text-muted italic">
+                <small>No revoked certificates found.</small>
+              </td>
+            </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
 
     <!-- Generate Certificate Modal -->
     <div
@@ -295,6 +351,37 @@
       </div>
     </div>
 
+    <!-- Revocation Confirmation Modal -->
+    <div
+        v-if="isRevokeModalVisible"
+        class="modal show d-block"
+        tabindex="-1"
+        style="background: rgba(0, 0, 0, 0.5)"
+    >
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Revoke Certificate</h5>
+            <button type="button" class="btn-close" @click="closeRevokeModal"></button>
+          </div>
+          <div class="modal-body">
+            <p>
+              Are you sure you want to revoke the certificate
+              <strong>{{ certToRevoke?.name.cn }}</strong>?
+            </p>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" @click="closeRevokeModal">
+              Cancel
+            </button>
+            <button type="button" class="btn btn-warning" @click="revokeCertificate">
+              Revoke
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Delete Confirmation Modal -->
     <div
         v-if="isDeleteModalVisible"
@@ -315,8 +402,7 @@
             </p>
             <p class="text-warning">
               <small>
-                Disclaimer: Deleting the certificate will not revoke it. The certificate will remain
-                valid until its expiration date.
+                Disclaimer: Deleting the certificate will remove it from CRL creation since no information on deleted certificates is kept.
               </small>
             </p>
           </div>
@@ -357,6 +443,12 @@ const caStore = useCAStore();
 const shownCerts = ref(new Set<number>());
 
 const certificates = computed(() => certificateStore.certificates);
+const activeCertificates = computed(() => {
+  return Array.from(certificates.value.values()).filter(cert => !cert.revoked_at);
+});
+const revokedCertificates = computed(() => {
+  return Array.from(certificates.value.values()).filter(cert => !!cert.revoked_at);
+});
 const settings = computed(() => settingStore.settings);
 const loading = computed(() => certificateStore.loading);
 const error = computed(() => certificateStore.error);
@@ -364,7 +456,11 @@ const hasAnyOU = computed(() => Array.from(certificates.value.values()).some(cer
 
 const isDeleteModalVisible = ref(false);
 const isGenerateModalVisible = ref(false);
+const isRevokeModalVisible = ref(false);
+const showRevoked = ref(false);
+
 const certToDelete = ref<Certificate | null>(null);
+const certToRevoke = ref<Certificate | null>(null);
 
 const passwordRule = computed(() => {
   return settings.value?.common.password_rule ?? PasswordRule.Optional;
@@ -462,6 +558,24 @@ const deleteCertificate = async () => {
   if (certToDelete.value) {
     await certificateStore.deleteCertificate(certToDelete.value.id);
     closeDeleteModal();
+  }
+};
+
+const confirmRevocation = (cert: Certificate) => {
+  certToRevoke.value = cert;
+  isRevokeModalVisible.value = true;
+};
+
+const closeRevokeModal = () => {
+  certToRevoke.value = null;
+  isRevokeModalVisible.value = false;
+};
+
+const revokeCertificate = async () => {
+  if (certToRevoke.value) {
+    const certId = certToRevoke.value.id;
+    await certificateStore.revokeCertificate(certId);
+    closeRevokeModal();
   }
 };
 

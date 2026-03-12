@@ -13,6 +13,7 @@ export interface Settings {
         password_enabled: boolean;
         password_rule: PasswordRule;
         vaultls_url: string;
+        crl_next_update_hours: number;
     },
     mail: {
         smtp_host: string,
