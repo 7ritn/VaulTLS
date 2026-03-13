@@ -71,11 +71,37 @@
       <div class="p-3">
         <a
             href="#"
-            class="nav-link d-flex align-items-center gap-2"
+            class="nav-link d-flex align-items-center gap-2 mb-2"
             @click="handleLogout"
         >
           Logout
         </a>
+        <div class="d-flex justify-content-center gap-2 mt-2">
+          <button
+              class="btn btn-sm"
+              :class="themeStore.theme === 'light' ? 'btn-primary' : 'btn-outline-secondary'"
+              @click="themeStore.setTheme('light')"
+              title="Light Mode"
+          >
+            <i class="bi bi-sun-fill"></i>
+          </button>
+          <button
+              class="btn btn-sm"
+              :class="themeStore.theme === 'dark' ? 'btn-primary' : 'btn-outline-secondary'"
+              @click="themeStore.setTheme('dark')"
+              title="Dark Mode"
+          >
+            <i class="bi bi-moon-fill"></i>
+          </button>
+          <button
+              class="btn btn-sm"
+              :class="themeStore.theme === 'auto' ? 'btn-primary' : 'btn-outline-secondary'"
+              @click="themeStore.setTheme('auto')"
+              title="Auto Mode"
+          >
+            <i class="bi bi-circle-half"></i>
+          </button>
+        </div>
       </div>
       <div class="text-center text-muted small p-2">
         {{ "Version: " + setupStore.version }}
@@ -92,6 +118,7 @@ import { UserRole } from "@/types/User.ts";
 import { useAuthStore } from "@/stores/auth.ts";
 import {useSettingsStore} from "@/stores/settings.ts";
 import {useSetupStore} from "@/stores/setup.ts";
+import {useThemeStore} from "@/stores/theme.ts";
 defineProps({
   currentTab: String,
   visible: Boolean
@@ -102,6 +129,7 @@ const route = useRoute();
 const router = useRouter();
 const authStore = useAuthStore();
 const setupStore = useSetupStore();
+const themeStore = useThemeStore();
 const isMobile = ref(false);
 
 const activeRouteName = computed(() => route.name);
@@ -186,7 +214,7 @@ onMounted(async () => {
 }
 
 .nav-link {
-  color: #000;
+  color: var(--color-text-primary);
   text-decoration: none;
 }
 

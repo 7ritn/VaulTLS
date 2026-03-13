@@ -3,11 +3,14 @@
   <router-view />
 </template>
 
-<script lang="ts">
-import { defineComponent } from 'vue';
+<script setup lang="ts">
+import { onMounted } from 'vue';
+import { useThemeStore } from '@/stores/theme';
 
-export default defineComponent({
-  name: 'VaulTLS',
+const themeStore = useThemeStore();
+
+onMounted(() => {
+  themeStore.applyTheme();
 });
 </script>
 

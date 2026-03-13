@@ -37,10 +37,10 @@ const authStore = useAuthStore();
 .card {
   max-width: 300px;
   margin: 3%;
-  background-color: #c4d4dc;
+  background-color: var(--color-card);
   border: none;
   border-radius: 12px;
   padding: 1.5rem;
-  box-shadow: 0 2px 8px var(--shadow-color);;
+  box-shadow: 0 2px 8px var(--shadow-color);
 }
 </style>

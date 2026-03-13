@@ -26,3 +26,12 @@
     --danger: var(--color-avatar-5);
 
 }
+
+[data-bs-theme="dark"] {
+    --color-background: #1a1d20;
+    --color-card: #2c3034;
+    --color-hover: #343a40;
+    --color-active: #495057;
+    --color-text-primary: #f8f9fa;
+    --shadow-color: rgba(0, 0, 0, 0.5);
+}
