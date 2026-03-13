@@ -21,7 +21,7 @@ pub(crate) struct AppState {
     pub(crate) mailer: Arc<Mutex<Option<Mailer>>>
 }
 
-#[derive(Deserialize, Serialize, JsonSchema, Debug, Clone)]
+#[derive(Deserialize, Serialize, JsonSchema, Clone)]
 pub struct User {
     pub id: i64,
     pub name: String,
@@ -32,6 +32,17 @@ pub struct User {
     #[serde(skip)]
     pub oidc_id: Option<String>,
     pub role: UserRole
+}
+
+impl fmt::Debug for User {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("User")
+            .field("id", &self.id)
+            .field("name", &self.name)
+            .field("email", &self.email)
+            .field("password_hash", &"REDACTED")
+            .finish()
+    }
 }
 
 #[derive(Default, Deserialize, Serialize, JsonSchema, Debug, Clone, PartialEq)]
