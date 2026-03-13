@@ -4,8 +4,6 @@ use std::path::Path;
 use std::sync::Arc;
 use rocket::{Build, Config, Rocket};
 use rocket::fairing::AdHoc;
-use rocket::http::Method;
-use rocket_cors::{AllowedOrigins, CorsOptions};
 use rocket_okapi::openapi_get_routes;
 use rocket_okapi::rapidoc::{make_rapidoc, GeneralConfig, HideShowConfig, Layout, LayoutConfig, RapiDocConfig, RenderStyle, SchemaConfig, SchemaStyle};
 use rocket_okapi::settings::UrlObject;
@@ -142,17 +140,6 @@ pub async fn create_rocket() -> Rocket<Build> {
 
     trace!("App State: {:?}", app_state);
 
-    let cors = CorsOptions::default()
-        .allowed_origins(AllowedOrigins::all())
-        .allow_credentials(true)
-        .allowed_methods(
-            vec![Method::Get, Method::Post, Method::Put, Method::Delete]
-                .into_iter()
-                .map(From::from)
-                .collect(),
-        )
-        .allow_credentials(true);
-
     info!("Initialization complete.");
 
     let figment = Config::figment()
@@ -219,7 +206,6 @@ pub async fn create_rocket() -> Rocket<Build> {
                 ..Default::default()
             }),
         )
-        .attach(cors.to_cors().unwrap())
         .attach(AdHoc::config::<Settings>())
 }
 
