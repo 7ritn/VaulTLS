@@ -15,7 +15,6 @@ pub(crate) struct OidcAuth {
     callback_url: RedirectUrl,
     provider: CoreProviderMetadata,
     http_client: reqwest::Client,
-    oidc_state: HashMap<String, (PkceCodeVerifier, Nonce)>,
 }
 
 impl OidcAuth {
@@ -32,11 +31,11 @@ impl OidcAuth {
 
         let provider = CoreProviderMetadata::discover_async(issuer_url, &http_client).await?;
         
-        Ok(OidcAuth{ client_id, client_secret, callback_url, provider, http_client, oidc_state: Default::default() })
+        Ok(OidcAuth{ client_id, client_secret, callback_url, provider, http_client })
     }
 
     /// Generate OIDC authentication URL
-    pub(crate) fn generate_oidc_url(&mut self) -> Result<Url, anyhow::Error> {
+    pub(crate) fn generate_oidc_url(&mut self) -> Result<(Url, PkceCodeVerifier, Nonce), anyhow::Error> {
         let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
 
         let client = CoreClient::from_provider_metadata(
@@ -45,7 +44,7 @@ impl OidcAuth {
             self.client_secret.clone())
             .set_redirect_uri(self.callback_url.clone());
 
-        let (auth_url, csrf_token, nonce) = client
+        let (auth_url, _csrf_token, nonce) = client
             .authorize_url(
                 CoreAuthenticationFlow::AuthorizationCode,
                 CsrfToken::new_random,
@@ -57,17 +56,11 @@ impl OidcAuth {
             .set_pkce_challenge(pkce_challenge)
             .url();
 
-        let session_id = csrf_token.secret().clone();
-        self.oidc_state.insert(session_id.clone(), (pkce_verifier, nonce));
-
-        Ok(auth_url)
+        Ok((auth_url, pkce_verifier, nonce))
     }
 
     /// Verify the callback code, which the client received from OIDC provider
-    pub(crate) async fn verify_auth_code(&mut self, code: String, state: String) -> anyhow::Result<User> {
-        if ! self.oidc_state.contains_key(&state) { return Err(anyhow!("State does not exist")) }
-        let (stored_pkce, stored_nonce) = self.oidc_state.remove(&state).unwrap();
-
+    pub(crate) async fn verify_auth_code(&mut self, code: String, pkce: PkceCodeVerifier, nonce: Nonce) -> anyhow::Result<User> {
         let auth_code = AuthorizationCode::new(code.clone());
 
         let client = CoreClient::from_provider_metadata(
@@ -79,7 +72,7 @@ impl OidcAuth {
         // Exchange the code for tokens
         let token_response = client
             .exchange_code(auth_code)?
-            .set_pkce_verifier(stored_pkce)
+            .set_pkce_verifier(pkce)
             .request_async(&self.http_client)
             .await?;
         
@@ -87,7 +80,7 @@ impl OidcAuth {
 
         let id_token_verifier = client.id_token_verifier();
 
-        let claims = id_token.claims(&id_token_verifier, &stored_nonce)?;
+        let claims = id_token.claims(&id_token_verifier, &nonce)?;
         if let Some(expected_access_token_hash) = claims.access_token_hash() {
             let actual_access_token_hash = AccessTokenHash::from_token(
                 token_response.access_token(),

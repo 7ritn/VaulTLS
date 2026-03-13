@@ -1,3 +1,4 @@
+use openidconnect::{Nonce, PkceCodeVerifier};
 use rocket_okapi::openapi;
 use rocket::{delete, get, post, put, State};
 use rocket::response::Redirect;
@@ -122,6 +123,7 @@ pub(crate) async fn login(
 
             let cookie = Cookie::build(("auth_token", token.clone()))
                 .http_only(true)
+                .secure(true)
                 .same_site(SameSite::Lax);
             jar.add_private(cookie);
 
@@ -196,43 +198,47 @@ pub(crate) async fn logout(
 /// Endpoint to initiate OIDC login.
 pub(crate) async fn oidc_login(
     state: &State<AppState>,
+    jar: &CookieJar<'_>
 ) -> Result<Redirect, ApiError> {
     let mut oidc_option = state.oidc.lock().await;
-
-    match &mut *oidc_option {
-        Some(oidc) => {
-            let url = oidc.generate_oidc_url()?;
-            debug!(url=?url, "Redirecting to OIDC login URL");
-            Ok(Redirect::to(url.to_string()))
-
-        }
-        None => {
-            // OIDC is not active? Maybe it has since become available
-            // Retry setting up OIDC
-            let oidc_settings = state.settings.get_oidc();
-            let oidc = match oidc_settings.auth_url.is_empty() {
-                true => None,
-                false => {
-                    debug!("OIDC enabled. Trying to connect to {}.", oidc_settings.auth_url);
-                    OidcAuth::new(&oidc_settings).await.ok()
-                }
-            };
-
-            match oidc {
-                Some(mut oidc) => {
-                    info!("OIDC is active.");
-                    let url = oidc.generate_oidc_url()?;
-                    *oidc_option = Some(oidc);
-                    debug!(url=?url, "Redirecting to OIDC login URL");
-                    Ok(Redirect::to(url.to_string()))
-                }
-                None => {
-                    warn!("A user tried to login with OIDC, but OIDC is not configured.");
-                    Err(ApiError::BadRequest("OIDC not configured".to_string()))
-                }
+    if oidc_option.is_none() {
+        // OIDC is not active? Maybe it has since become available
+        // Retry setting up OIDC
+        let oidc_settings = state.settings.get_oidc();
+        let oidc = match oidc_settings.auth_url.is_empty() {
+            true => None,
+            false => {
+                debug!("OIDC enabled. Trying to connect to {}.", oidc_settings.auth_url);
+                OidcAuth::new(&oidc_settings).await.ok()
             }
-        },
+        };
+
+        if oidc.is_none() {
+            warn!("A user tried to login with OIDC, but OIDC is not configured.");
+            return Err(ApiError::BadRequest("OIDC not configured".to_string()))
+        } else {
+            info!("OIDC is active.");
+        }
     }
+
+    let oidc = oidc_option.as_mut().unwrap();
+    let (url, pkce_verifier, nonce) = oidc.generate_oidc_url()?;
+
+    let state_data = serde_json::json!({
+                "verifier": pkce_verifier.secret(),
+                "nonce": nonce.secret(),
+            }).to_string();
+
+    let cookie = Cookie::build(("oidc_state", state_data))
+        .http_only(true)
+        .secure(true)
+        .same_site(SameSite::Lax)
+        .max_age(rocket::time::Duration::minutes(5));
+
+    jar.add_private(cookie);
+
+    debug!(url=?url, "Redirecting to OIDC login URL");
+    Ok(Redirect::to(url.to_string()))
 }
 
 #[openapi(tag = "Authentication")]
@@ -248,7 +254,19 @@ pub(crate) async fn oidc_callback(
     match &mut *oidc_option {
         Some(oidc) => {
             trace!("Verifying OIDC authentication code.");
-            let mut user = oidc.verify_auth_code(response.code.to_string(), response.state.to_string()).await?;
+
+            let cookie = jar.get_private("oidc_state")
+                .ok_or_else(|| ApiError::BadRequest("OIDC state cookie missing".into()))?;
+
+            let state_json: serde_json::Value = serde_json::from_str(cookie.value())
+                .map_err(|_| ApiError::BadRequest("Invalid state format".into()))?;
+
+            let pkce_verifier = PkceCodeVerifier::new(state_json["verifier"].as_str().unwrap().to_string());
+            let nonce = Nonce::new(state_json["nonce"].as_str().unwrap().to_string());
+
+            jar.remove_private("oidc_state");
+
+            let mut user = oidc.verify_auth_code(response.code.to_string(), pkce_verifier, nonce).await?;
 
             user = state.db.register_oidc_user(user).await?;
 
@@ -257,6 +275,7 @@ pub(crate) async fn oidc_callback(
 
             let auth_cookie = Cookie::build(("auth_token", token))
                 .http_only(true)
+                .secure(true)
                 .same_site(SameSite::Lax);
             jar.add_private(auth_cookie);
 
