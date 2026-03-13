@@ -110,6 +110,7 @@
               <th v-if="hasAnyOU">Group</th>
               <th class="d-none d-md-table-cell">Type</th>
               <th class="d-none d-md-table-cell">Created</th>
+              <th class="d-none d-md-table-cell">Validity</th>
               <th>Revoked</th>
               <th class="d-none d-md-table-cell text-end">CA ID</th>
               <th class="text-end">Actions</th>
@@ -122,6 +123,7 @@
               <td v-if="hasAnyOU">{{ cert.name.ou ?? '' }}</td>
               <td class="d-none d-md-table-cell">{{ CertificateType[cert.certificate_type] }}</td>
               <td class="d-none d-md-table-cell">{{ new Date(cert.created_on).toLocaleDateString() }}</td>
+              <td class="d-none d-md-table-cell">{{ new Date(cert.valid_until).toLocaleDateString() }}</td>
               <td>{{ cert.revoked_at ? new Date(cert.revoked_at * 1000).toLocaleDateString() : 'Unknown' }}</td>
               <td class="d-none d-md-table-cell text-end">{{ cert.ca_id }}</td>
               <td class="text-end">
