@@ -680,7 +680,7 @@ pub(crate) async fn revoke_certificate(
 }
 
 #[openapi(tag = "Certificates")]
-#[get("/ca/<id>/crl")]
+#[get("/certificates/ca/<id>/crl")]
 /// Get the Certificate Revocation List (CRL) for a TLS CA.
 pub(crate) async fn download_crl(
     state: &State<AppState>,

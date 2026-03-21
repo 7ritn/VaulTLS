@@ -18,5 +18,5 @@ export const deleteCA = async (id: number): Promise<void> => {
 };
 
 export const downloadCRL = async (id: number): Promise<void> => {
-    await ApiClient.download(`/ca/${id}/crl`);
+    await ApiClient.download(`/certificates/ca/${id}/crl`);
 };
