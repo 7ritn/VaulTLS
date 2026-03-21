@@ -20,8 +20,8 @@ I also did not have an overview about the expiration of individual certificates.
 - ⚡ Built with Rust (backend) and Vue.js (frontend) for performance and reliability
 
 ## Screenshots
-![WebUI CAs](https://github.com/7ritn/VaulTLS/blob/main/assets/screenshot-ca.png)
-![WebUI Users](https://github.com/7ritn/VaulTLS/blob/main/assets/screenshot-users.png)
+![WebUI CAs](https://github.com/7ritn/VaulTLS/blob/main/assets/vaultls-ca.png)
+![WebUI Users](https://github.com/7ritn/VaulTLS/blob/main/assets/vaultls-users.png)
 
 ## Installation
 Installation is managed through a Container. The app *needs* to be behind a reverse proxy for TLS handling.
