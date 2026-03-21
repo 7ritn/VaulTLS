@@ -95,18 +95,28 @@ impl VaulTLSDB {
 
         Self::migrate_database(&mut connection)?;
 
+        // ToDo fix when to migrate
+        if !db_encrypted && let Ok(ref db_secret_result) = db_secret_result {
+            let db_secret = db_secret_result.clone();
+            Self::create_encrypt_db(&connection, &db_secret)?;
+            drop(connection);
+            Self::migrate_to_encrypted_db()?;
+            info!("Migrated to encrypted database");
+            let manager = SqliteConnectionManager::file(DB_FILE_PATH)
+                .with_init(move |conn| {
+                    conn.pragma_update(None, "key", db_secret.clone())?;
+                    conn.pragma_update(None, "foreign_keys", "ON")?;
+                    Ok(())
+                });
+
+            let pool = Pool::builder()
+                .max_size(1)
+                .build(manager)?;
+
+            return Ok(Self { pool });
+        }
+
         Ok(Self { pool })
-    }
-
-    pub(crate) fn migrate_to_encrypted(db_secret: &str) -> Result<()> {
-        let connection = Connection::open(DB_FILE_PATH)?;
-        connection.pragma_update(None, "foreign_keys", "ON")?;
-
-        Self::create_encrypt_db(&connection, db_secret)?;
-        drop(connection);
-        Self::migrate_to_encrypted_db()?;
-        info!("Migrated to encrypted database");
-        Ok(())
     }
 
     /// Create a new encrypted database with cloned data
