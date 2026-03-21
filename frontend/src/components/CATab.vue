@@ -22,7 +22,11 @@
           <td :id="'CAGroup-' + ca.id" v-if="hasAnyOU">{{ ca.name.ou ?? '' }}</td>
           <td :id="'CAType-' + ca.id">{{ CAType[ca.ca_type] }}</td>
           <td :id="'CreatedOn-' + ca.id" class="d-none d-lg-table-cell">{{ new Date(ca.created_on).toLocaleDateString() }}</td>
-          <td :id="'ValidUntil-' + ca.id">{{ new Date(ca.valid_until).toLocaleDateString() }}</td>
+          <td :id="'ValidUntil-' + ca.id">
+            <span v-if="ca.valid_until != -1">
+              {{ new Date(ca.valid_until).toLocaleDateString() }}
+            </span>
+          </td>
           <td>
             <div class="d-flex flex-sm-row flex-column gap-1">
               <button
@@ -156,7 +160,7 @@
             <button
                 type="button"
                 class="btn btn-primary"
-                :disabled="loading || !caReq.ca_name.cn || !caReq.validity_duration"
+                :disabled="loading || !caReq.ca_name.cn || (!caReq.validity_duration && caReq.ca_type == CAType.TLS)"
                 @click="createCA"
             >
               <span v-if="loading">Creating...</span>

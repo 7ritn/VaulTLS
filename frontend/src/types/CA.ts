@@ -9,8 +9,8 @@ export enum CAType {
 export interface CA {
     id: number;                           // Unique identifier for the CA
     name: Name;                           // CA name
-    created_on: string;                   // Date when the CA was created (UNIX timestamp in ms)
-    valid_until: string;                  // Expiration date of the CA (UNIX timestamp in ms)
+    created_on: number;                   // Date when the CA was created (UNIX timestamp in ms)
+    valid_until: number;                  // Expiration date of the CA (UNIX timestamp in ms)
     ca_type: CAType;                      // CA type
 }
 
