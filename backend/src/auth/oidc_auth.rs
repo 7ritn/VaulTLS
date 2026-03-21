@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use anyhow::anyhow;
 use crate::settings::OIDC;
 use openidconnect::core::{CoreAuthenticationFlow, CoreClient, CoreProviderMetadata, CoreUserInfoClaims};
