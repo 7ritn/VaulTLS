@@ -1,14 +1,17 @@
 ![VaulTLS Logo](https://github.com/7ritn/VaulTLS/blob/main/assets/logoText.png)
 
 VaulTLS is a modern solution for managing mTLS (mutual TLS) certificates with ease.
-It provides a centralized platform for generating, managing, and distributing client (and server) TLS certificates for your home lab.
+It provides a centralized platform for generating, managing, and distributing TLS certificates for your home lab.
 
 The main reason why I developed VaulTLS was that I didn't like messing with shell scripts and OpenSSL.
 I also did not have an overview about the expiration of individual certificates.
 
+![WebUI Overview](https://github.com/7ritn/VaulTLS/blob/main/assets/vaultls-overview.png)
+
 ## Features
 
-- 🔒 mTLS client and CA certificate management
+- 🔒 Comprehensive TLS X.509 certificate management
+- 💻 SSH certificate management
 - 📱 Modern web interface for certificate management
 - 🔐 OpenID Connect authentication support
 - 📨 Email notifications for certificate expiration
@@ -17,8 +20,8 @@ I also did not have an overview about the expiration of individual certificates.
 - ⚡ Built with Rust (backend) and Vue.js (frontend) for performance and reliability
 
 ## Screenshots
-![WebUI Overview](https://github.com/7ritn/VaulTLS/blob/main/assets/screenshot_overview.jpg)
-![WebUI Users](https://github.com/7ritn/VaulTLS/blob/main/assets/screenshot_user.jpg)
+![WebUI CAs](https://github.com/7ritn/VaulTLS/blob/main/assets/screenshot-ca.png)
+![WebUI Users](https://github.com/7ritn/VaulTLS/blob/main/assets/screenshot-users.png)
 
 ## Installation
 Installation is managed through a Container. The app *needs* to be behind a reverse proxy for TLS handling.
@@ -67,53 +70,59 @@ For VaulTLS the required variables can be configured via environmental variables
 | `VAULTLS_OIDC_ID`           | `[client_id]`                                        |
 | `VAULTLS_OIDC_SECRET`       | `[client_secret]`                                    |
 
-If VaulTLS claims that OIDC is not configured, the most likely cause is that it couldn't discover the OIDC provider based on the `VAULTLS_OIDC_AUTH_URL` given. In general the the base url to the auth provider should be enough. For Authentik the required URL path is `/application/o/<application slug>/`. If that doesn't work, directly specify the .well_known url. 
+If VaulTLS claims that OIDC is not configured, the most likely cause is that it couldn't discover the OIDC provider based on the `VAULTLS_OIDC_AUTH_URL` given. In general the base url to the auth provider should be enough. For Authentik the required URL path is `/application/o/<application slug>/`. If that doesn't work, directly specify the .well_known url. 
 
 ### Container Secrets
-Certain environment variables can be Container Secrets instead of regular variables.
+Certain environment variables can be container secrets instead of regular variables.
 VaulTLS will try to read secrets from `/run/secrets/<ENV_NAME>`, if you want to specify a different path, you can do so in the environmental variable.
 The following variables support secrets:
-- VAULTLS_API_SECRET
-- VAULTLS_DB_SECRET
-- VAULTLS_OIDC_SECRET
+- `VAULTLS_API_SECRET`
+- `VAULTLS_DB_SECRET`
+- `VAULTLS_OIDC_SECRET`
 
 ## Usage
-During the first setup a Certificate Authority is automatically created. If OIDC is configured no password needs to be set.
-Users can either log in via password or OIDC. If a user first logs in via OIDC their e-mail is matched with all VaulTLS users and linked.
-If no user is found a new one is created.
+During the first setup a TLS Certificate Authority is automatically created. If OIDC is configured, no password needs to be set.
+Users can either log in via password or OIDC. If a user first logs in via OIDC, their e-mail is matched with all VaulTLS users and linked.
+If no user is found, a new one is created.
 
 Users can only see certificates created for them. Only admins can create new certificates.
 User certificates can be downloaded through the web interface.
 
-The current CA certificate to be integrated with your reverse proxy is available as a file at /app/data/ca/ca.cert 
-and as download via the API endpoint /api/certificates/ca/download.
+The current CA certificate to be integrated with your reverse proxy is available as a file at `/app/data/ca/ca.cert` 
+and as download via the API endpoint `/api/certificates/ca/download`.
 
-Further API documentation is available at the endpoint /api
+Further API documentation is available at the endpoint `/api`
 
-### PKCS12 Passwords
-By default, PKCS12 passwords are optional and certificates will be generated with no password. In the settings page, the PKCS12 password requirements can be set with the following options:
+### TLS Certificate Passwords
+Certificates downloaded come in the PKCS#12 file format. They are a bundle consisting of the public certificate and private key. By default, PKCS#12 passwords are optional and certificates will be generated with no password. On the settings page, the PKCS#12 password requirements can be set with the following options:
 
-| PKCS12 Password Rule  | Result                                              |
-|-----------------------|-----------------------------------------------------|
-| Optional              | Passwords are optional and can be blank             |
-| Required              | Passwords are required, but can be system generated |
-| System Generated      | Random passwords will be generated                  |
+| PKCS12 Password Rule  | Result                                           |
+|-----------------------|--------------------------------------------------|
+| Optional              | Passwords are optional and can be blank          |
+| Required              | Passwords are required, and can be user supplied |
+| System Generated      | Random passwords will be generated               |
 
 Passwords are stored in the database and retrieved from the web interface only when the user clicks on view password.
 
-### Server Certificates
-Since version v0.7.0 VaulTLS also has support for server certificates.
+### TLS Server Certificates
+VaulTLS also has support for server certificates.
 The user flow remains quite similar with the difference that SAN DNS entries can be specified.
 Download is also using a possibly password-protected PKCS#12 file.
-Since most reverse proxies require the certificate and private key to be supplied separately, the p12 may need to be split.
+Since most reverse proxies require the certificate and private key to be supplied separately, the PKCS#12 file may need to be split.
 This can be done, for example, with openssl:
 ```sh
 openssl pkcs12 -in INFILE.p12 -out OUTFILE.crt -nokeys
 openssl pkcs12 -in INFILE.p12 -out OUTFILE.key -nodes -nocerts
 ```
 
+### Certificate Revocation Lists (CRL)
+TLS certificates cannot be simply deleted since their validity period is cryptographically encoded in the certificate. VaulTLS provides the CRL mechanism to revoke certificates. This file is used by the validation side (such as the server for client certificates) to check if the certificate has been revoked. CRLs are stored as files under `/app/data/crl/`. They can be downloaded in the CA tab of the frontend and can be retrieved from the API under `/api/certificates/ca/<id>/crl`. They do not require authentication to be accessed.
+
+### SSH Certificates
+VaulTLS also supports SSH certificates. To use these you must manually create a new SSH CA in the CA tab. Since SSH does not provide a bundled file format to store the private key and certificate, the file is provided as a ZIP archive.
+
 ### Caddy
-To use caddy as reverse proxy for the VaulTLS app, a configuration like the following is required.
+To use caddy as a reverse proxy for the VaulTLS app, a configuration like the following is required.
 ```caddyfile
 reverse_proxy 127.0.0.1:5173
 ```
@@ -153,5 +162,4 @@ abort @blocked
 
 ## Roadmap
 - Allow user details to be updated
-- Generate new certificates automatically if the old one expires soon
 - Improve testing
