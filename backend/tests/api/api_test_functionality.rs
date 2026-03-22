@@ -540,7 +540,7 @@ async fn test_revocation_and_crl() -> Result<()> {
     assert_eq!(response.status(), Status::Ok);
 
     // Check CRL
-    let request = client.get(formatcp!("/ca/1/crl"));
+    let request = client.get(formatcp!("/certificates/ca/1/crl"));
     let response = request.dispatch().await;
     assert_eq!(response.status(), Status::Ok);
 
