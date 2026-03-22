@@ -1,3 +1,4 @@
+use std::env;
 use openidconnect::{Nonce, PkceCodeVerifier};
 use rocket_okapi::openapi;
 use rocket::{delete, get, post, put, State};
@@ -121,10 +122,14 @@ pub(crate) async fn login(
             let jwt_key = state.settings.get_jwt_key()?;
             let token = generate_token(&jwt_key, user.id, user.role)?;
 
-            let cookie = Cookie::build(("auth_token", token.clone()))
+            let mut cookie = Cookie::build(("auth_token", token.clone()))
                 .http_only(true)
-                .secure(true)
                 .same_site(SameSite::Lax);
+
+            if let Ok(insecure) = env::var("VAULTLS_INSECURE") && insecure == "true" {
+                cookie = cookie.secure(true);
+            }
+
             jar.add_private(cookie);
 
             info!(user=user.name, "Successful password-based user login.");
@@ -229,11 +234,14 @@ pub(crate) async fn oidc_login(
                 "nonce": nonce.secret(),
             }).to_string();
 
-    let cookie = Cookie::build(("oidc_state", state_data))
+    let mut cookie = Cookie::build(("oidc_state", state_data))
         .http_only(true)
-        .secure(true)
         .same_site(SameSite::Lax)
         .max_age(rocket::time::Duration::minutes(5));
+
+    if let Ok(insecure) = env::var("VAULTLS_INSECURE") && insecure == "true" {
+        cookie = cookie.secure(true);
+    }
 
     jar.add_private(cookie);
 
@@ -273,11 +281,15 @@ pub(crate) async fn oidc_callback(
             let jwt_key = state.settings.get_jwt_key()?;
             let token = generate_token(&jwt_key, user.id, user.role)?;
 
-            let auth_cookie = Cookie::build(("auth_token", token))
+            let mut cookie = Cookie::build(("auth_token", token))
                 .http_only(true)
-                .secure(true)
                 .same_site(SameSite::Lax);
-            jar.add_private(auth_cookie);
+
+            if let Ok(insecure) = env::var("VAULTLS_INSECURE") && insecure == "true" {
+                cookie = cookie.secure(true);
+            }
+
+            jar.add_private(cookie);
 
             info!(user=user.name, "Successful oidc-based user login");
 
