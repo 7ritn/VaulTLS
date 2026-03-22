@@ -134,8 +134,11 @@ pub(crate) struct Common {
     vaultls_url: String,
     #[serde(default)]
     password_rule: PasswordRule,
+    #[serde(default = "default_crl_hours")]
     crl_next_update_hours: i64,
 }
+
+fn default_crl_hours() -> i64 { 7 * 24 }
 
 impl Common {
     /// Replace common settings with environment variables.
@@ -321,13 +324,24 @@ impl InnerSettings {
 impl Settings {
     /// Load saved settings from a file
     pub(crate) fn load_from_file(file_path: Option<&str>) -> Result<Self, ApiError> {
-        let settings_string = fs::read_to_string(file_path.unwrap_or(SETTINGS_FILE_PATH))
-            .unwrap_or("{}".to_string());
-        let mut settings: InnerSettings = serde_json::from_str(&settings_string).unwrap_or(Default::default());
+        let path = file_path.unwrap_or(SETTINGS_FILE_PATH);
+
+        let mut settings = if std::path::Path::new(path).exists() {
+            let settings_string = fs::read_to_string(path)
+                .map_err(|e| ApiError::Other(format!("Failed to read settings: {e}")))?;
+
+            serde_json::from_str::<InnerSettings>(&settings_string)
+                .map_err(|e| ApiError::Other(format!("Settings file is corrupt! Refusing to overwrite: {e}")))?
+        } else {
+            InnerSettings::default()
+        };
+
         settings.common.load_from_env();
         settings.mail.load_from_env();
         settings.oidc.load_from_env();
-        settings.save_to_file(None)?;
+
+        settings.save_to_file(Some(path))?;
+
         Ok(Settings(Arc::new(RwLock::new(settings))))
     }
 
