@@ -232,6 +232,12 @@ impl TLSCertificateBuilder {
 
         self.x509.set_issuer_name(ca_cert.subject_name())?;
 
+        let subject_key_identifier = SubjectKeyIdentifier::new().build(&self.x509.x509v3_context(None, None))?;
+        self.x509.append_extension(subject_key_identifier)?;
+        
+        let authority_key_identifier = AuthorityKeyIdentifier::new().keyid(true).build(&self.x509.x509v3_context(Some(&ca_cert), None))?;
+        self.x509.append_extension(authority_key_identifier)?;
+
         self.x509.sign(&ca_key, MessageDigest::sha256())?;
         let cert = self.x509.build();
 
