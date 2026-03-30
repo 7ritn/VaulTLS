@@ -168,7 +168,7 @@ impl TLSCertificateBuilder {
         let cn = create_cn(&name)?;
         self.x509.set_issuer_name(&cn)?;
 
-        let basic_constraints = BasicConstraints::new().ca().build()?;
+        let basic_constraints = BasicConstraints::new().critical().ca().build()?;
         self.x509.append_extension(basic_constraints)?;
 
         let key_usage = KeyUsage::new()
