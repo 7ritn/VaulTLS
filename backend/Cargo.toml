@@ -49,7 +49,7 @@ parking_lot = "0.12.5"
 uuid = { version = "1.22.0", features = ["v4"] }
 ssh-key = { version = "0.6.7", features = ["ed25519", "alloc", "serde", "encryption"] }
 rand = "0.10.0"
-zip = "8.2.0"
+zip = "8.4.0"
 rand_core = "0.10.0"
 rcgen = { version = "0.14.7", features = ["pem", "x509-parser", "crypto", "aws_lc_rs"] }
 rustls-pki-types = "1.14.0"
