@@ -33,7 +33,7 @@ jsonwebtoken = { version = "10.3.0", features = ["rust_crypto"] }
 openidconnect = "4.0.1"
 anyhow = "1.0.102"
 num_enum = "0.7.5"
-lettre = { version = "0.11.19", features = ["tokio1", "builder", "smtp-transport", "tokio1-native-tls"] }
+lettre = { version = "0.11.20", features = ["tokio1", "builder", "smtp-transport", "tokio1-native-tls"] }
 maud = "0.27.0"
 chrono = "0.4.44"
 tokio = { version = "1.50.0", features = ["macros", "rt-multi-thread"] }
