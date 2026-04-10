@@ -122,12 +122,13 @@ pub(crate) async fn login(
             let jwt_key = state.settings.get_jwt_key()?;
             let token = generate_token(&jwt_key, user.id, user.role)?;
 
-            let mut cookie = Cookie::build(("auth_token", token.clone()))
+            let mut cookie = Cookie::build(("auth_token", token))
                 .http_only(true)
-                .same_site(SameSite::Lax);
+                .same_site(SameSite::Lax)
+                .secure(true);
 
             if let Ok(insecure) = env::var("VAULTLS_INSECURE") && insecure == "true" {
-                cookie = cookie.secure(true);
+                cookie = cookie.secure(false);
             }
 
             jar.add_private(cookie);
@@ -237,10 +238,11 @@ pub(crate) async fn oidc_login(
     let mut cookie = Cookie::build(("oidc_state", state_data))
         .http_only(true)
         .same_site(SameSite::Lax)
-        .max_age(rocket::time::Duration::minutes(5));
+        .max_age(rocket::time::Duration::minutes(5))
+        .secure(true);
 
     if let Ok(insecure) = env::var("VAULTLS_INSECURE") && insecure == "true" {
-        cookie = cookie.secure(true);
+        cookie = cookie.secure(false);
     }
 
     jar.add_private(cookie);
@@ -283,10 +285,11 @@ pub(crate) async fn oidc_callback(
 
             let mut cookie = Cookie::build(("auth_token", token))
                 .http_only(true)
-                .same_site(SameSite::Lax);
+                .same_site(SameSite::Lax)
+                .secure(true);
 
             if let Ok(insecure) = env::var("VAULTLS_INSECURE") && insecure == "true" {
-                cookie = cookie.secure(true);
+                cookie = cookie.secure(false);
             }
 
             jar.add_private(cookie);
