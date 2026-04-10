@@ -33,7 +33,7 @@ jsonwebtoken = { version = "10.3.0", features = ["rust_crypto"] }
 openidconnect = "4.0.1"
 anyhow = "1.0.102"
 num_enum = "0.7.5"
-lettre = { version = "0.11.19", features = ["tokio1", "builder", "smtp-transport", "tokio1-native-tls"] }
+lettre = { version = "0.11.20", features = ["tokio1", "builder", "smtp-transport", "tokio1-native-tls"] }
 maud = "0.27.0"
 chrono = "0.4.44"
 tokio = { version = "1.50.0", features = ["macros", "rt-multi-thread"] }
@@ -46,10 +46,10 @@ tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
 derive_deref = "1.1.1"
 parking_lot = "0.12.5"
-uuid = { version = "1.22.0", features = ["v4"] }
+uuid = { version = "1.23.0", features = ["v4"] }
 ssh-key = { version = "0.6.7", features = ["ed25519", "alloc", "serde", "encryption"] }
 rand = "0.10.0"
-zip = "8.2.0"
+zip = "8.3.1"
 rand_core = "0.10.0"
 rcgen = { version = "0.14.7", features = ["pem", "x509-parser", "crypto", "aws_lc_rs"] }
 rustls-pki-types = "1.14.0"
