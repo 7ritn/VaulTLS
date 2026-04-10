@@ -3,7 +3,7 @@ version: '3.8'
 services:
   authelia:
     container_name: authelia
-    image: authelia/authelia:latest
+    image: authelia/authelia:4.39.15
     volumes:
       - ./authelia/:/config
     ports:
