@@ -36,14 +36,30 @@
               >
                 Download
               </button>
-              <button
-                  v-if="ca.ca_type === CAType.TLS"
-                  :id="'CRLButton-' + ca.id"
-                  class="btn btn-outline-primary btn-sm flex-grow-1"
-                  @click="downloadCRL(ca.id)"
-              >
-                CRL
-              </button>
+              <div v-if="ca.ca_type === CAType.TLS" class="btn-group flex-grow-1">
+                <button
+                    type="button"
+                    class="btn btn-outline-primary btn-sm"
+                    @click="downloadCRL(ca.id, 'der')"
+                    :id="'CRLButton-' + ca.id"
+                >
+                  CRL
+                </button>
+                <button
+                    type="button"
+                    class="btn btn-outline-primary btn-sm dropdown-toggle dropdown-toggle-split"
+                    data-bs-toggle="dropdown"
+                    data-bs-popper-config='{"strategy":"fixed"}'
+                    aria-expanded="false"
+                    :id="'CRLDropdown-' + ca.id"
+                >
+                  <span class="visually-hidden">Toggle Dropdown</span>
+                </button>
+                <ul class="dropdown-menu" :aria-labelledby="'CRLDropdown-' + ca.id">
+                  <li><a class="dropdown-item" href="#" @click.prevent="downloadCRL(ca.id, 'der')">DER Format</a></li>
+                  <li><a class="dropdown-item" href="#" @click.prevent="downloadCRL(ca.id, 'pem')">PEM Format</a></li>
+                </ul>
+              </div>
               <button
                   :id="'DeleteButton-' + ca.id"
                   v-if="authStore.isAdmin"
@@ -276,8 +292,8 @@ const downloadCA = async (caId: number) => {
   await caStore.downloadCA(caId);
 };
 
-const downloadCRL = async (caId: number) => {
-  await caStore.downloadCRL(caId);
+const downloadCRL = async (caId: number, format: string = 'der') => {
+  await caStore.downloadCRL(caId, format);
 };
 </script>
 
@@ -292,5 +308,10 @@ const downloadCRL = async (caId: number) => {
 /* When multiple modals are present, we want to stack them properly */
 .modal + .modal {
   z-index: 1051;
+}
+
+.dropdown-toggle-split {
+  max-width: 40px;
+  min-width: 20px;
 }
 </style>

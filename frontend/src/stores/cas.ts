@@ -93,10 +93,10 @@ export const useCAStore = defineStore('ca', {
             }
         },
 
-        async downloadCRL(id: number): Promise<void> {
+        async downloadCRL(id: number, format: string = 'der'): Promise<void> {
             try {
                 this.error = null;
-                await downloadCRL(id);
+                await downloadCRL(id, format);
             } catch (err) {
                 if (axios.isAxiosError(err)) {
                     this.error = 'Failed to download the CRL: ' + err.response?.data?.error;

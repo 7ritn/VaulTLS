@@ -129,3 +129,20 @@ pub enum TimespanUnit {
     Day = 2,
     Hour = 3
 }
+
+#[derive(serde::Deserialize, rocket::form::FromFormField, rocket_okapi::JsonSchema, Clone, Debug, Copy, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum DataFormat {
+    #[default]
+    DER,
+    PEM,
+}
+
+impl From<String> for DataFormat {
+    fn from(value: String) -> Self {
+        match value.to_lowercase().as_str() {
+            "pem" => DataFormat::PEM,
+            _ => DataFormat::DER,
+        }
+    }
+}

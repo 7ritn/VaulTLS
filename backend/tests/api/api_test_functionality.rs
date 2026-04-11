@@ -572,6 +572,33 @@ async fn test_revocation_and_crl() -> Result<()> {
     Ok(())
 }
 
+#[tokio::test]
+async fn test_crl_pem() -> Result<()> {
+    let client = VaulTLSClient::new_with_cert().await;
+
+    // Revoke certificate to ensure CRL has content
+    let request = client.post(formatcp!("/certificates/1/revoke"));
+    let response = request.dispatch().await;
+    assert_eq!(response.status(), Status::Ok);
+
+    // Check CRL in PEM format
+    let request = client.get("/certificates/ca/1/crl?format=pem");
+    let response = request.dispatch().await;
+    assert_eq!(response.status(), Status::Ok);
+
+    let crl_pem_data = response.into_bytes().await.unwrap();
+
+    // Parse PEM CRL using openssl to ensure it's valid
+    let crl = openssl::x509::X509Crl::from_pem(&crl_pem_data)?;
+    
+    // Check that it contains at least one revoked certificate
+    let revoked = crl.get_revoked();
+    assert!(revoked.is_some());
+    assert_eq!(revoked.unwrap().len(), 1);
+
+    Ok(())
+}
+
 async fn establish_tls_connection(
     ca_cert_pem: &[u8],
     client_cert_p12: &[u8],
