@@ -12,6 +12,7 @@ use tracing::{debug, info, trace};
 use tracing_subscriber::EnvFilter;
 use crate::api::*;
 use crate::auth::oidc_auth::OidcAuth;
+use crate::auth::password_auth::Password;
 use crate::certs::tls_cert::migrate_ca_storage;
 use crate::constants::{API_PORT, DB_FILE_PATH, VAULTLS_VERSION};
 use crate::data::objects::AppState;
@@ -90,6 +91,15 @@ pub async fn create_rocket() -> Rocket<Build> {
         fs::set_permissions(db_path, perms).unwrap();
     }
     info!("Database initialized");
+
+    if let Ok(email) = env::var("VAULTLS_ACCOUNT_EMAIL") && let Ok(password) = get_secret("VAULTLS_ACCOUNT_PASSWORD") {
+        info!("Setting password for user {} and exiting", email);
+        let user = db.get_user_by_email(email.clone()).await.expect("Failed to find user");
+        let password_hash = Password::new_double_hash(&password).expect("Failed to hash password");
+        db.set_user_password(user.id, password_hash).await.expect("Failed to set password");
+        info!("Password for user {} successfully set. Exiting.", email);
+        std::process::exit(0);
+    }
 
     let oidc_settings = settings.get_oidc();
     let oidc = match oidc_settings.auth_url.is_empty() {
