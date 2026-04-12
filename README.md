@@ -16,6 +16,7 @@ I also did not have an overview about the expiration of individual certificates.
 - 🔐 OpenID Connect authentication support
 - 📨 Email notifications for certificate expiration
 - 🚀 RESTful API for automation
+- 🤖 ACME CA support (Traefik, acme.sh, and other ACME clients)
 - 🛠 Docker/Podman container support
 - ⚡ Built with Rust (backend) and Vue.js (frontend) for performance and reliability
 
@@ -159,6 +160,14 @@ If you choose `verify_if_given`, you can still block clients for apps that you w
 }
 abort @blocked
 ```
+
+### ACME
+
+VaulTLS can act as an ACME Certificate Authority, allowing clients like Traefik and acme.sh to automatically obtain certificates signed by your VaulTLS CA.
+
+Enable it with `VAULTLS_ACME_ENABLED=true` and create an account in the ACME tab of the admin UI to get EAB credentials.
+
+See the [ACME documentation](docs/acme.md) for full setup instructions including Traefik and acme.sh examples.
 
 ## FAQ
 ### I can not login

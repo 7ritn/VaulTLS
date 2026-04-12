@@ -173,6 +173,37 @@
           </div>
         </div>
       </div>
+
+      <!-- ACME Section -->
+      <h3>ACME</h3>
+      <div class="card mt-3 mb-3">
+        <div class="card-body">
+          <div class="mb-3 form-check form-switch">
+            <input
+                type="checkbox"
+                class="form-check-input"
+                id="acme-enabled"
+                v-model="settings.common.acme_enabled"
+                role="switch"
+            />
+            <label class="form-check-label" for="acme-enabled">
+              ACME server enabled
+            </label>
+          </div>
+          <div class="mb-3 form-check form-switch">
+            <input
+                type="checkbox"
+                class="form-check-input"
+                id="notify-acme-issuance"
+                v-model="settings.common.notify_acme_issuance"
+                role="switch"
+            />
+            <label class="form-check-label" for="notify-acme-issuance">
+              Notify admins on new ACME certificate issuance
+            </label>
+          </div>
+        </div>
+      </div>
     </div>
 
     <h2>User</h2>
