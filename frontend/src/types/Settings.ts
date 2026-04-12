@@ -14,6 +14,8 @@ export interface Settings {
         password_rule: PasswordRule;
         vaultls_url: string;
         crl_next_update_hours: number;
+        acme_enabled: boolean;
+        notify_acme_issuance: boolean;
     },
     mail: {
         smtp_host: string,

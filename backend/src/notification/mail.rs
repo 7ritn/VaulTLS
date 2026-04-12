@@ -176,6 +176,24 @@ impl Mailer {
         Ok(())
     }
 
+    pub async fn notify_acme_certificate_issued(&self, message: MailMessage) -> Result<(), anyhow::Error> {
+        let body = format!("greetings from VaulTLS. A new certificate has been issued via ACME for: {}. You can review it here: {}", message.certificate.name.cn, self.vaultls_url);
+        let html_content = email_template!(message, body);
+        let plain_content = format!("Hello {}, {}", message.username, body);
+
+        let email = build_email_message!(
+            self.from.clone(),
+            message.to,
+            "VaulTLS: New ACME certificate issued",
+            plain_content,
+            html_content
+        );
+
+        self.mailer.send(email).await?;
+
+        Ok(())
+    }
+
     pub async fn notify_renewed_certificate(&self, message: MailMessage) -> Result<(), anyhow::Error> {
         let body = format!("greetings from VaulTLS. A certificate belonging to you is about to expire! A new certificate has been issued to you. Please renew it as soon as possible. You can find it here: {}", self.vaultls_url);
         let html_content = email_template!(message, body);

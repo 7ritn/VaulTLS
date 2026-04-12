@@ -56,6 +56,16 @@
               Users
             </a>
           </li>
+          <li v-if="isAdmin && settingsStore.settings?.common.acme_enabled" class="nav-item mb-2">
+            <a
+                href="#"
+                class="nav-link d-flex align-items-center gap-2"
+                :class="{ active: activeRouteName === 'ACME' }"
+                @click.prevent="goToRoute('ACME')"
+            >
+              ACME
+            </a>
+          </li>
           <li class="nav-item">
             <a
                 href="#"
@@ -128,6 +138,7 @@ const emit = defineEmits(['change-tab', 'toggle-sidebar']);
 const route = useRoute();
 const router = useRouter();
 const authStore = useAuthStore();
+const settingsStore = useSettingsStore();
 const setupStore = useSetupStore();
 const themeStore = useThemeStore();
 const isMobile = ref(false);

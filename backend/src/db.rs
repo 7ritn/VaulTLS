@@ -10,10 +10,12 @@ use rusqlite::{params, Connection};
 use rusqlite_migration::Migrations;
 use std::fs;
 use std::path::Path;
+use std::time::{SystemTime, UNIX_EPOCH};
 use const_format::formatcp;
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use tracing::{debug, info, trace, warn};
+use crate::acme::types::{AcmeAccount, AcmeIdentifier, AdminAcmeOrder, AcmeOrderRow};
 use crate::auth::password_auth::Password;
 use crate::certs::common::{Certificate, CA};
 
@@ -553,4 +555,422 @@ impl VaulTLSDB {
             )?)
         })
     }
+
+    pub(crate) async fn insert_acme_account(
+        &self,
+        name: String,
+        allowed_domains: String,
+        eab_kid: String,
+        eab_hmac_key: Vec<u8>,
+        ca_id: Option<i64>,
+        user_id: i64,
+        auto_validate: bool,
+    ) -> Result<AcmeAccount> {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as i64;
+
+        let id = db_do!(self.pool, |conn: &Connection| {
+            conn.execute(
+                "INSERT INTO acme_accounts (name, allowed_domains, eab_kid, eab_hmac_key, status, ca_id, contacts, created_on, user_id, auto_validate) \
+                 VALUES (?1, ?2, ?3, ?4, 'pending', ?5, '', ?6, ?7, ?8)",
+                params![name, allowed_domains, eab_kid, eab_hmac_key, ca_id, now, user_id, auto_validate],
+            )?;
+            Ok::<i64, anyhow::Error>(conn.last_insert_rowid())
+        })?;
+        self.get_acme_account(id).await
+    }
+
+    pub(crate) async fn get_acme_account(&self, id: i64) -> Result<AcmeAccount> {
+        db_do!(self.pool, |conn: &Connection| {
+            Ok(conn.query_row(
+                "SELECT id, name, allowed_domains, eab_kid, eab_hmac_key, acme_jwk, status, ca_id, contacts, created_on, user_id, auto_validate \
+                 FROM acme_accounts WHERE id = ?1",
+                params![id],
+                acme_account_from_row,
+            )?)
+        })
+    }
+
+    pub(crate) async fn get_acme_account_by_eab_kid(&self, eab_kid: String) -> Result<AcmeAccount> {
+        db_do!(self.pool, |conn: &Connection| {
+            Ok(conn.query_row(
+                "SELECT id, name, allowed_domains, eab_kid, eab_hmac_key, acme_jwk, status, ca_id, contacts, created_on, user_id, auto_validate \
+                 FROM acme_accounts WHERE eab_kid = ?1",
+                params![eab_kid],
+                acme_account_from_row,
+            )?)
+        })
+    }
+
+    pub(crate) async fn get_all_acme_accounts(&self) -> Result<Vec<AcmeAccount>> {
+        db_do!(self.pool, |conn: &Connection| {
+            let mut stmt = conn.prepare(
+                "SELECT id, name, allowed_domains, eab_kid, eab_hmac_key, acme_jwk, status, ca_id, contacts, created_on, user_id, auto_validate \
+                 FROM acme_accounts ORDER BY id ASC",
+            )?;
+            let rows = stmt.query([])?;
+            Ok(rows
+                .mapped(acme_account_from_row)
+                .collect::<rusqlite::Result<Vec<_>>>()?)
+        })
+    }
+
+    pub(crate) async fn update_acme_account(
+        &self,
+        id: i64,
+        name: Option<String>,
+        allowed_domains: Option<String>,
+        ca_id: Option<Option<i64>>,
+        status: Option<String>,
+        auto_validate: Option<bool>,
+    ) -> Result<()> {
+        db_do!(self.pool, |conn: &Connection| {
+            let mut set_clauses: Vec<String> = Vec::new();
+            let mut params_boxed: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+
+            if let Some(ref v) = name {
+                set_clauses.push(format!("name = ?{}", params_boxed.len() + 1));
+                params_boxed.push(Box::new(v.clone()));
+            }
+            if let Some(ref v) = allowed_domains {
+                set_clauses.push(format!("allowed_domains = ?{}", params_boxed.len() + 1));
+                params_boxed.push(Box::new(v.clone()));
+            }
+            if let Some(ref v) = ca_id {
+                set_clauses.push(format!("ca_id = ?{}", params_boxed.len() + 1));
+                params_boxed.push(Box::new(*v));
+            }
+            if let Some(ref v) = status {
+                set_clauses.push(format!("status = ?{}", params_boxed.len() + 1));
+                params_boxed.push(Box::new(v.clone()));
+            }
+            if let Some(v) = auto_validate {
+                set_clauses.push(format!("auto_validate = ?{}", params_boxed.len() + 1));
+                params_boxed.push(Box::new(v as i64));
+            }
+
+            if set_clauses.is_empty() {
+                return Ok(());
+            }
+
+            let id_param_idx = params_boxed.len() + 1;
+            params_boxed.push(Box::new(id));
+
+            let query = format!(
+                "UPDATE acme_accounts SET {} WHERE id = ?{}",
+                set_clauses.join(", "),
+                id_param_idx,
+            );
+
+            conn.execute(&query, rusqlite::params_from_iter(params_boxed))?;
+            Ok(())
+        })
+    }
+
+    pub(crate) async fn set_acme_account_jwk(
+        &self,
+        id: i64,
+        jwk: String,
+        contacts: String,
+        jwk_thumbprint: String,
+    ) -> Result<()> {
+        db_do!(self.pool, |conn: &Connection| {
+            conn.execute(
+                "UPDATE acme_accounts SET acme_jwk = ?1, contacts = ?2, status = 'valid', jwk_thumbprint = ?4 WHERE id = ?3",
+                params![jwk, contacts, id, jwk_thumbprint],
+            )?;
+            Ok(())
+        })
+    }
+
+    pub(crate) async fn get_acme_account_by_jwk_thumbprint(&self, thumbprint: String) -> Result<AcmeAccount> {
+        db_do!(self.pool, |conn: &Connection| {
+            Ok(conn.query_row(
+                "SELECT id, name, allowed_domains, eab_kid, eab_hmac_key, acme_jwk, status, ca_id, contacts, created_on, user_id, auto_validate \
+                 FROM acme_accounts WHERE jwk_thumbprint = ?1",
+                params![thumbprint],
+                acme_account_from_row,
+            )?)
+        })
+    }
+
+    pub(crate) async fn delete_acme_account(&self, id: i64) -> Result<()> {
+        db_do!(self.pool, |conn: &Connection| {
+            conn.execute("DELETE FROM acme_accounts WHERE id = ?1", params![id])?;
+            Ok(())
+        })
+    }
+
+    pub(crate) async fn insert_acme_order(
+        &self,
+        account_id: i64,
+        identifiers: String,
+        not_after: i64,
+        expires: i64,
+        client_ip: Option<String>,
+    ) -> Result<i64> {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64;
+
+        db_do!(self.pool, |conn: &Connection| {
+            conn.execute(
+                "INSERT INTO acme_orders (account_id, status, identifiers, not_after, expires, created_on, client_ip) \
+                 VALUES (?1, 'pending', ?2, ?3, ?4, ?5, ?6)",
+                params![account_id, identifiers, not_after, expires, now, client_ip],
+            )?;
+            Ok(conn.last_insert_rowid())
+        })
+    }
+
+    pub(crate) async fn count_recent_orders_for_account(&self, account_id: i64, window_ms: i64) -> Result<i64> {
+        let cutoff = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64
+            - window_ms;
+
+        db_do!(self.pool, |conn: &Connection| {
+            let count: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM acme_orders WHERE account_id = ?1 AND created_on > ?2",
+                params![account_id, cutoff],
+                |row| row.get(0),
+            )?;
+            Ok(count)
+        })
+    }
+
+    pub(crate) async fn get_acme_order(&self, id: i64) -> Result<AcmeOrderRow> {
+        db_do!(self.pool, |conn: &Connection| {
+            Ok(conn.query_row(
+                "SELECT id, account_id, status, identifiers, not_after, expires, certificate_id, created_on, client_ip, error \
+                 FROM acme_orders WHERE id = ?1",
+                params![id],
+                order_row_from_row,
+            )?)
+        })
+    }
+
+    pub(crate) async fn update_acme_order_status(
+        &self,
+        id: i64,
+        status: String,
+        certificate_id: Option<i64>,
+        error: Option<String>,
+    ) -> Result<()> {
+        db_do!(self.pool, |conn: &Connection| {
+            conn.execute(
+                "UPDATE acme_orders SET status = ?1, certificate_id = ?2, error = ?3 WHERE id = ?4",
+                params![status, certificate_id, error, id],
+            )?;
+            Ok(())
+        })
+    }
+
+    pub(crate) async fn get_all_acme_orders(&self) -> Result<Vec<AdminAcmeOrder>> {
+        db_do!(self.pool, |conn: &Connection| {
+            let mut stmt = conn.prepare(
+                "SELECT o.id, o.account_id, a.name, o.status, o.identifiers, \
+                        o.not_after, o.expires, o.certificate_id, o.created_on, o.client_ip, o.error \
+                 FROM acme_orders o \
+                 JOIN acme_accounts a ON o.account_id = a.id \
+                 ORDER BY o.id ASC",
+            )?;
+            let rows = stmt.query([])?;
+            Ok(rows.mapped(|row| {
+                let identifiers_json: String = row.get(4)?;
+                let identifiers: Vec<AcmeIdentifier> = serde_json::from_str(&identifiers_json)
+                    .map_err(|e| rusqlite::Error::FromSqlConversionFailure(
+                        4,
+                        rusqlite::types::Type::Text,
+                        Box::new(e),
+                    ))?;
+                Ok(AdminAcmeOrder {
+                    id: row.get(0)?,
+                    account_id: row.get(1)?,
+                    account_name: row.get(2)?,
+                    status: row.get(3)?,
+                    identifiers,
+                    not_after: row.get(5)?,
+                    expires: row.get(6)?,
+                    certificate_id: row.get(7)?,
+                    created_on: row.get(8)?,
+                    client_ip: row.get(9)?,
+                    error: row.get(10)?,
+                })
+            }).collect::<rusqlite::Result<Vec<_>>>()?)
+        })
+    }
+
+    pub(crate) async fn get_orders_by_account(&self, account_id: i64) -> Result<Vec<AcmeOrderRow>> {
+        db_do!(self.pool, |conn: &Connection| {
+            let mut stmt = conn.prepare(
+                "SELECT id, account_id, status, identifiers, not_after, expires, certificate_id, created_on, client_ip, error \
+                 FROM acme_orders WHERE account_id = ?1 ORDER BY id ASC",
+            )?;
+            let rows = stmt.query(params![account_id])?;
+            Ok(rows
+                .mapped(order_row_from_row)
+                .collect::<rusqlite::Result<Vec<_>>>()?)
+        })
+    }
+
+    pub(crate) async fn update_acme_order_identifier_status(
+        &self,
+        order_id: i64,
+        domain_idx: usize,
+        status: String,
+    ) -> Result<()> {
+        let path = format!("$[{domain_idx}].status");
+        db_do!(self.pool, |conn: &Connection| {
+            conn.execute(
+                "UPDATE acme_orders SET identifiers = json_set(identifiers, ?1, ?2) WHERE id = ?3",
+                params![path, status, order_id],
+            )?;
+            Ok(())
+        })
+    }
+
+    pub(crate) async fn cleanup_expired_orders(&self) -> Result<()> {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64;
+
+        db_do!(self.pool, |conn: &Connection| {
+            conn.execute(
+                "DELETE FROM acme_orders WHERE expires < ?1",
+                params![now],
+            )?;
+            Ok(())
+        })
+    }
+
+    pub(crate) async fn insert_acme_nonce(&self, nonce: String) -> Result<()> {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64;
+
+        db_do!(self.pool, |conn: &Connection| {
+            conn.execute(
+                "INSERT INTO acme_nonces (nonce, created_on) VALUES (?1, ?2)",
+                params![nonce, now],
+            )?;
+            Ok(())
+        })
+    }
+
+    pub(crate) async fn validate_and_delete_nonce(&self, nonce: String) -> Result<bool> {
+        let cutoff = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64
+            - 3_600_000; // 1 hour TTL
+
+        db_do!(self.pool, |conn: &Connection| {
+            let rows_affected = conn.execute(
+                "DELETE FROM acme_nonces WHERE nonce = ?1 AND created_on > ?2",
+                params![nonce, cutoff],
+            )?;
+            Ok(rows_affected > 0)
+        })
+    }
+
+    pub(crate) async fn check_cert_acme_account(&self, cert_id: i64, acme_account_id: i64) -> Result<bool> {
+        db_do!(self.pool, |conn: &Connection| {
+            let count: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM user_certificates WHERE id = ?1 AND acme_account_id = ?2",
+                params![cert_id, acme_account_id],
+                |row| row.get(0),
+            )?;
+            Ok(count > 0)
+        })
+    }
+
+    pub(crate) async fn set_cert_serial(&self, cert_id: i64, serial_hex: String) -> Result<()> {
+        db_do!(self.pool, |conn: &Connection| {
+            conn.execute(
+                "UPDATE user_certificates SET serial_hex = ?1 WHERE id = ?2",
+                params![serial_hex, cert_id],
+            )?;
+            Ok(())
+        })
+    }
+
+    pub(crate) async fn get_cert_id_by_serial_hex(&self, serial_hex: String) -> Result<Option<i64>> {
+        db_do!(self.pool, |conn: &Connection| {
+            let result = conn.query_row(
+                "SELECT id FROM user_certificates WHERE serial_hex = ?1 AND revoked_at IS NULL",
+                params![serial_hex],
+                |row| row.get::<_, i64>(0),
+            );
+            match result {
+                Ok(id) => Ok(Some(id)),
+                Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+                Err(e) => Err(anyhow::anyhow!(e)),
+            }
+        })
+    }
+
+    pub(crate) async fn set_cert_acme_account(&self, cert_id: i64, acme_account_id: i64) -> Result<()> {
+        db_do!(self.pool, |conn: &Connection| {
+            conn.execute(
+                "UPDATE user_certificates SET acme_account_id = ?1 WHERE id = ?2",
+                params![acme_account_id, cert_id],
+            )?;
+            Ok(())
+        })
+    }
+
+    pub(crate) async fn cleanup_old_nonces(&self) -> Result<()> {
+        let cutoff = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64
+            - 3_600_000; // 1 hour in milliseconds
+
+        db_do!(self.pool, |conn: &Connection| {
+            conn.execute(
+                "DELETE FROM acme_nonces WHERE created_on < ?1",
+                params![cutoff],
+            )?;
+            Ok(())
+        })
+    }
+}
+
+fn acme_account_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<AcmeAccount> {
+    Ok(AcmeAccount {
+        id: row.get(0)?,
+        name: row.get(1)?,
+        allowed_domains: row.get(2)?,
+        eab_kid: row.get(3)?,
+        eab_hmac_key: row.get(4)?,
+        acme_jwk: row.get(5)?,
+        status: row.get(6)?,
+        ca_id: row.get(7)?,
+        contacts: row.get::<_, Option<String>>(8)?.unwrap_or_default(),
+        created_on: row.get(9)?,
+        user_id: row.get(10)?,
+        auto_validate: row.get::<_, i64>(11).unwrap_or(0) != 0,
+    })
+}
+
+fn order_row_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<AcmeOrderRow> {
+    Ok(AcmeOrderRow {
+        id: row.get(0)?,
+        account_id: row.get(1)?,
+        status: row.get(2)?,
+        identifiers: row.get(3)?,
+        not_after: row.get(4)?,
+        expires: row.get(5)?,
+        certificate_id: row.get(6)?,
+        created_on: row.get(7)?,
+        client_ip: row.get(8)?,
+        error: row.get(9)?,
+    })
 }
