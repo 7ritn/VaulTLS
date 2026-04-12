@@ -24,8 +24,10 @@ I also did not have an overview about the expiration of individual certificates.
 ![WebUI Users](https://github.com/7ritn/VaulTLS/blob/main/assets/vaultls-users.png)
 
 ## Installation
-Installation is managed through a Container. The app *needs* to be behind a reverse proxy for TLS handling.
+Installation is managed through a Container. The app should be behind a reverse proxy for TLS handling.
 `VAULTLS_API_SECRET` is required and should be a 256-bit base64 encoded string (`openssl rand -base64 32`).
+If you want to access VaulTLS using non-HTTPS you need to add the following environmental variable:
+`VAULTLS_INSECURE=true`.
 
 ```bash
 podman run -d \
@@ -69,8 +71,6 @@ For VaulTLS the required variables can be configured via environmental variables
 | `VAULTLS_OIDC_CALLBACK_URL` | `https://vaultls.example.com/api/auth/oidc/callback` |
 | `VAULTLS_OIDC_ID`           | `[client_id]`                                        |
 | `VAULTLS_OIDC_SECRET`       | `[client_secret]`                                    |
-
-If VaulTLS claims that OIDC is not configured, the most likely cause is that it couldn't discover the OIDC provider based on the `VAULTLS_OIDC_AUTH_URL` given. In general the base url to the auth provider should be enough. For Authentik the required URL path is `/application/o/<application slug>/`. If that doesn't work, directly specify the .well_known url. 
 
 ### Container Secrets
 Certain environment variables can be container secrets instead of regular variables.
@@ -159,6 +159,22 @@ If you choose `verify_if_given`, you can still block clients for apps that you w
 }
 abort @blocked
 ```
+
+## FAQ
+### I can not login
+Make sure you are accessing VaulTLS using a secure connection i.e. HTTPS. If you want to access VaulTLS insecurely you 
+need to add the following environmental variable: `VAULTLS_INSECURE=true`.
+
+### I (or a user) forgot my password
+To change any users password specify the corresponding user's email address with the `VAULTLS_ACCOUNT_EMAIL` env variable and the new
+password with `VAULTLS_ACCOUNT_PASSWORD`. During start up VaulTLS will check for these and if set, adjust the password and exit. You can not use
+these env variables during normal operation and they need to be removed after the password was changed.
+
+### OIDC is not working
+If VaulTLS claims that OIDC is not configured, the most likely cause is that it couldn't discover the OIDC provider based on the `VAULTLS_OIDC_AUTH_URL` given. Make sure the VaulTLS container can access the OIDC provider. In general the base url to the auth provider should be enough. For Authentik the required URL path is `/application/o/<application slug>/`. If that doesn't work, directly specify the .well_known url.
+
+## Mail is not working
+Please make sure that you are choosing the correct email encryption type. Usually port 587 is for STARTTLS and 465 for TLS.
 
 ## Roadmap
 - Allow user details to be updated
