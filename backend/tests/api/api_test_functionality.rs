@@ -274,7 +274,7 @@ async fn test_tls_connection() -> Result<()> {
     assert_eq!(response.status(), Status::Ok);
     let Some(ref server_cert_p12) = response.into_bytes().await else { return Err(anyhow::anyhow!("No body")) };
 
-    establish_tls_connection(ca_cert_pem, client_cert_p12, server_cert_p12).await?;
+    establish_tls_connection(ca_cert_pem, client_cert_p12, server_cert_p12, None).await?;
 
     Ok(())
 }
@@ -528,6 +528,8 @@ async fn test_download_ssh_client_certificate() -> Result<()> {
 #[tokio::test]
 async fn test_revocation_and_crl() -> Result<()> {
     let client = VaulTLSClient::new_with_cert().await;
+    client.create_server_cert().await?;
+
     let request = client
         .get("/certificates/1/download");
     let response = request.dispatch().await;
@@ -569,6 +571,29 @@ async fn test_revocation_and_crl() -> Result<()> {
     assert!(revoked_cert.revocation_date.to_datetime() >= before);
     println!("{:?}", revoked_cert);
 
+    // --- Perform actual validation of the revoked cert ---
+
+    // Download CA cert
+    let request = client.get("/certificates/ca/download");
+    let response = request.dispatch().await;
+    assert_eq!(response.status(), Status::Ok);
+    let ca_cert_pem = response.into_bytes().await.unwrap();
+
+    // Download Server cert
+    let request = client.get("/certificates/2/download");
+    let response = request.dispatch().await;
+    assert_eq!(response.status(), Status::Ok);
+    let server_cert_p12 = response.into_bytes().await.unwrap();
+
+    // Try to establish connection with revoked client cert AND CRL
+    // This MUST fail
+    let result = establish_tls_connection(&ca_cert_pem, client_cert_p12, &server_cert_p12, Some(&crl_data)).await;
+    assert!(result.is_err(), "TLS connection should have failed due to revoked certificate");
+
+    // Double check: connection WITHOUT CRL should still work (if we don't check for revocation)
+    let result = establish_tls_connection(&ca_cert_pem, client_cert_p12, &server_cert_p12, None).await;
+    assert!(result.is_ok(), "TLS connection should have succeeded when CRL is not provided");
+
     Ok(())
 }
 
@@ -603,9 +628,10 @@ async fn establish_tls_connection(
     ca_cert_pem: &[u8],
     client_cert_p12: &[u8],
     server_cert_p12: &[u8],
+    crl_der: Option<&[u8]>,
 ) -> Result<()> {
     let crypto = rustls::crypto::aws_lc_rs::default_provider();
-    crypto.install_default().expect("TODO: panic message");
+    let _ = crypto.install_default();
 
     // Parse the CA certificate
     let ca_x509 = X509::from_pem(ca_cert_pem)?;
@@ -613,7 +639,12 @@ async fn establish_tls_connection(
     // Create root cert store
     let mut root_store = rustls::RootCertStore::empty();
     root_store.add(CertificateDer::from(ca_x509.to_der()?))?;
-    let verifier = WebPkiClientVerifier::builder(root_store.clone().into()).allow_unauthenticated().build().expect("failed to build client verifier");
+
+    let mut verifier_builder = WebPkiClientVerifier::builder(root_store.clone().into());
+    if let Some(crl) = crl_der {
+        verifier_builder = verifier_builder.with_crls(vec![rustls::pki_types::CertificateRevocationListDer::from(crl.to_vec())]);
+    }
+    let verifier = verifier_builder.allow_unauthenticated().build().expect("failed to build client verifier");
 
     // Parse client certificate and private key from PKCS12
     let client_p12 = Pkcs12::from_der(client_cert_p12)?;
@@ -644,9 +675,10 @@ async fn establish_tls_connection(
 
     let server_task = tokio::spawn(async move {
         let mut received = String::new();
-        let mut stream = acceptor.accept(server_stream).await.unwrap();
-        stream.read_to_string(&mut received).await.unwrap();
+        let mut stream = acceptor.accept(server_stream).await?;
+        stream.read_to_string(&mut received).await?;
         assert_eq!(received, TEST_MESSAGE);
+        Ok::<(), anyhow::Error>(())
     });
 
     let mut stream = connector.connect("localhost".try_into()?, client_stream).await?;
@@ -654,7 +686,7 @@ async fn establish_tls_connection(
     stream.flush().await?;
     sleep(Duration::from_millis(1)).await;
     stream.shutdown().await?;
-    server_task.await?;
+    server_task.await??;
 
     Ok(())
 }
