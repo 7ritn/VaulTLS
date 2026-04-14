@@ -35,7 +35,7 @@
                       :value="cert.password"
                       readonly
                       class="form-control form-control-sm"
-                      placeholder="(None)"
+                      placeholder="(Blank)"
                       style="font-family: monospace; max-width: 100px; min-width: 70px;"
                   />
                 </template>
@@ -57,6 +57,17 @@
                 >
                   <use
                     :href="shownCerts.has(cert.id) ? 'images/eye-icons.svg#eye-open' : 'images/eye-icons.svg#eye-closed'"
+                  ></use>
+                </svg>
+                <svg
+                  :id="'PasswordCopyButton-' + cert.id"
+                  style="width: 20px; height: 20px; cursor: pointer; flex-shrink: 0;"
+                  @click="copyPasswordtoClipboard(cert)"
+                  alt="Button to copy password"
+                  class="ms-2"
+                >
+                  <use
+                    :href="copiedCerts.has(cert.id) ? 'images/copy-icons.svg#checkmark' : 'images/copy-icons.svg#copy'"
                   ></use>
                 </svg>
               </div>
@@ -453,6 +464,7 @@ const caStore = useCAStore();
 
 // local state
 const shownCerts = ref(new Set<number>());
+const copiedCerts = ref(new Set<number>());
 
 const certificates = computed(() => certificateStore.certificates);
 const activeCertificates = computed(() => {
@@ -601,6 +613,22 @@ const togglePasswordShown = async (cert: Certificate) => {
   } else {
     shownCerts.value.add(cert.id);
   }
+};
+
+const copyPasswordtoClipboard = async (cert: Certificate) => {
+    if (!cert.password) {
+      await certificateStore.fetchCertificatePassword(cert.id);
+    }
+
+    try {
+      await navigator.clipboard.writeText(cert.password);
+
+      copiedCerts.value.add(cert.id);
+      setTimeout(() => copiedCerts.value.delete(cert.id), 1500);
+
+    } catch (err) {
+      console.error("Failed to copy to clipboard: ", err);
+    }
 };
 
 const addUsageField = () => {
