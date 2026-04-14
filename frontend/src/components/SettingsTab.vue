@@ -202,6 +202,25 @@
               Notify admins on new ACME certificate issuance
             </label>
           </div>
+          <div class="mb-3">
+            <label class="form-label" for="acme-dns-resolver">DNS resolver</label>
+            <input
+                type="text"
+                class="form-control"
+                id="acme-dns-resolver"
+                v-model="settings.common.acme_dns_resolver"
+                placeholder="System default"
+            />
+            <div class="form-text">
+              DNS resolver used for DNS-01 challenge validation. Leave empty to use the system default.
+              Supported formats:
+              <ul class="mb-0 mt-1">
+                <li>Plain UDP — <code>8.8.8.8</code></li>
+                <li>DNS-over-HTTPS — <code>https://dns.google/dns-query</code> or <code>https://1.1.1.1/dns-query</code></li>
+                <li>DNS-over-TLS — <code>tls://1.1.1.1</code> or <code>tls://8.8.8.8:853#dns.google</code> (optionally append <code>#hostname</code> for TLS verification)</li>
+              </ul>
+            </div>
+          </div>
         </div>
       </div>
     </div>

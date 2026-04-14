@@ -33,8 +33,8 @@
             >{{ account.status }}</span>
           </td>
           <td :id="'AcmeAutoValidate-' + account.id">
-            <span v-if="account.auto_validate" class="badge bg-warning text-dark" title="HTTP-01 validation is skipped for this account">Auto</span>
-            <span v-else class="badge bg-success" title="HTTP-01 challenge validation is enforced">HTTP-01</span>
+            <span v-if="account.auto_validate" class="badge bg-warning text-dark" title="Challenge validation is skipped for this account">Auto</span>
+            <span v-else class="badge bg-success" title="HTTP-01 and DNS-01 challenge validation is enforced">HTTP-01 / DNS-01</span>
           </td>
           <td :id="'AcmeCA-' + account.id">
             {{ account.ca_id !== null ? account.ca_id : 'Default' }}
@@ -209,7 +209,7 @@
                 Auto-validate challenges
               </label>
               <div class="form-text text-warning">
-                When enabled, HTTP-01 challenge validation is skipped. The allowed domains
+                When enabled, challenge validation (HTTP-01 and DNS-01) is skipped. The allowed domains
                 allowlist above becomes the sole access control for certificate issuance.
               </div>
             </div>
@@ -303,6 +303,25 @@
   --server {{ acmeDirectoryUrl }} \
   --eab-kid {{ createdCredentials.eab_kid }} \
   --eab-hmac-key {{ createdCredentials.eab_hmac_key }}</pre>
+              </div>
+              <div class="mt-3">
+                <h6 class="text-muted small">DNS-01 examples</h6>
+                <div class="mb-2">
+                  <label class="form-label small text-muted">certbot (DNS-01)</label>
+                  <pre class="bg-body-secondary p-2 rounded small">certbot certonly \
+  --server {{ acmeDirectoryUrl }} \
+  --eab-kid {{ createdCredentials.eab_kid }} \
+  --eab-hmac-key {{ createdCredentials.eab_hmac_key }} \
+  --preferred-challenges dns \
+  -d your.domain.com</pre>
+                </div>
+                <div>
+                  <label class="form-label small text-muted">acme.sh (DNS-01)</label>
+                  <pre class="bg-body-secondary p-2 rounded small">acme.sh --issue \
+  --server {{ acmeDirectoryUrl }} \
+  --dns dns_provider \
+  -d your.domain.com</pre>
+                </div>
               </div>
             </div>
           </div>
@@ -400,7 +419,7 @@
                 Auto-validate challenges
               </label>
               <div class="form-text text-warning">
-                When enabled, HTTP-01 challenge validation is skipped. The allowed domains
+                When enabled, challenge validation (HTTP-01 and DNS-01) is skipped. The allowed domains
                 allowlist becomes the sole access control for certificate issuance.
               </div>
             </div>
