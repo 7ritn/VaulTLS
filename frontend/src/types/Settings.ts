@@ -16,6 +16,7 @@ export interface Settings {
         crl_next_update_hours: number;
         acme_enabled: boolean;
         notify_acme_issuance: boolean;
+        acme_dns_resolver: string;
     },
     mail: {
         smtp_host: string,

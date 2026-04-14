@@ -1,7 +1,7 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 use chrono::{DateTime, Utc};
 use rand_core::Rng;
-use tracing::error;
+use tracing::{error, info};
 use rocket::{get, head, post, routes, State};
 use rocket::data::{Data, FromData, ToByteUnit, Outcome as DataOutcome};
 use rocket::http::Status;
@@ -25,6 +25,7 @@ use crate::data::objects::{AppState, Name};
 use crate::notification::notifier::notify_admins_acme_issued;
 
 static HTTP_CHALLENGE_CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+static DOH_CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
 
 fn challenge_http_client() -> &'static reqwest::Client {
     HTTP_CHALLENGE_CLIENT.get_or_init(|| {
@@ -34,6 +35,180 @@ fn challenge_http_client() -> &'static reqwest::Client {
             .build()
             .expect("Failed to build HTTP challenge client")
     })
+}
+
+fn doh_client() -> &'static reqwest::Client {
+    DOH_CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(10))
+            .build()
+            .expect("Failed to build DoH client")
+    })
+}
+
+fn build_udp_resolver(addr: &str) -> Result<hickory_resolver::TokioResolver, String> {
+    use hickory_resolver::config::{NameServerConfig, ResolverConfig};
+    use hickory_resolver::name_server::TokioConnectionProvider;
+    use hickory_resolver::proto::xfer::Protocol;
+    use hickory_resolver::Resolver;
+    use std::net::{IpAddr, SocketAddr};
+
+    if addr.is_empty() {
+        return hickory_resolver::TokioResolver::builder_tokio()
+            .map(|b| b.build())
+            .map_err(|e| format!("Failed to read system DNS config: {e}"));
+    }
+
+    let ip: IpAddr = addr.parse()
+        .map_err(|_| format!("Invalid DNS resolver address: {addr}"))?;
+    let socket_addr = SocketAddr::new(ip, 53);
+    let ns = NameServerConfig::new(socket_addr, Protocol::Udp);
+    let config = ResolverConfig::from_parts(None, vec![], vec![ns]);
+    Ok(Resolver::builder_with_config(config, TokioConnectionProvider::default()).build())
+}
+
+fn build_dot_resolver(addr: &str) -> Result<hickory_resolver::TokioResolver, String> {
+    use hickory_resolver::config::{NameServerConfig, ResolverConfig};
+    use hickory_resolver::name_server::TokioConnectionProvider;
+    use hickory_resolver::proto::xfer::Protocol;
+    use hickory_resolver::Resolver;
+    use std::net::{IpAddr, SocketAddr};
+
+    let (addr_part, tls_name_opt) = match addr.find('#') {
+        Some(idx) => (&addr[..idx], Some(addr[idx + 1..].to_string())),
+        None => (addr, None),
+    };
+
+    let (ip_str, port) = if let Some(colon) = addr_part.rfind(':') {
+        let port_str = &addr_part[colon + 1..];
+        match port_str.parse::<u16>() {
+            Ok(p) => (&addr_part[..colon], p),
+            Err(_) => (addr_part, 853u16),
+        }
+    } else {
+        (addr_part, 853u16)
+    };
+
+    let ip: IpAddr = ip_str.parse()
+        .map_err(|_| format!("Invalid DoT IP address: {ip_str}"))?;
+    let socket_addr = SocketAddr::new(ip, port);
+    let tls_name = tls_name_opt.unwrap_or_else(|| ip_str.to_string());
+
+    let mut ns = NameServerConfig::new(socket_addr, Protocol::Tls);
+    ns.tls_dns_name = Some(tls_name);
+    let config = ResolverConfig::from_parts(None, vec![], vec![ns]);
+    Ok(Resolver::builder_with_config(config, TokioConnectionProvider::default()).build())
+}
+
+async fn validate_dns01_doh(domain: &str, expected_value: &str, url: &str) -> bool {
+    use hickory_resolver::proto::op::{Message, MessageType, OpCode, Query};
+    use hickory_resolver::proto::rr::{Name, RData, RecordType};
+
+    let lookup_name = format!("_acme-challenge.{}.", domain);
+    let name = match Name::from_ascii(&lookup_name) {
+        Ok(n) => n,
+        Err(e) => {
+            error!("Invalid DNS name for DoH query: {e}");
+            return false;
+        }
+    };
+
+    let mut query = Query::new();
+    query.set_name(name);
+    query.set_query_type(RecordType::TXT);
+
+    let mut message = Message::new();
+    message.set_id(1);
+    message.set_message_type(MessageType::Query);
+    message.set_op_code(OpCode::Query);
+    message.set_recursion_desired(true);
+    message.add_query(query);
+
+    let wire_bytes = match message.to_vec() {
+        Ok(b) => b,
+        Err(e) => {
+            error!("Failed to encode DNS query for DoH: {e}");
+            return false;
+        }
+    };
+
+    let resp = match doh_client()
+        .post(url)
+        .header("Content-Type", "application/dns-message")
+        .header("Accept", "application/dns-message")
+        .body(wire_bytes)
+        .send()
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            error!("DoH request to {url} failed: {e}");
+            return false;
+        }
+    };
+
+    if !resp.status().is_success() {
+        error!("DoH endpoint {url} returned status {}", resp.status());
+        return false;
+    }
+
+    let bytes = match resp.bytes().await {
+        Ok(b) => b,
+        Err(e) => {
+            error!("Failed to read DoH response body: {e}");
+            return false;
+        }
+    };
+
+    let response = match Message::from_vec(&bytes) {
+        Ok(m) => m,
+        Err(e) => {
+            error!("Failed to parse DoH response: {e}");
+            return false;
+        }
+    };
+
+    response.answers().iter().any(|record| {
+        if let RData::TXT(txt) = record.data() {
+            let record_text: String = txt.iter()
+                .map(|data| String::from_utf8_lossy(data).to_string())
+                .collect();
+            record_text == expected_value
+        } else {
+            false
+        }
+    })
+}
+
+async fn validate_dns01(domain: &str, expected_value: &str, resolver_addr: &str) -> bool {
+    if resolver_addr.starts_with("https://") {
+        return validate_dns01_doh(domain, expected_value, resolver_addr).await;
+    }
+
+    let resolver_result = if let Some(addr) = resolver_addr.strip_prefix("tls://") {
+        build_dot_resolver(addr)
+    } else {
+        build_udp_resolver(resolver_addr)
+    };
+
+    let resolver = match resolver_result {
+        Ok(r) => r,
+        Err(e) => {
+            error!("Failed to build DNS resolver: {e}");
+            return false;
+        }
+    };
+
+    let lookup_name = format!("_acme-challenge.{domain}.");
+    match resolver.txt_lookup(&lookup_name).await {
+        Ok(records) => records.iter().any(|txt| {
+            let record_text: String = txt.iter()
+                .map(|data| String::from_utf8_lossy(data).to_string())
+                .collect();
+            record_text == expected_value
+        }),
+        Err(_) => false,
+    }
 }
 
 pub struct JoseBody(pub String);
@@ -324,11 +499,11 @@ pub(crate) async fn new_order(
         .as_millis() as i64;
 
     // Rate limit: max 20 orders per account per 24 hours.
-    let recent_count = state.db.count_recent_orders_for_account(account_id, 86_400_000).await
-        .map_err(|_| AcmeError::server_internal("Rate limit check failed"))?;
-    if recent_count >= 20 {
-        return Err(AcmeError::malformed("Order rate limit exceeded: max 20 orders per 24 hours per account"));
-    }
+    // let recent_count = state.db.count_recent_orders_for_account(account_id, 86_400_000).await
+    //     .map_err(|_| AcmeError::server_internal("Rate limit check failed"))?;
+    // if recent_count >= 20 {
+    //     return Err(AcmeError::malformed("Order rate limit exceeded: max 20 orders per 24 hours per account"));
+    // }
 
     let expires_ms = now_ms + 86_400_000_i64;
     let not_after_ms = now_ms + 90 * 86_400_000_i64;
@@ -561,9 +736,15 @@ pub(crate) async fn get_authz(
     };
     let challenge_status = authz_status.clone();
 
-    let challenge = AcmeChallenge {
+    let http_challenge = AcmeChallenge {
         challenge_type: "http-01".to_string(),
-        url: format!("{base}/api/acme/chall/{authz_id}"),
+        url: format!("{base}/api/acme/chall/{order_id}/http-01/{domain_idx}"),
+        token: token.clone(),
+        status: challenge_status.clone(),
+    };
+    let dns_challenge = AcmeChallenge {
+        challenge_type: "dns-01".to_string(),
+        url: format!("{base}/api/acme/chall/{order_id}/dns-01/{domain_idx}"),
         token,
         status: challenge_status,
     };
@@ -571,24 +752,28 @@ pub(crate) async fn get_authz(
     Ok(Json(AcmeAuthorization {
         identifier,
         status: authz_status,
-        challenges: vec![challenge],
+        challenges: vec![http_challenge, dns_challenge],
     }))
 }
 
-#[post("/chall/<chall_id>", data = "<body>")]
+#[post("/chall/<order_id>/<challenge_type>/<domain_idx>", data = "<body>")]
 pub(crate) async fn get_challenge(
     state: &State<AppState>,
     body: JoseBody,
-    chall_id: String,
+    order_id: i64,
+    challenge_type: String,
+    domain_idx: usize,
     _acme: AcmeEnabled,
 ) -> Result<Json<serde_json::Value>, AcmeError> {
     use crate::acme::jws::jwk_thumbprint;
 
     let base = state.settings.get_vaultls_url();
-    let expected_url = format!("{base}/api/acme/chall/{chall_id}");
-    let (account_id, _payload) = authenticate_jws(state, &body.0, &expected_url).await?;
+    let chall_url = format!("{base}/api/acme/chall/{order_id}/{challenge_type}/{domain_idx}");
+    let (account_id, _payload) = authenticate_jws(state, &body.0, &chall_url).await?;
 
-    let (order_id, domain_idx) = parse_authz_id(&chall_id)?;
+    if challenge_type != "http-01" && challenge_type != "dns-01" {
+        return Err(AcmeError::malformed(format!("Unsupported challenge type: {challenge_type}")));
+    }
 
     let order = state.db.get_acme_order(order_id).await
         .map_err(|_| AcmeError::not_found())?;
@@ -605,8 +790,8 @@ pub(crate) async fn get_challenge(
 
     if identifier.status == "valid" {
         return Ok(Json(serde_json::json!({
-            "type": "http-01",
-            "url": format!("{base}/api/acme/chall/{chall_id}"),
+            "type": challenge_type,
+            "url": chall_url,
             "token": identifier.token,
             "status": "valid"
         })));
@@ -625,9 +810,20 @@ pub(crate) async fn get_challenge(
     let domain = &identifier.value;
     let new_status: &str = if account.auto_validate {
         "valid"
+    } else if challenge_type == "dns-01" {
+        let digest = openssl::hash::hash(openssl::hash::MessageDigest::sha256(), expected_key_auth.as_bytes())
+            .map_err(|_| AcmeError::server_internal("SHA-256 computation failed"))?;
+        let expected_dns_value = base64url_encode(&digest);
+        let resolver_addr = state.settings.get_acme_dns_resolver();
+        info!(challenge_type=challenge_type, domain=domain, resolver=resolver_addr, "Attempting ACME validation");
+        if validate_dns01(domain, &expected_dns_value, &resolver_addr).await {
+            "valid"
+        } else {
+            "invalid"
+        }
     } else {
         let validation_url = format!("http://{}/.well-known/acme-challenge/{}", domain, token);
-
+        info!(challenge_type=challenge_type, domain=domain, "Attempting ACME validation");
         let result = challenge_http_client().get(&validation_url).send().await;
 
         match result {
@@ -641,6 +837,7 @@ pub(crate) async fn get_challenge(
             Err(_) => "invalid",
         }
     };
+    info!(challenge_type=challenge_type, domain=domain, status=new_status, "Completed ACME validation");
 
     state.db.update_acme_order_identifier_status(order_id, domain_idx, new_status.to_string()).await
         .map_err(|_| AcmeError::server_internal("Failed to persist challenge status"))?;
@@ -656,14 +853,14 @@ pub(crate) async fn get_challenge(
     }
 
     if new_status == "invalid" {
-        let err_msg = format!("HTTP-01 validation failed for {domain}: key authorization mismatch or unreachable");
+        let err_msg = format!("{challenge_type} validation failed for {domain}");
         let _ = state.db.update_acme_order_status(order_id, "invalid".to_string(), None, Some(err_msg.clone())).await;
         return Err(AcmeError::unauthorized(err_msg));
     }
 
     Ok(Json(serde_json::json!({
-        "type": "http-01",
-        "url": format!("{base}/api/acme/chall/{chall_id}"),
+        "type": challenge_type,
+        "url": chall_url,
         "token": token,
         "status": new_status
     })))

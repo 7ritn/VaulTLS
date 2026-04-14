@@ -140,6 +140,8 @@ pub(crate) struct Common {
     acme_enabled: bool,
     #[serde(default)]
     notify_acme_issuance: bool,
+    #[serde(default)]
+    acme_dns_resolver: String,
 }
 
 fn default_crl_hours() -> i64 { 7 * 24 }
@@ -156,6 +158,9 @@ impl Common {
         if let Ok(acme_enabled) = env::var("VAULTLS_ACME_ENABLED") {
             self.acme_enabled = acme_enabled == "true";
         }
+        if let Ok(dns_resolver) = env::var("VAULTLS_ACME_DNS_RESOLVER") {
+            self.acme_dns_resolver = dns_resolver;
+        }
     }
 }
 
@@ -168,6 +173,7 @@ impl Default for Common {
             crl_next_update_hours: 7 * 24, // 7 days
             acme_enabled: false,
             notify_acme_issuance: false,
+            acme_dns_resolver: String::new(),
         }
     }
 }
@@ -332,6 +338,8 @@ impl InnerSettings {
     fn get_acme_enabled(&self) -> bool { self.common.acme_enabled }
 
     fn get_notify_acme_issuance(&self) -> bool { self.common.notify_acme_issuance }
+
+    fn get_acme_dns_resolver(&self) -> &str { &self.common.acme_dns_resolver }
 }
 
 impl Settings {
@@ -419,5 +427,10 @@ impl Settings {
     pub(crate) fn get_notify_acme_issuance(&self) -> bool {
         let settings = self.0.read();
         settings.get_notify_acme_issuance()
+    }
+
+    pub(crate) fn get_acme_dns_resolver(&self) -> String {
+        let settings = self.0.read();
+        settings.get_acme_dns_resolver().to_string()
     }
 }
