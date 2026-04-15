@@ -696,13 +696,6 @@ impl VaulTLSDB {
         })
     }
 
-    pub(crate) async fn delete_acme_account(&self, id: i64) -> Result<()> {
-        db_do!(self.pool, |conn: &Connection| {
-            conn.execute("DELETE FROM acme_accounts WHERE id = ?1", params![id])?;
-            Ok(())
-        })
-    }
-
     pub(crate) async fn insert_acme_order(
         &self,
         account_id: i64,

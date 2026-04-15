@@ -1,1 +1,3 @@
 tests/authelia/db.sqlite3
+backend/target
+frontend/node_modules
