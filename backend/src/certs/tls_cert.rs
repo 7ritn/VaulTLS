@@ -13,7 +13,7 @@ use openssl::nid::Nid;
 use openssl::pkcs12::Pkcs12;
 use openssl::pkey::{PKey, Private};
 use openssl::stack::Stack;
-use openssl::x509::{X509Name, X509NameBuilder, X509};
+use openssl::x509::{X509Name, X509NameBuilder, X509Ref, X509};
 use openssl::x509::extension::{AuthorityKeyIdentifier, BasicConstraints, ExtendedKeyUsage, KeyUsage, SubjectAlternativeName, SubjectKeyIdentifier};
 use openssl::x509::{X509Builder};
 use openssl::x509::X509Req;
@@ -418,6 +418,12 @@ pub(crate) fn create_and_save_crl(ca: &mut CA, revoked_certs: Vec<(Vec<u8>, i64)
     save_crl(crl_der, ca.id)
 }
 
+fn extract_ski(cert: &X509Ref) -> Result<Vec<u8>, ErrorStack> {
+    let ext = cert.subject_key_id()
+        .ok_or_else(|| ErrorStack::get())?;
+    Ok(ext.as_slice().to_vec())
+}
+
 pub(crate) fn create_crl(ca: &mut CA, revoked_certs: Vec<(Vec<u8>, i64)>, crl_next_update_hours: i64) -> Result<Vec<u8>> {
     let ca_key_pair = KeyPair::try_from(ca.key.clone())?;
     let cert_der = CertificateDer::from(ca.cert.clone());
@@ -427,6 +433,9 @@ pub(crate) fn create_crl(ca: &mut CA, revoked_certs: Vec<(Vec<u8>, i64)>, crl_ne
     let next_update = now + Duration::hours(crl_next_update_hours);
     ca.crl_number += 1;
     let crl_number = ca.crl_number;
+
+    let ca_cert = X509::from_der(&ca.cert)?;
+    let ski = extract_ski(&ca_cert)?;
 
     let revoked_params = revoked_certs.into_iter().map(|(serial, revoked_at)| {
         RevokedCertParams {
@@ -443,7 +452,7 @@ pub(crate) fn create_crl(ca: &mut CA, revoked_certs: Vec<(Vec<u8>, i64)>, crl_ne
         crl_number: SerialNumber::from(crl_number.unsigned_abs()),
         issuing_distribution_point: None,
         revoked_certs: revoked_params,
-        key_identifier_method: KeyIdMethod::Sha256,
+        key_identifier_method: KeyIdMethod::PreSpecified(ski),
     };
 
     let crl = crl_params.signed_by(&issuer)?;

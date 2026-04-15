@@ -1,6 +1,6 @@
 [package]
 name = "backend"
-version = "1.1.0"
+version = "1.1.1"
 edition = "2024"
 
 [[bin]]
@@ -24,10 +24,10 @@ schemars = { version = "0.8.22", features = ["derive"] }
 serde = "1.0.228"
 serde_json = "1.0.149"
 serde_repr = "0.1.20"
-rusqlite = { version = "0.38.0", features = ["bundled-sqlcipher"] }
+rusqlite = { version = "0.39.0", features = ["bundled-sqlcipher"] }
 r2d2 = "0.8.10"
-r2d2_sqlite = { version = "0.32.0", features = ["bundled-sqlcipher"] }
-openssl = "0.10.76"
+r2d2_sqlite = { version = "0.33.0", features = ["bundled-sqlcipher"] }
+openssl = "0.10.77"
 argon2 = "0.5.3"
 jsonwebtoken = { version = "10.3.0", features = ["rust_crypto"] }
 openidconnect = "4.0.1"
@@ -36,14 +36,14 @@ num_enum = "0.7.5"
 lettre = { version = "0.11.20", features = ["tokio1", "builder", "smtp-transport", "tokio1-native-tls"] }
 maud = "0.27.0"
 chrono = "0.4.44"
-tokio = { version = "1.50.0", features = ["macros", "rt-multi-thread"] }
+tokio = { version = "1.51.1", features = ["macros", "rt-multi-thread"] }
 passwords = "3.1.16"
 include_dir = "0.7.4"
-rusqlite_migration = {  version = "2.4.1", features = ["from-directory"] }
+rusqlite_migration = {  version = "2.5.0", features = ["from-directory"] }
 const_format = "0.2.35"
 once_cell = "1.21.4"
 tracing = "0.1.44"
-tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 derive_deref = "1.1.1"
 parking_lot = "0.12.5"
 uuid = { version = "1.23.0", features = ["v4"] }
