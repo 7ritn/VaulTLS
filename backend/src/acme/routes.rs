@@ -59,9 +59,10 @@ fn build_udp_resolver(addr: &str) -> Result<hickory_resolver::TokioResolver, Str
             .map_err(|e| format!("Failed to read system DNS config: {e}"));
     }
 
-    let ip: IpAddr = addr.parse()
+    let socket_addr: SocketAddr = addr.parse()
+        .or_else(|_| addr.parse::<IpAddr>().map(|ip| SocketAddr::new(ip, 53)))
         .map_err(|_| format!("Invalid DNS resolver address: {addr}"))?;
-    let socket_addr = SocketAddr::new(ip, 53);
+
     let ns = NameServerConfig::new(socket_addr, Protocol::Udp);
     let config = ResolverConfig::from_parts(None, vec![], vec![ns]);
     Ok(Resolver::builder_with_config(config, TokioConnectionProvider::default()).build())
@@ -201,13 +202,27 @@ async fn validate_dns01(domain: &str, expected_value: &str, resolver_addr: &str)
 
     let lookup_name = format!("_acme-challenge.{domain}.");
     match resolver.txt_lookup(&lookup_name).await {
-        Ok(records) => records.iter().any(|txt| {
-            let record_text: String = txt.iter()
-                .map(|data| String::from_utf8_lossy(data).to_string())
-                .collect();
-            record_text == expected_value
-        }),
-        Err(_) => false,
+        Ok(records) => {
+            let matched = records.iter().any(|txt| {
+                let record_text: String = txt.iter()
+                    .map(|data| String::from_utf8_lossy(data).to_string())
+                    .collect();
+                record_text == expected_value
+            });
+            if !matched {
+                let found: Vec<String> = records.iter().map(|txt| {
+                    txt.iter()
+                        .map(|data| String::from_utf8_lossy(data).to_string())
+                        .collect()
+                }).collect();
+                error!(domain=domain, expected=expected_value, found=?found, "DNS-01 TXT value mismatch");
+            }
+            matched
+        }
+        Err(e) => {
+            error!(domain=domain, error=%e, "DNS-01 TXT lookup failed");
+            false
+        }
     }
 }
 
