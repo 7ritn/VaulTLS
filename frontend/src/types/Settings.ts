@@ -17,6 +17,7 @@ export interface Settings {
         acme_enabled: boolean;
         notify_acme_issuance: boolean;
         acme_dns_resolver: string;
+        default_page_size: number;
     },
     mail: {
         smtp_host: string,

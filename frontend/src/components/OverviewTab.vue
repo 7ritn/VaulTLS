@@ -2,6 +2,16 @@
   <div>
     <h1>Certificates</h1>
     <hr />
+    <div class="form-check mb-2">
+      <input
+          id="hideAcmeCerts"
+          v-model="hideAcmeCerts"
+          type="checkbox"
+          class="form-check-input"
+      />
+      <label class="form-check-label" for="hideAcmeCerts">Hide ACME certificates</label>
+    </div>
+
     <div class="table-responsive">
       <table class="table table-striped active-certs">
         <thead>
@@ -19,7 +29,7 @@
           </tr>
         </thead>
         <tbody>
-          <tr v-for="cert in activeCertificates" :key="cert.id">
+          <tr v-for="cert in paginatedActiveCerts" :key="cert.id">
             <td :id="'UserId-' + cert.id" v-if="authStore.isAdmin">{{ userStore.idToName(cert.user_id) }}</td>
             <td :id="'CertName-' + cert.id" >{{ cert.name.cn }}</td>
             <td :id="'CertGroup-' + cert.id" v-if="hasAnyOU">{{ cert.name.ou ?? '' }}</td>
@@ -74,12 +84,23 @@
           </tr>
         </tbody>
       </table>
+      <PaginationControls
+          :current-page="activeCurrentPage"
+          :total-pages="activeTotalPages"
+          :total-items="filteredActiveCertificates.length"
+          :start-item="activeStartItem"
+          :end-item="activeEndItem"
+          :page-size="pageSize"
+          @prev="activePrev"
+          @next="activeNext"
+          @update:page-size="setPageSize"
+      />
     </div>
 
     <button
         id="CreateCertificateButton"
         v-if="authStore.isAdmin"
-        class="btn btn-primary mx-1"
+        class="btn btn-primary mx-1 mt-3"
         @click="showGenerateModal"
     >
       Create New Certificate
@@ -117,7 +138,7 @@
             </tr>
             </thead>
             <tbody class="text-muted" style="font-size: 0.85rem;">
-            <tr v-for="cert in revokedCertificates" :key="cert.id" class="opacity-75">
+            <tr v-for="cert in paginatedRevokedCerts" :key="cert.id" class="opacity-75">
               <td v-if="authStore.isAdmin">{{ userStore.idToName(cert.user_id) }}</td>
               <td class="fw-medium">{{ cert.name.cn }}</td>
               <td v-if="hasAnyOU">{{ cert.name.ou ?? '' }}</td>
@@ -143,6 +164,17 @@
             </tr>
             </tbody>
           </table>
+          <PaginationControls
+              :current-page="revokedCurrentPage"
+              :total-pages="revokedTotalPages"
+              :total-items="revokedCertificates.length"
+              :start-item="revokedStartItem"
+              :end-item="revokedEndItem"
+              :page-size="pageSize"
+              @prev="revokedPrev"
+              @next="revokedNext"
+              @update:page-size="setPageSize"
+          />
         </div>
       </div>
     </div>
@@ -433,6 +465,9 @@ import {PasswordRule} from "@/types/Settings.ts";
 import {useCAStore} from "@/stores/cas.ts";
 import {CAType} from "@/types/CA.ts";
 import {ValidityUnit} from "@/types/ValidityUnit.ts";
+import {usePagination} from "@/composables/usePagination.ts";
+import {usePageSize} from "@/composables/usePageSize.ts";
+import PaginationControls from "@/components/PaginationControls.vue";
 
 // stores
 const certificateStore = useCertificateStore();
@@ -443,14 +478,41 @@ const caStore = useCAStore();
 
 // local state
 const shownCerts = ref(new Set<number>());
+const hideAcmeCerts = ref(false);
 
 const certificates = computed(() => certificateStore.certificates);
-const activeCertificates = computed(() => {
-  return Array.from(certificates.value.values()).filter(cert => !cert.revoked_at);
+
+const filteredActiveCertificates = computed(() => {
+    const all = Array.from(certificates.value.values()).filter(cert => !cert.revoked_at);
+    if (!hideAcmeCerts.value) return all;
+    return all.filter(cert => cert.name.ou != 'ACME');
 });
+
 const revokedCertificates = computed(() => {
-  return Array.from(certificates.value.values()).filter(cert => !!cert.revoked_at);
+    return Array.from(certificates.value.values()).filter(cert => !!cert.revoked_at);
 });
+
+const { pageSize, setPageSize } = usePageSize();
+
+const {
+    currentPage: activeCurrentPage,
+    totalPages: activeTotalPages,
+    paginated: paginatedActiveCerts,
+    startItem: activeStartItem,
+    endItem: activeEndItem,
+    prev: activePrev,
+    next: activeNext,
+} = usePagination(filteredActiveCertificates, pageSize);
+
+const {
+    currentPage: revokedCurrentPage,
+    totalPages: revokedTotalPages,
+    paginated: paginatedRevokedCerts,
+    startItem: revokedStartItem,
+    endItem: revokedEndItem,
+    prev: revokedPrev,
+    next: revokedNext,
+} = usePagination(revokedCertificates, pageSize);
 const settings = computed(() => settingStore.settings);
 const loading = computed(() => certificateStore.loading);
 const error = computed(() => certificateStore.error);

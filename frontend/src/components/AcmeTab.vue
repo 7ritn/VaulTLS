@@ -18,7 +18,7 @@
         </tr>
         </thead>
         <tbody>
-        <tr v-for="account in acmeStore.accounts.values()" :key="account.id">
+        <tr v-for="account in paginatedAccounts" :key="account.id">
           <td :id="'AcmeId-' + account.id">{{ account.id }}</td>
           <td :id="'AcmeName-' + account.id">{{ account.name }}</td>
           <td :id="'AcmeDomains-' + account.id">
@@ -66,6 +66,17 @@
         </tr>
         </tbody>
       </table>
+      <PaginationControls
+          :current-page="accountsCurrentPage"
+          :total-pages="accountsTotalPages"
+          :total-items="accountsArray.length"
+          :start-item="accountsStartItem"
+          :end-item="accountsEndItem"
+          :page-size="pageSize"
+          @prev="accountsPrev"
+          @next="accountsNext"
+          @update:page-size="setPageSize"
+      />
     </div>
 
     <button
@@ -98,7 +109,7 @@
         </tr>
         </thead>
         <tbody>
-        <tr v-for="order in acmeStore.orders.values()" :key="order.id">
+        <tr v-for="order in paginatedOrders" :key="order.id">
           <td>{{ order.id }}</td>
           <td>{{ order.account_name }}</td>
           <td>
@@ -120,6 +131,17 @@
         </tr>
         </tbody>
       </table>
+      <PaginationControls
+          :current-page="ordersCurrentPage"
+          :total-pages="ordersTotalPages"
+          :total-items="ordersArray.length"
+          :start-item="ordersStartItem"
+          :end-item="ordersEndItem"
+          :page-size="pageSize"
+          @prev="ordersPrev"
+          @next="ordersNext"
+          @update:page-size="setPageSize"
+      />
     </div>
 
     <!-- Create Modal -->
@@ -482,6 +504,9 @@ import { useCAStore } from '@/stores/cas';
 import { useAuthStore } from '@/stores/auth';
 import { useUserStore } from '@/stores/users';
 import type { AcmeAccount, CreateAcmeAccountResponse } from '@/types/Acme';
+import { usePagination } from '@/composables/usePagination.ts';
+import { usePageSize } from '@/composables/usePageSize.ts';
+import PaginationControls from '@/components/PaginationControls.vue';
 
 // stores
 const acmeStore = useAcmeStore();
@@ -493,6 +518,31 @@ const userStore = useUserStore();
 const loading = computed(() => acmeStore.loading);
 const error = computed(() => acmeStore.error);
 const cas = computed(() => caStore.cas);
+
+const accountsArray = computed(() => Array.from(acmeStore.accounts.values()));
+const ordersArray = computed(() => Array.from(acmeStore.orders.values()));
+
+const { pageSize, setPageSize } = usePageSize();
+
+const {
+    currentPage: accountsCurrentPage,
+    totalPages: accountsTotalPages,
+    paginated: paginatedAccounts,
+    startItem: accountsStartItem,
+    endItem: accountsEndItem,
+    prev: accountsPrev,
+    next: accountsNext,
+} = usePagination(accountsArray, pageSize);
+
+const {
+    currentPage: ordersCurrentPage,
+    totalPages: ordersTotalPages,
+    paginated: paginatedOrders,
+    startItem: ordersStartItem,
+    endItem: ordersEndItem,
+    prev: ordersPrev,
+    next: ordersNext,
+} = usePagination(ordersArray, pageSize);
 
 const acmeDirectoryUrl = window.location.origin + '/api/acme/directory';
 

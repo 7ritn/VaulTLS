@@ -142,9 +142,12 @@ pub(crate) struct Common {
     notify_acme_issuance: bool,
     #[serde(default)]
     acme_dns_resolver: String,
+    #[serde(default = "default_page_size")]
+    default_page_size: u32,
 }
 
 fn default_crl_hours() -> i64 { 7 * 24 }
+fn default_page_size() -> u32 { 20 }
 
 impl Common {
     /// Replace common settings with environment variables.
@@ -174,6 +177,7 @@ impl Default for Common {
             acme_enabled: false,
             notify_acme_issuance: false,
             acme_dns_resolver: String::new(),
+            default_page_size: 20,
         }
     }
 }

@@ -62,6 +62,17 @@
               </select>
             </div>
           </div>
+          <div class="mb-3">
+            <label for="default-page-size" class="form-label">Default Rows per Page</label>
+            <select
+                id="default-page-size"
+                v-model.number="settings.common.default_page_size"
+                class="form-select"
+                style="width: auto;"
+            >
+              <option v-for="size in PAGE_SIZE_OPTIONS" :key="size" :value="size">{{ size }}</option>
+            </select>
+          </div>
         </div>
       </div>
 
@@ -317,6 +328,7 @@ import { type User, UserRole } from "@/types/User.ts";
 import { useUserStore } from "@/stores/users.ts";
 import { useSetupStore } from "@/stores/setup.ts";
 import { Encryption, PasswordRule } from "@/types/Settings.ts";
+import { PAGE_SIZE_OPTIONS } from "@/composables/usePageSize.ts";
 
 // Stores
 const settingsStore = useSettingsStore();
