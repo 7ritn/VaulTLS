@@ -2,6 +2,15 @@
   <div>
     <h1>ACME Accounts</h1>
     <hr />
+    <div class="form-check mb-2">
+      <input
+          id="hideDeactivatedAccounts"
+          v-model="hideDeactivated"
+          type="checkbox"
+          class="form-check-input"
+      />
+      <label class="form-check-label" for="hideDeactivatedAccounts">Hide deactivated accounts</label>
+    </div>
     <div class="table-responsive">
       <table class="table table-striped">
         <thead>
@@ -55,11 +64,11 @@
               </button>
               <button
                   :id="'DeleteButton-' + account.id"
-                  v-if="authStore.isAdmin"
+                  v-if="authStore.isAdmin && account.status !== 'deactivated'"
                   class="btn btn-danger btn-sm flex-grow-1"
                   @click="confirmDeletion(account)"
               >
-                Delete
+                Deactivate
               </button>
             </div>
           </td>
@@ -464,7 +473,7 @@
       </div>
     </div>
 
-    <!-- Delete Confirmation Modal -->
+    <!-- Deactivate Confirmation Modal -->
     <div
         v-if="isDeleteModalVisible"
         class="modal show d-block"
@@ -474,21 +483,22 @@
       <div class="modal-dialog">
         <div class="modal-content">
           <div class="modal-header">
-            <h5 class="modal-title">Delete ACME Account</h5>
+            <h5 class="modal-title">Deactivate ACME Account</h5>
             <button type="button" class="btn-close" @click="closeDeleteModal"></button>
           </div>
           <div class="modal-body">
             <p>
-              Are you sure you want to delete the ACME account
+              Are you sure you want to deactivate the ACME account
               <strong>{{ accountToDelete?.name }}</strong>?
+              The account will no longer be able to issue certificates.
             </p>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" @click="closeDeleteModal">
               Cancel
             </button>
-            <button type="button" class="btn btn-danger" @click="deleteAccount">
-              Delete
+            <button id="ConfirmDeleteButton" type="button" class="btn btn-danger" @click="deleteAccount">
+              Deactivate
             </button>
           </div>
         </div>
@@ -519,7 +529,11 @@ const loading = computed(() => acmeStore.loading);
 const error = computed(() => acmeStore.error);
 const cas = computed(() => caStore.cas);
 
-const accountsArray = computed(() => Array.from(acmeStore.accounts.values()));
+const hideDeactivated = ref(true);
+const accountsArray = computed(() => {
+  const all = Array.from(acmeStore.accounts.values());
+  return hideDeactivated.value ? all.filter(a => a.status !== 'deactivated') : all;
+});
 const ordersArray = computed(() => Array.from(acmeStore.orders.values()));
 
 const { pageSize, setPageSize } = usePageSize();

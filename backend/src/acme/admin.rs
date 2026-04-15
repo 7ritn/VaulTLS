@@ -103,6 +103,6 @@ pub async fn delete_acme_account(
     id: i64,
     _acme: AcmeEnabled,
 ) -> Result<(), ApiError> {
-    state.db.delete_acme_account(id).await?;
+    state.db.update_acme_account(id, None, None, None, Some("deactivated".to_string()), None).await?;
     Ok(())
 }
