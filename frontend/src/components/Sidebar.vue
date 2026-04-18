@@ -33,7 +33,7 @@
                 :class="{ active: activeRouteName === 'Overview' }"
                 @click.prevent="goToRoute('Overview')"
             >
-              Overview
+              {{ $t('sidebar.overview') }}
             </a>
           </li>
           <li class="nav-item mb-2">
@@ -43,7 +43,7 @@
                 :class="{ active: activeRouteName === 'CA' }"
                 @click.prevent="goToRoute('CA')"
             >
-              Certificate Authorities
+              {{ $t('sidebar.ca') }}
             </a>
           </li>
           <li v-if="isAdmin" class="nav-item mb-2">
@@ -53,7 +53,7 @@
                 :class="{ active: activeRouteName === 'Users' }"
                 @click.prevent="goToRoute('Users')"
             >
-              Users
+              {{ $t('sidebar.users') }}
             </a>
           </li>
           <li class="nav-item">
@@ -63,7 +63,7 @@
                 :class="{ active: activeRouteName === 'Settings' }"
                 @click.prevent="goToRoute('Settings')"
             >
-              Settings
+              {{ $t('sidebar.settings') }}
             </a>
           </li>
         </ul>
@@ -74,14 +74,14 @@
             class="nav-link d-flex align-items-center gap-2 mb-2"
             @click="handleLogout"
         >
-          Logout
+          {{ $t('sidebar.logout') }}
         </a>
         <div class="d-flex justify-content-center gap-2 mt-2">
           <button
               class="btn btn-sm"
               :class="themeStore.theme === 'light' ? 'btn-primary' : 'btn-outline-secondary'"
               @click="themeStore.setTheme('light')"
-              title="Light Mode"
+              :title="$t('sidebar.lightMode')"
           >
             <i class="bi bi-sun-fill"></i>
           </button>
@@ -89,7 +89,7 @@
               class="btn btn-sm"
               :class="themeStore.theme === 'dark' ? 'btn-primary' : 'btn-outline-secondary'"
               @click="themeStore.setTheme('dark')"
-              title="Dark Mode"
+              :title="$t('sidebar.darkMode')"
           >
             <i class="bi bi-moon-fill"></i>
           </button>
@@ -97,14 +97,26 @@
               class="btn btn-sm"
               :class="themeStore.theme === 'auto' ? 'btn-primary' : 'btn-outline-secondary'"
               @click="themeStore.setTheme('auto')"
-              title="Auto Mode"
+              :title="$t('sidebar.autoMode')"
           >
             <i class="bi bi-circle-half"></i>
           </button>
         </div>
+        <div class="d-flex justify-content-center mt-2">
+          <select
+              class="form-select form-select-sm"
+              style="max-width: 120px"
+              :value="locale"
+              @change="changeLocale(($event.target as HTMLSelectElement).value)"
+          >
+            <option v-for="(label, code) in SUPPORTED_LOCALES" :key="code" :value="code">
+              {{ label }}
+            </option>
+          </select>
+        </div>
       </div>
       <div class="text-center text-muted small p-2">
-        {{ "Version: " + setupStore.version }}
+        {{ $t('sidebar.version', { version: setupStore.version }) }}
       </div>
     </div>
   </div>
@@ -113,12 +125,15 @@
 <script setup lang="ts">
 import { computed, ref, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import { useI18n } from 'vue-i18n';
 import ProfileCard from './ProfileCard.vue';
 import { UserRole } from "@/types/User.ts";
 import { useAuthStore } from "@/stores/auth.ts";
 import {useSettingsStore} from "@/stores/settings.ts";
 import {useSetupStore} from "@/stores/setup.ts";
 import {useThemeStore} from "@/stores/theme.ts";
+import { SUPPORTED_LOCALES } from '@/plugins/i18n';
+
 defineProps({
   currentTab: String,
   visible: Boolean
@@ -131,9 +146,15 @@ const authStore = useAuthStore();
 const setupStore = useSetupStore();
 const themeStore = useThemeStore();
 const isMobile = ref(false);
+const { locale } = useI18n();
 
 const activeRouteName = computed(() => route.name);
 const isAdmin = computed(() => authStore.current_user?.role === UserRole.Admin);
+
+const changeLocale = (lang: string) => {
+  locale.value = lang;
+  localStorage.setItem('locale', lang);
+};
 
 const goToRoute = (name: string) => {
   emit('change-tab', name);

@@ -49,6 +49,7 @@ impl VaulTLSClient {
             validity_duration: Some(2),
             validity_unit: Some(TimespanUnit::Year),
             password: Some(TEST_PASSWORD.to_string()),
+            default_language: None,
         };
 
         let request = client

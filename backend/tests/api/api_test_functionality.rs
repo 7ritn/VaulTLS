@@ -113,6 +113,7 @@ async fn test_setup_hash() -> Result<()> {
         validity_duration: Some(1),
         validity_unit: Some(TimespanUnit::Year),
         password: Some(password_hash.to_string()),
+        default_language: None,
     };
 
     let request = client
