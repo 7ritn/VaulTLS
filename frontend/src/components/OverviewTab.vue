@@ -1,21 +1,21 @@
 <template>
   <div>
-    <h1>Certificates</h1>
+    <h1>{{ $t('overview.title') }}</h1>
     <hr />
     <div class="table-responsive">
       <table class="table table-striped active-certs">
         <thead>
           <tr>
-            <th v-if="authStore.isAdmin">User</th>
-            <th>Name</th>
-            <th v-if="hasAnyOU">Group</th>
-            <th class="d-none d-md-table-cell">Type</th>
-            <th class="d-none d-md-table-cell">Created on</th>
-            <th>Valid until</th>
-            <th>Password</th>
-            <th class="d-none d-md-table-cell">Renew Method</th>
-            <th class="d-none d-md-table-cell">CA ID</th>
-            <th>Actions</th>
+            <th v-if="authStore.isAdmin">{{ $t('overview.colUser') }}</th>
+            <th>{{ $t('common.colName') }}</th>
+            <th v-if="hasAnyOU">{{ $t('common.colGroup') }}</th>
+            <th class="d-none d-md-table-cell">{{ $t('common.colType') }}</th>
+            <th class="d-none d-md-table-cell">{{ $t('common.colCreatedOn') }}</th>
+            <th>{{ $t('common.colValidUntil') }}</th>
+            <th>{{ $t('common.password') }}</th>
+            <th class="d-none d-md-table-cell">{{ $t('overview.colRenewMethod') }}</th>
+            <th class="d-none d-md-table-cell">{{ $t('common.colCaId') }}</th>
+            <th>{{ $t('common.actions') }}</th>
           </tr>
         </thead>
         <tbody>
@@ -81,14 +81,14 @@
                     class="btn btn-primary btn-sm flex-grow-1"
                     @click="downloadCertificate(cert.id)"
                 >
-                  Download
+                  {{ $t('common.download') }}
                 </button>
                 <button
                     v-if="cert.certificate_type === CertificateType.TLSClient || cert.certificate_type === CertificateType.TLSServer"
                     class="btn btn-warning btn-sm flex-grow-1"
                     @click="confirmRevocation(cert)"
                 >
-                  Revoke
+                  {{ $t('overview.revoke') }}
                 </button>
               </div>
             </td>
@@ -103,10 +103,10 @@
         class="btn btn-primary mx-1"
         @click="showGenerateModal"
     >
-      Create New Certificate
+      {{ $t('overview.createCertificate') }}
     </button>
 
-    <div v-if="loading" class="text-center mt-3">Loading certificates...</div>
+    <div v-if="loading" class="text-center mt-3">{{ $t('overview.loadingCerts') }}</div>
     <div v-if="error" class="alert alert-danger mt-3">{{ error }}</div>
 
     <div class="mt-5 pt-3 border-top">
@@ -116,7 +116,7 @@
           @click="showRevoked = !showRevoked"
       >
         <h6 class="mb-0 text-uppercase fw-bold" style="font-size: 0.85rem; letter-spacing: 0.05rem;">
-          Revoked Certificates
+          {{ $t('overview.revokedSection') }}
         </h6>
         <span class="ms-2 small">{{ showRevoked ? '−' : '+' }}</span>
       </div>
@@ -126,15 +126,15 @@
           <table class="table table-sm table-borderless align-middle revoked-certificates-table">
             <thead>
             <tr class="text-muted border-bottom" style="font-size: 0.8rem;">
-              <th v-if="authStore.isAdmin">User</th>
-              <th>Name</th>
-              <th v-if="hasAnyOU">Group</th>
-              <th class="d-none d-md-table-cell">Type</th>
-              <th class="d-none d-md-table-cell">Created</th>
-              <th class="d-none d-md-table-cell">Validity</th>
-              <th>Revoked</th>
-              <th class="d-none d-md-table-cell text-end">CA ID</th>
-              <th class="text-end">Actions</th>
+              <th v-if="authStore.isAdmin">{{ $t('overview.colUser') }}</th>
+              <th>{{ $t('common.colName') }}</th>
+              <th v-if="hasAnyOU">{{ $t('common.colGroup') }}</th>
+              <th class="d-none d-md-table-cell">{{ $t('common.colType') }}</th>
+              <th class="d-none d-md-table-cell">{{ $t('overview.colCreated') }}</th>
+              <th class="d-none d-md-table-cell">{{ $t('overview.colValidity') }}</th>
+              <th>{{ $t('overview.colRevoked') }}</th>
+              <th class="d-none d-md-table-cell text-end">{{ $t('common.colCaId') }}</th>
+              <th class="text-end">{{ $t('common.actions') }}</th>
             </tr>
             </thead>
             <tbody class="text-muted" style="font-size: 0.85rem;">
@@ -150,16 +150,16 @@
               <td class="text-end">
                 <button
                     class="btn btn-link btn-sm text-decoration-none text-secondary p-0"
-                    title="Delete Record"
+                    :title="$t('common.delete')"
                     @click="confirmDeletion(cert)"
                 >
-                  <small>Delete</small>
+                  <small>{{ $t('common.delete') }}</small>
                 </button>
               </td>
             </tr>
             <tr v-if="revokedCertificates.length === 0">
               <td colspan="7" class="text-center py-4 text-muted italic">
-                <small>No revoked certificates found.</small>
+                <small>{{ $t('overview.noRevokedCerts') }}</small>
               </td>
             </tr>
             </tbody>
@@ -178,12 +178,12 @@
       <div class="modal-dialog">
         <div class="modal-content">
           <div class="modal-header">
-            <h5 class="modal-title">Generate New Certificate</h5>
+            <h5 class="modal-title">{{ $t('overview.generateModal.title') }}</h5>
             <button type="button" class="btn-close" @click="closeGenerateModal"></button>
           </div>
           <div class="modal-body">
             <div class="mb-3">
-              <label for="certName" class="form-label">Common Name</label>
+              <label for="certName" class="form-label">{{ $t('overview.generateModal.commonName') }}</label>
               <div class="input-group">
                 <input
                     id="certName"
@@ -196,14 +196,14 @@
                     class="btn btn-outline-secondary"
                     type="button"
                     @click="showOUField = !showOUField"
-                    :title="showOUField ? 'Hide OU field' : 'Add OU (Group)'"
+                    :title="showOUField ? $t('common.hideOu') : $t('common.addOu')"
                 >
                   {{ showOUField ? '−' : '+' }}
                 </button>
               </div>
             </div>
             <div class="mb-3" v-if="showOUField && (certReq.cert_type === CertificateType.TLSClient || certReq.cert_type === CertificateType.TLSServer)">
-              <label for="certOU" class="form-label">OU (Group)</label>
+              <label for="certOU" class="form-label">{{ $t('common.ouGroup') }}</label>
               <input
                   id="certOU"
                   v-model="certReq.cert_name.ou"
@@ -213,28 +213,28 @@
               />
             </div>
             <div class="mb-3">
-              <label for="certType" class="form-label">Certificate Type</label>
+              <label for="certType" class="form-label">{{ $t('overview.generateModal.certType') }}</label>
               <select
                   class="form-select"
                   id="certType"
                   v-model="certReq.cert_type"
                   required
               >
-                <option :value="CertificateType.TLSClient">TLS Client</option>
-                <option :value="CertificateType.TLSServer">TLS Server</option>
-                <option :value="CertificateType.SSHClient">SSH Client</option>
-                <option :value="CertificateType.SSHServer">SSH Server</option>
+                <option :value="CertificateType.TLSClient">{{ $t('overview.generateModal.tlsClient') }}</option>
+                <option :value="CertificateType.TLSServer">{{ $t('overview.generateModal.tlsServer') }}</option>
+                <option :value="CertificateType.SSHClient">{{ $t('overview.generateModal.sshClient') }}</option>
+                <option :value="CertificateType.SSHServer">{{ $t('overview.generateModal.sshServer') }}</option>
               </select>
             </div>
             <div class="mb-3" v-if="certReq.cert_type == CertificateType.TLSServer || certReq.cert_type == CertificateType.SSHClient || certReq.cert_type == CertificateType.SSHServer">
-              <label class="form-label" v-if="certReq.cert_type == CertificateType.TLSServer">DNS Names</label>
-              <label class="form-label" v-if="certReq.cert_type == CertificateType.SSHClient || certReq.cert_type == CertificateType.SSHServer">Principals</label>
+              <label class="form-label" v-if="certReq.cert_type == CertificateType.TLSServer">{{ $t('overview.generateModal.dnsNames') }}</label>
+              <label class="form-label" v-if="certReq.cert_type == CertificateType.SSHClient || certReq.cert_type == CertificateType.SSHServer">{{ $t('overview.generateModal.principals') }}</label>
               <div v-for="(_, index) in certReq.usage_limit" :key="index" class="input-group mb-2">
                 <input
                     type="text"
                     class="form-control"
                     v-model="certReq.usage_limit[index]"
-                    :placeholder="'Usage ' + (index + 1)"
+                    :placeholder="$t('overview.generateModal.usagePlaceholder', { n: index + 1 })"
                 />
                 <button
                     v-if="index === certReq.usage_limit.length - 1"
@@ -255,27 +255,27 @@
               </div>
             </div>
             <div class="mb-3">
-              <label for="userId" class="form-label">User</label>
+              <label for="userId" class="form-label">{{ $t('overview.generateModal.user') }}</label>
               <select
                   id="userId"
                   v-model="certReq.user_id"
                   class="form-control"
               >
-                <option value="" disabled>Select a user</option>
+                <option value="" disabled>{{ $t('overview.generateModal.selectUser') }}</option>
                 <option v-for="user in userStore.users" :key="user.id" :value="user.id">
                   {{ user.name }}
                 </option>
               </select>
             </div>
             <div class="mb-3">
-              <label for="caId" class="form-label">Certificate Authority</label>
+              <label for="caId" class="form-label">{{ $t('overview.generateModal.ca') }}</label>
               <select
                   id="caId"
                   v-model="certReq.ca_id"
                   class="form-control"
                   required
               >
-                <option :value="undefined" disabled>Select a CA</option>
+                <option :value="undefined" disabled>{{ $t('overview.generateModal.selectCa') }}</option>
                 <option v-for="ca in availableCAs" :key="ca.id" :value="ca.id">
                   {{ ca.name.cn }} (ID: {{ ca.id }})
                 </option>
@@ -283,7 +283,7 @@
             </div>
 
             <div class="mb-3">
-              <label for="validity" class="form-label">Validity</label>
+              <label for="validity" class="form-label">{{ $t('common.validity') }}</label>
               <div class="input-group">
                 <input
                     id="validity"
@@ -299,10 +299,10 @@
                     class="form-select"
                     style="max-width: 120px"
                 >
-                  <option :value="ValidityUnit.Hour">Hours</option>
-                  <option :value="ValidityUnit.Day">Days</option>
-                  <option :value="ValidityUnit.Month">Months</option>
-                  <option :value="ValidityUnit.Year">Years</option>
+                  <option :value="ValidityUnit.Hour">{{ $t('common.hours') }}</option>
+                  <option :value="ValidityUnit.Day">{{ $t('common.days') }}</option>
+                  <option :value="ValidityUnit.Month">{{ $t('common.months') }}</option>
+                  <option :value="ValidityUnit.Year">{{ $t('common.years') }}</option>
                 </select>
               </div>
             </div>
@@ -316,11 +316,11 @@
                   role="switch"
               />
               <label class="form-check-label" for="system_generated_password">
-                System Generated Password
+                {{ $t('overview.generateModal.systemPassword') }}
               </label>
             </div>
             <div class="mb-3" v-if="!certReq.system_generated_password">
-              <label for="certPassword" class="form-label">Password</label>
+              <label for="certPassword" class="form-label">{{ $t('common.password') }}</label>
               <input
                   id="certPassword"
                   v-model="certReq.cert_password"
@@ -330,17 +330,17 @@
               />
             </div>
             <div class="mb-3">
-              <label for="renewMethod" class="form-label">Certificate Renew Method</label>
+              <label for="renewMethod" class="form-label">{{ $t('overview.generateModal.renewMethod') }}</label>
               <select
                   class="form-select"
                   id="renewMethod"
                   v-model="certReq.renew_method"
                   required
               >
-                <option :value="CertificateRenewMethod.None">None</option>
-                <option :value="CertificateRenewMethod.Notify">Remind</option>
-                <option :value="CertificateRenewMethod.Renew" v-if="certReq.cert_type == CertificateType.TLSServer || certReq.cert_type == CertificateType.TLSClient">Renew</option>
-                <option :value="CertificateRenewMethod.RenewAndNotify" v-if="certReq.cert_type == CertificateType.TLSServer || certReq.cert_type == CertificateType.TLSClient">Renew and Notify</option>
+                <option :value="CertificateRenewMethod.None">{{ $t('overview.generateModal.renewNone') }}</option>
+                <option :value="CertificateRenewMethod.Notify">{{ $t('overview.generateModal.renewRemind') }}</option>
+                <option :value="CertificateRenewMethod.Renew" v-if="certReq.cert_type == CertificateType.TLSServer || certReq.cert_type == CertificateType.TLSClient">{{ $t('overview.generateModal.renewRenew') }}</option>
+                <option :value="CertificateRenewMethod.RenewAndNotify" v-if="certReq.cert_type == CertificateType.TLSServer || certReq.cert_type == CertificateType.TLSClient">{{ $t('overview.generateModal.renewAndNotify') }}</option>
               </select>
             </div>
             <div v-if="isMailValid" class="mb-3 form-check form-switch">
@@ -352,13 +352,13 @@
                   role="switch"
               />
               <label class="form-check-label" for="notify-user">
-                Notify User
+                {{ $t('overview.generateModal.notifyUser') }}
               </label>
             </div>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" @click="closeGenerateModal">
-              Cancel
+              {{ $t('common.cancel') }}
             </button>
             <button
                 type="button"
@@ -366,8 +366,8 @@
                 :disabled="loading || ((!certReq.system_generated_password && certReq.cert_password.length == 0) && passwordRule == PasswordRule.Required)"
                 @click="createCertificate"
             >
-              <span v-if="loading">Creating...</span>
-              <span v-else>Create Certificate</span>
+              <span v-if="loading">{{ $t('common.creating') }}</span>
+              <span v-else>{{ $t('overview.generateModal.create') }}</span>
             </button>
           </div>
         </div>
@@ -384,21 +384,20 @@
       <div class="modal-dialog">
         <div class="modal-content">
           <div class="modal-header">
-            <h5 class="modal-title">Revoke Certificate</h5>
+            <h5 class="modal-title">{{ $t('overview.revokeModal.title') }}</h5>
             <button type="button" class="btn-close" @click="closeRevokeModal"></button>
           </div>
           <div class="modal-body">
             <p>
-              Are you sure you want to revoke the certificate
-              <strong>{{ certToRevoke?.name.cn }}</strong>?
+              {{ $t('overview.revokeModal.confirm', { name: certToRevoke?.name.cn }) }}
             </p>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" @click="closeRevokeModal">
-              Cancel
+              {{ $t('common.cancel') }}
             </button>
             <button type="button" class="btn btn-warning" @click="revokeCertificate">
-              Revoke
+              {{ $t('overview.revokeModal.revoke') }}
             </button>
           </div>
         </div>
@@ -415,26 +414,23 @@
       <div class="modal-dialog">
         <div class="modal-content">
           <div class="modal-header">
-            <h5 class="modal-title">Delete Certificate</h5>
+            <h5 class="modal-title">{{ $t('overview.deleteModal.title') }}</h5>
             <button type="button" class="btn-close" @click="closeDeleteModal"></button>
           </div>
           <div class="modal-body">
             <p>
-              Are you sure you want to delete the certificate
-              <strong>{{ certToDelete?.name.cn }}</strong>?
+              {{ $t('overview.deleteModal.confirm', { name: certToDelete?.name.cn }) }}
             </p>
             <p class="text-warning">
-              <small>
-                Disclaimer: Deleting the certificate will remove it from CRL creation since no information on deleted certificates is kept.
-              </small>
+              <small>{{ $t('overview.deleteModal.disclaimer') }}</small>
             </p>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" @click="closeDeleteModal">
-              Cancel
+              {{ $t('common.cancel') }}
             </button>
             <button type="button" class="btn btn-danger" @click="deleteCertificate">
-              Delete
+              {{ $t('common.delete') }}
             </button>
           </div>
         </div>

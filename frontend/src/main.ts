@@ -5,6 +5,7 @@ import './assets/styles/variables.css'
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import router from './router/router';
+import { i18n } from './plugins/i18n';
 
 import App from './App.vue'
 import {useSetupStore} from "@/stores/setup.ts";
@@ -17,6 +18,7 @@ async function initApp() {
 
     // Initialize Pinia before mounting
     app.use(pinia);
+    app.use(i18n);
 
     // Initialize the store
     const setupStore = useSetupStore();
