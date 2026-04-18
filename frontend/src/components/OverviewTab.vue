@@ -44,21 +44,42 @@
                       type="text"
                       :value="cert.password"
                       readonly
-                      class="form-control form-control-sm me-2"
-                      style="font-family: monospace; max-width: 100px;"
+                      class="form-control form-control-sm"
+                      placeholder="(Blank)"
+                      style="font-family: monospace; max-width: 100px; min-width: 70px;"
                   />
                 </template>
                 <template v-else>
-                  <span>•••••••</span>
+                  <input
+                      type="text"
+                      value="•••••••••••"
+                      readonly
+                      class="form-control form-control-sm"
+                      style="font-family: monospace; min-width: 70px; max-width: 100px; overflow-x: hidden; pointer-events: none;"
+                  />
                 </template>
-                <img
-                    :id="'PasswordButton-' + cert.id"
-                    :src="shownCerts.has(cert.id) ? '/images/eye-open.png' : '/images/eye-hidden.png'"
-                    class="ms-2"
-                    style="width: 20px; cursor: pointer;"
-                    @click="togglePasswordShown(cert)"
-                    alt="Button to show / hide password"
-                />
+                <svg
+                  :id="'PasswordButton-' + cert.id"
+                  style="width: 20px; height: 20px; cursor: pointer; flex-shrink: 0;"
+                  @click="togglePasswordShown(cert)"
+                  alt="Button to show / hide password"
+                  class="ms-2"
+                >
+                  <use
+                    :href="shownCerts.has(cert.id) ? 'images/eye-icons.svg#eye-open' : 'images/eye-icons.svg#eye-closed'"
+                  ></use>
+                </svg>
+                <svg
+                  :id="'PasswordCopyButton-' + cert.id"
+                  style="width: 20px; height: 20px; cursor: pointer; flex-shrink: 0;"
+                  @click="copyPasswordtoClipboard(cert)"
+                  alt="Button to copy password"
+                  class="ms-2"
+                >
+                  <use
+                    :href="copiedCerts.has(cert.id) ? 'images/copy-icons.svg#checkmark' : 'images/copy-icons.svg#copy'"
+                  ></use>
+                </svg>
               </div>
             </td>
             <td :id="'RenewMethod-' + cert.id" class="d-none d-md-table-cell">{{ CertificateRenewMethod[cert.renew_method] }}</td>
@@ -478,7 +499,9 @@ const caStore = useCAStore();
 
 // local state
 const shownCerts = ref(new Set<number>());
+const copiedCerts = ref(new Set<number>());
 const hideAcmeCerts = ref(false);
+
 
 const certificates = computed(() => certificateStore.certificates);
 
@@ -653,6 +676,22 @@ const togglePasswordShown = async (cert: Certificate) => {
   } else {
     shownCerts.value.add(cert.id);
   }
+};
+
+const copyPasswordtoClipboard = async (cert: Certificate) => {
+    if (!cert.password) {
+      await certificateStore.fetchCertificatePassword(cert.id);
+    }
+
+    try {
+      await navigator.clipboard.writeText(cert.password);
+
+      copiedCerts.value.add(cert.id);
+      setTimeout(() => copiedCerts.value.delete(cert.id), 1500);
+
+    } catch (err) {
+      console.error("Failed to copy to clipboard: ", err);
+    }
 };
 
 const addUsageField = () => {
