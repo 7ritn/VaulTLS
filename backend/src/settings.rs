@@ -139,11 +139,14 @@ pub(crate) struct Common {
     password_rule: PasswordRule,
     #[serde(default = "default_crl_hours")]
     crl_next_update_hours: i64,
+    #[serde(default = "default_language_value")]
+    default_language: String,
 }
 
 fn default_crl_hours() -> i64 { 7 * 24 }
 fn default_true() -> bool { true }
 fn default_acme_rate_limit() -> u32 { 20 }
+fn default_language_value() -> String { "en".to_string() }
 
 impl Common {
     /// Replace common settings with environment variables.
@@ -164,6 +167,7 @@ impl Default for Common {
             vaultls_url: Default::default(),
             password_rule: Default::default(),
             crl_next_update_hours: 7 * 24,
+            default_language: "en".to_string(),
         }
     }
 }
@@ -335,6 +339,17 @@ impl InnerSettings {
     fn get_vaultls_url(&self) -> &str { &self.common.vaultls_url }
     fn get_crl_next_update_hours(&self) -> i64 { self.common.crl_next_update_hours }
     fn get_db_encrypted(&self) -> bool { self.logic.db_encrypted }
+    fn get_default_language(&self) -> &str { &self.common.default_language }
+
+    fn set_default_language(&mut self, lang: String) -> Result<(), ApiError> {
+        if lang.len() != 2 || !lang.chars().all(|c| c.is_ascii_alphabetic()) {
+            return Err(ApiError::BadRequest(
+                "default_language must be exactly two letters".into(),
+            ));
+        }
+        self.common.default_language = lang;
+        self.save_to_file(None)
+    }
 
     fn set_password_enabled(&mut self, password_enabled: bool) -> Result<(), ApiError>{
         self.common.password_enabled = password_enabled;
@@ -457,5 +472,15 @@ impl Settings {
     pub(crate) fn get_acme_dns_resolver(&self) -> String {
         let settings = self.0.read();
         settings.get_acme_dns_resolver().to_string()
+    }
+    
+    pub(crate) fn get_default_language(&self) -> String {
+        let settings = self.0.read();
+        settings.get_default_language().to_string()
+    }
+
+    pub(crate) fn set_default_language(&self, lang: String) -> Result<(), ApiError> {
+        let mut settings = self.0.write();
+        settings.set_default_language(lang)
     }
 }

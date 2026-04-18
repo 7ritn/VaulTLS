@@ -1,0 +1,179 @@
+{
+  "common": {
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "save": "Save",
+    "download": "Download",
+    "loading": "Loading...",
+    "hours": "Hours",
+    "days": "Days",
+    "months": "Months",
+    "years": "Years",
+    "actions": "Actions",
+    "password": "Password",
+    "email": "E-Mail",
+    "username": "Username",
+    "validity": "Validity",
+    "creating": "Creating...",
+    "hideOu": "Hide OU field",
+    "addOu": "Add OU (Group)",
+    "ouGroup": "OU (Group)",
+    "colName": "Name",
+    "colGroup": "Group",
+    "colType": "Type",
+    "colCreatedOn": "Created on",
+    "colValidUntil": "Valid until",
+    "colCaId": "CA ID"
+  },
+  "sidebar": {
+    "overview": "Overview",
+    "ca": "Certificate Authorities",
+    "users": "Users",
+    "settings": "Settings",
+    "logout": "Logout",
+    "lightMode": "Light Mode",
+    "darkMode": "Dark Mode",
+    "autoMode": "Auto Mode",
+    "version": "Version: {version}"
+  },
+  "login": {
+    "loginButton": "Login",
+    "loginWithOAuth": "Login with OAuth",
+    "noPasswordAuth": "Password authentication is not set up.",
+    "loginFailed": "Login failed. Please try again."
+  },
+  "setup": {
+    "hello": "Hello",
+    "oidcNotice": "OAuth (OIDC) is configured. You can still set a password for local login if desired.",
+    "caName": "Name of CA entity",
+    "caValidity": "Validity of CA",
+    "passwordHintOidc": "You can leave this empty if using OAuth (OIDC).",
+    "passwordHintRequired": "Required for local login.",
+    "completeSetup": "Complete Setup",
+    "setupFailed": "Failed to set up."
+  },
+  "overview": {
+    "title": "Certificates",
+    "colUser": "User",
+    "colRenewMethod": "Renew Method",
+    "revoke": "Revoke",
+    "createCertificate": "Create New Certificate",
+    "loadingCerts": "Loading certificates...",
+    "revokedSection": "Revoked Certificates",
+    "colCreated": "Created",
+    "colValidity": "Validity",
+    "colRevoked": "Revoked",
+    "noRevokedCerts": "No revoked certificates found.",
+    "generateModal": {
+      "title": "Generate New Certificate",
+      "commonName": "Common Name",
+      "certType": "Certificate Type",
+      "tlsClient": "TLS Client",
+      "tlsServer": "TLS Server",
+      "sshClient": "SSH Client",
+      "sshServer": "SSH Server",
+      "dnsNames": "DNS Names",
+      "principals": "Principals",
+      "usagePlaceholder": "Usage {n}",
+      "user": "User",
+      "selectUser": "Select a user",
+      "ca": "Certificate Authority",
+      "selectCa": "Select a CA",
+      "systemPassword": "System Generated Password",
+      "renewMethod": "Certificate Renew Method",
+      "renewNone": "None",
+      "renewRemind": "Remind",
+      "renewRenew": "Renew",
+      "renewAndNotify": "Renew and Notify",
+      "notifyUser": "Notify User",
+      "create": "Create Certificate"
+    },
+    "revokeModal": {
+      "title": "Revoke Certificate",
+      "confirm": "Are you sure you want to revoke the certificate {name}?",
+      "revoke": "Revoke"
+    },
+    "deleteModal": {
+      "title": "Delete Certificate",
+      "confirm": "Are you sure you want to delete the certificate {name}?",
+      "disclaimer": "Disclaimer: Deleting the certificate will remove it from CRL creation since no information on deleted certificates is kept."
+    }
+  },
+  "ca": {
+    "title": "Certificate Authorities",
+    "crl": "CRL",
+    "toggle_dropdown": "Toggle Dropdown",
+    "der_format": "DER Format",
+    "pem_format": "PEM Format",
+    "createCa": "Create New CA",
+    "loadingCas": "Loading CAs...",
+    "createModal": {
+      "title": "Create New Certificate Authority",
+      "caName": "CA Name (CN)",
+      "caType": "CA Type",
+      "create": "Create CA"
+    },
+    "deleteModal": {
+      "title": "Delete Certificate",
+      "confirm": "Are you sure you want to delete the CA {name}?"
+    }
+  },
+  "users": {
+    "title": "Users",
+    "colRole": "Role",
+    "createUser": "Create New User",
+    "createModal": {
+      "title": "Create New User",
+      "role": "Role",
+      "create": "Create User"
+    },
+    "deleteModal": {
+      "title": "Delete User",
+      "confirm": "Are you sure you want to delete the user {name}?",
+      "disclaimer": "Disclaimer: Deleting the user will also delete their certificates. The certificates are still valid until expiry."
+    }
+  },
+  "settings": {
+    "title": "Settings",
+    "common": {
+      "heading": "Common",
+      "passwordEnabled": "Password Login enabled",
+      "vaultlsUrl": "VaulTLS URL",
+      "passwordRule": "PKCS12 Password Rules",
+      "passwordRuleOptional": "Optional",
+      "passwordRuleRequired": "Required",
+      "passwordRuleSystem": "System Generated",
+      "crlValidity": "CRL Validity",
+      "crlHours": "Hour(s)",
+      "crlDays": "Day(s)",
+      "crlWeeks": "Week(s)",
+      "defaultLanguage": "Default Language"
+    },
+    "mail": {
+      "heading": "Mail",
+      "smtpHost": "SMTP Host",
+      "port": "Port",
+      "encryption": "Encryption",
+      "encryptionNone": "None",
+      "encryptionTls": "TLS",
+      "encryptionStarttls": "STARTTLS",
+      "from": "From"
+    },
+    "oidc": {
+      "heading": "OIDC",
+      "clientId": "Client ID",
+      "clientSecret": "Client Secret",
+      "authUrl": "Authorization URL",
+      "callbackUrl": "Callback URL"
+    },
+    "user": {
+      "heading": "User",
+      "changePassword": "Change Password",
+      "oldPassword": "Old Password",
+      "newPassword": "New Password",
+      "confirmPassword": "Confirm New Password",
+      "profile": "Profile"
+    },
+    "savedSuccessfully": "Settings saved successfully"
+  }
+}

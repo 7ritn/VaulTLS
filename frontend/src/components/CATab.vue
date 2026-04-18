@@ -1,18 +1,18 @@
 <template>
   <div>
-    <h1>Certificate Authorities</h1>
+    <h1>{{ $t('ca.title') }}</h1>
     <hr />
     <div class="table-responsive">
       <table class="table table-striped">
         <thead>
         <tr>
-          <th>CA ID</th>
-          <th>Name</th>
-          <th v-if="hasAnyOU">Group</th>
-          <th>Type</th>
-          <th class="d-none d-lg-table-cell">Created on</th>
-          <th>Valid until</th>
-          <th>Actions</th>
+          <th>{{ $t('common.colCaId') }}</th>
+          <th>{{ $t('common.colName') }}</th>
+          <th v-if="hasAnyOU">{{ $t('common.colGroup') }}</th>
+          <th>{{ $t('common.colType') }}</th>
+          <th class="d-none d-lg-table-cell">{{ $t('common.colCreatedOn') }}</th>
+          <th>{{ $t('common.colValidUntil') }}</th>
+          <th>{{ $t('common.actions') }}</th>
         </tr>
         </thead>
         <tbody>
@@ -34,7 +34,7 @@
                   class="btn btn-primary btn-sm flex-grow-1"
                   @click="downloadCA(ca.id)"
               >
-                Download
+                {{ $t('common.download') }}
               </button>
               <div v-if="ca.ca_type === CAType.TLS" class="btn-group flex-grow-1">
                 <button
@@ -43,7 +43,7 @@
                     @click="downloadCRL(ca.id, 'der')"
                     :id="'CRLButton-' + ca.id"
                 >
-                  CRL
+                  {{ $t('ca.crl') }}
                 </button>
                 <button
                     type="button"
@@ -53,11 +53,11 @@
                     aria-expanded="false"
                     :id="'CRLDropdown-' + ca.id"
                 >
-                  <span class="visually-hidden">Toggle Dropdown</span>
+                  <span class="visually-hidden">{{ $t('ca.toggle_dropdown') }}</span>
                 </button>
                 <ul class="dropdown-menu" :aria-labelledby="'CRLDropdown-' + ca.id">
-                  <li><a class="dropdown-item" href="#" @click.prevent="downloadCRL(ca.id, 'der')">DER Format</a></li>
-                  <li><a class="dropdown-item" href="#" @click.prevent="downloadCRL(ca.id, 'pem')">PEM Format</a></li>
+                  <li><a class="dropdown-item" href="#" @click.prevent="downloadCRL(ca.id, 'der')">{{ $t('ca.der_format') }}</a></li>
+                  <li><a class="dropdown-item" href="#" @click.prevent="downloadCRL(ca.id, 'pem')">{{ $t('ca.pem_format') }}</a></li>
                 </ul>
               </div>
               <button
@@ -66,7 +66,7 @@
                   class="btn btn-danger btn-sm flex-grow-1"
                   @click="confirmDeletion(ca)"
               >
-                Delete
+                {{ $t('common.delete') }}
               </button>
             </div>
           </td>
@@ -81,10 +81,10 @@
         class="btn btn-primary mx-1"
         @click="showCreateModal"
     >
-      Create New CA
+      {{ $t('ca.createCa') }}
     </button>
 
-    <div v-if="loading" class="text-center mt-3">Loading CAs...</div>
+    <div v-if="loading" class="text-center mt-3">{{ $t('ca.loadingCas') }}</div>
     <div v-if="error" class="alert alert-danger mt-3">{{ error }}</div>
 
     <!-- Create CA Modal -->
@@ -97,12 +97,12 @@
       <div class="modal-dialog">
         <div class="modal-content">
           <div class="modal-header">
-            <h5 class="modal-title">Create New Certificate Authority</h5>
+            <h5 class="modal-title">{{ $t('ca.createModal.title') }}</h5>
             <button type="button" class="btn-close" @click="closeCreateModal"></button>
           </div>
           <div class="modal-body">
             <div class="mb-3">
-              <label for="caName" class="form-label">CA Name (CN)</label>
+              <label for="caName" class="form-label">{{ $t('ca.createModal.caName') }}</label>
               <div class="input-group">
                 <input
                     id="caName"
@@ -116,14 +116,14 @@
                     class="btn btn-outline-secondary"
                     type="button"
                     @click="showOUField = !showOUField"
-                    :title="showOUField ? 'Hide OU field' : 'Add OU (Group)'"
+                    :title="showOUField ? $t('common.hideOu') : $t('common.addOu')"
                 >
                   {{ showOUField ? '−' : '+' }}
                 </button>
               </div>
             </div>
             <div class="mb-3" v-if="showOUField && caReq.ca_type === CAType.TLS">
-              <label for="caOU" class="form-label">OU (Group)</label>
+              <label for="caOU" class="form-label">{{ $t('common.ouGroup') }}</label>
               <input
                   id="caOU"
                   v-model="caReq.ca_name.ou"
@@ -133,7 +133,7 @@
               />
             </div>
             <div class="mb-3">
-              <label for="caType" class="form-label">CA Type</label>
+              <label for="caType" class="form-label">{{ $t('ca.createModal.caType') }}</label>
               <select
                   class="form-select"
                   id="caType"
@@ -145,7 +145,7 @@
               </select>
             </div>
             <div class="mb-3" v-if="caReq.ca_type === CAType.TLS">
-              <label for="validity" class="form-label">Validity</label>
+              <label for="validity" class="form-label">{{ $t('common.validity') }}</label>
               <div class="input-group">
                 <input
                     id="validity"
@@ -161,17 +161,17 @@
                     class="form-select"
                     style="max-width: 120px"
                 >
-                  <option :value="ValidityUnit.Hour">Hours</option>
-                  <option :value="ValidityUnit.Day">Days</option>
-                  <option :value="ValidityUnit.Month">Months</option>
-                  <option :value="ValidityUnit.Year">Years</option>
+                  <option :value="ValidityUnit.Hour">{{ $t('common.hours') }}</option>
+                  <option :value="ValidityUnit.Day">{{ $t('common.days') }}</option>
+                  <option :value="ValidityUnit.Month">{{ $t('common.months') }}</option>
+                  <option :value="ValidityUnit.Year">{{ $t('common.years') }}</option>
                 </select>
               </div>
             </div>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" @click="closeCreateModal">
-              Cancel
+              {{ $t('common.cancel') }}
             </button>
             <button
                 type="button"
@@ -179,8 +179,8 @@
                 :disabled="loading || !caReq.ca_name.cn || (!caReq.validity_duration && caReq.ca_type == CAType.TLS)"
                 @click="createCA"
             >
-              <span v-if="loading">Creating...</span>
-              <span v-else>Create CA</span>
+              <span v-if="loading">{{ $t('common.creating') }}</span>
+              <span v-else>{{ $t('ca.createModal.create') }}</span>
             </button>
           </div>
         </div>
@@ -197,21 +197,20 @@
       <div class="modal-dialog">
         <div class="modal-content">
           <div class="modal-header">
-            <h5 class="modal-title">Delete Certificate</h5>
+            <h5 class="modal-title">{{ $t('ca.deleteModal.title') }}</h5>
             <button type="button" class="btn-close" @click="closeDeleteModal"></button>
           </div>
           <div class="modal-body">
             <p>
-              Are you sure you want to delete the CA
-              <strong>{{ caToDelete?.name.cn }}</strong>?
+              {{ $t('ca.deleteModal.confirm', { name: caToDelete?.name.cn }) }}
             </p>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" @click="closeDeleteModal">
-              Cancel
+              {{ $t('common.cancel') }}
             </button>
             <button type="button" class="btn btn-danger" @click="deleteCA">
-              Delete
+              {{ $t('common.delete') }}
             </button>
           </div>
         </div>

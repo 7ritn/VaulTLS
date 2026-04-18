@@ -7,12 +7,14 @@ export interface SetupReq {
     validity_duration: number,
     validity_unit: ValidityUnit,
     password: string | null;
+    default_language: string;
 }
 
 export interface IsSetupResponse {
     setup: boolean,
     password: boolean,
-    oidc: string;
+    oidc: string,
+    default_language: string;
 }
 
 export interface ChangePasswordReq {

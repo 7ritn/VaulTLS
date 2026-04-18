@@ -1,0 +1,179 @@
+{
+  "common": {
+    "cancel": "Cancelar",
+    "delete": "Eliminar",
+    "save": "Guardar",
+    "download": "Descargar",
+    "loading": "Cargando...",
+    "hours": "Horas",
+    "days": "Días",
+    "months": "Meses",
+    "years": "Años",
+    "actions": "Acciones",
+    "password": "Contraseña",
+    "email": "Correo electrónico",
+    "username": "Nombre de usuario",
+    "validity": "Validez",
+    "creating": "Creando...",
+    "hideOu": "Ocultar campo OU",
+    "addOu": "Agregar OU (Grupo)",
+    "ouGroup": "OU (Grupo)",
+    "colName": "Nombre",
+    "colGroup": "Grupo",
+    "colType": "Tipo",
+    "colCreatedOn": "Creado el",
+    "colValidUntil": "Válido hasta",
+    "colCaId": "ID de CA"
+  },
+  "sidebar": {
+    "overview": "Resumen",
+    "ca": "Autoridades de Certificación",
+    "users": "Usuarios",
+    "settings": "Configuración",
+    "logout": "Cerrar sesión",
+    "lightMode": "Modo claro",
+    "darkMode": "Modo oscuro",
+    "autoMode": "Modo automático",
+    "version": "Versión: {version}"
+  },
+  "login": {
+    "loginButton": "Iniciar sesión",
+    "loginWithOAuth": "Iniciar sesión con OAuth",
+    "noPasswordAuth": "La autenticación por contraseña no está configurada.",
+    "loginFailed": "Error al iniciar sesión. Por favor, inténtelo de nuevo."
+  },
+  "setup": {
+    "hello": "Hola",
+    "oidcNotice": "OAuth (OIDC) está configurado. Aún puede establecer una contraseña para el inicio de sesión local si lo desea.",
+    "caName": "Nombre de la entidad CA",
+    "caValidity": "Validez de la CA",
+    "passwordHintOidc": "Puede dejarlo vacío si usa OAuth (OIDC).",
+    "passwordHintRequired": "Requerida para el inicio de sesión local.",
+    "completeSetup": "Completar configuración",
+    "setupFailed": "Error en la configuración."
+  },
+  "overview": {
+    "title": "Certificados",
+    "colUser": "Usuario",
+    "colRenewMethod": "Método de renovación",
+    "revoke": "Revocar",
+    "createCertificate": "Crear nuevo certificado",
+    "loadingCerts": "Cargando certificados...",
+    "revokedSection": "Certificados revocados",
+    "colCreated": "Creado",
+    "colValidity": "Validez",
+    "colRevoked": "Revocado",
+    "noRevokedCerts": "No se encontraron certificados revocados.",
+    "generateModal": {
+      "title": "Generar nuevo certificado",
+      "commonName": "Nombre común",
+      "certType": "Tipo de certificado",
+      "tlsClient": "Cliente TLS",
+      "tlsServer": "Servidor TLS",
+      "sshClient": "Cliente SSH",
+      "sshServer": "Servidor SSH",
+      "dnsNames": "Nombres DNS",
+      "principals": "Principales",
+      "usagePlaceholder": "Uso {n}",
+      "user": "Usuario",
+      "selectUser": "Seleccionar usuario",
+      "ca": "Autoridad de Certificación",
+      "selectCa": "Seleccionar CA",
+      "systemPassword": "Contraseña generada por el sistema",
+      "renewMethod": "Método de renovación del certificado",
+      "renewNone": "Ninguno",
+      "renewRemind": "Recordar",
+      "renewRenew": "Renovar",
+      "renewAndNotify": "Renovar y notificar",
+      "notifyUser": "Notificar al usuario",
+      "create": "Crear certificado"
+    },
+    "revokeModal": {
+      "title": "Revocar certificado",
+      "confirm": "¿Está seguro de que desea revocar el certificado {name}?",
+      "revoke": "Revocar"
+    },
+    "deleteModal": {
+      "title": "Eliminar certificado",
+      "confirm": "¿Está seguro de que desea eliminar el certificado {name}?",
+      "disclaimer": "Aviso: Eliminar el certificado lo eliminará de la generación de CRL ya que no se conserva información sobre los certificados eliminados."
+    }
+  },
+  "ca": {
+    "title": "Autoridades de Certificación",
+    "crl": "CRL",
+    "toggle_dropdown": "Alternar menú",
+    "der_format": "Formato DER",
+    "pem_format": "Formato PEM",
+    "createCa": "Crear nueva CA",
+    "loadingCas": "Cargando CAs...",
+    "createModal": {
+      "title": "Crear nueva autoridad de certificación",
+      "caName": "Nombre de CA (CN)",
+      "caType": "Tipo de CA",
+      "create": "Crear CA"
+    },
+    "deleteModal": {
+      "title": "Eliminar certificado",
+      "confirm": "¿Está seguro de que desea eliminar la CA {name}?"
+    }
+  },
+  "users": {
+    "title": "Usuarios",
+    "colRole": "Rol",
+    "createUser": "Crear nuevo usuario",
+    "createModal": {
+      "title": "Crear nuevo usuario",
+      "role": "Rol",
+      "create": "Crear usuario"
+    },
+    "deleteModal": {
+      "title": "Eliminar usuario",
+      "confirm": "¿Está seguro de que desea eliminar al usuario {name}?",
+      "disclaimer": "Aviso: Eliminar el usuario también eliminará sus certificados. Los certificados seguirán siendo válidos hasta su vencimiento."
+    }
+  },
+  "settings": {
+    "title": "Configuración",
+    "common": {
+      "heading": "General",
+      "passwordEnabled": "Inicio de sesión con contraseña habilitado",
+      "vaultlsUrl": "URL de VaulTLS",
+      "passwordRule": "Reglas de contraseña PKCS12",
+      "passwordRuleOptional": "Opcional",
+      "passwordRuleRequired": "Requerida",
+      "passwordRuleSystem": "Generada por el sistema",
+      "crlValidity": "Validez de CRL",
+      "crlHours": "Hora(s)",
+      "crlDays": "Día(s)",
+      "crlWeeks": "Semana(s)",
+      "defaultLanguage": "Idioma predeterminado"
+    },
+    "mail": {
+      "heading": "Correo",
+      "smtpHost": "Host SMTP",
+      "port": "Puerto",
+      "encryption": "Cifrado",
+      "encryptionNone": "Ninguno",
+      "encryptionTls": "TLS",
+      "encryptionStarttls": "STARTTLS",
+      "from": "De"
+    },
+    "oidc": {
+      "heading": "OIDC",
+      "clientId": "ID de cliente",
+      "clientSecret": "Secreto de cliente",
+      "authUrl": "URL de autorización",
+      "callbackUrl": "URL de devolución de llamada"
+    },
+    "user": {
+      "heading": "Usuario",
+      "changePassword": "Cambiar contraseña",
+      "oldPassword": "Contraseña antigua",
+      "newPassword": "Nueva contraseña",
+      "confirmPassword": "Confirmar nueva contraseña",
+      "profile": "Perfil"
+    },
+    "savedSuccessfully": "Configuración guardada correctamente"
+  }
+}
