@@ -62,6 +62,17 @@
               </select>
             </div>
           </div>
+          <div class="mb-3">
+            <label for="default-page-size" class="form-label">Default Rows per Page</label>
+            <select
+                id="default-page-size"
+                v-model.number="settings.common.default_page_size"
+                class="form-select"
+                style="width: auto;"
+            >
+              <option v-for="size in PAGE_SIZE_OPTIONS" :key="size" :value="size">{{ size }}</option>
+            </select>
+          </div>
         </div>
       </div>
 
@@ -173,6 +184,56 @@
           </div>
         </div>
       </div>
+
+      <!-- ACME Section -->
+      <h3>ACME</h3>
+      <div class="card mt-3 mb-3">
+        <div class="card-body">
+          <div class="mb-3 form-check form-switch">
+            <input
+                type="checkbox"
+                class="form-check-input"
+                id="acme-enabled"
+                v-model="settings.common.acme_enabled"
+                role="switch"
+            />
+            <label class="form-check-label" for="acme-enabled">
+              ACME server enabled
+            </label>
+          </div>
+          <div class="mb-3 form-check form-switch">
+            <input
+                type="checkbox"
+                class="form-check-input"
+                id="notify-acme-issuance"
+                v-model="settings.common.notify_acme_issuance"
+                role="switch"
+            />
+            <label class="form-check-label" for="notify-acme-issuance">
+              Notify admins on new ACME certificate issuance
+            </label>
+          </div>
+          <div class="mb-3">
+            <label class="form-label" for="acme-dns-resolver">DNS resolver</label>
+            <input
+                type="text"
+                class="form-control"
+                id="acme-dns-resolver"
+                v-model="settings.common.acme_dns_resolver"
+                placeholder="System default"
+            />
+            <div class="form-text">
+              DNS resolver used for DNS-01 challenge validation. Leave empty to use the system default.
+              Supported formats:
+              <ul class="mb-0 mt-1">
+                <li>Plain UDP — <code>8.8.8.8</code></li>
+                <li>DNS-over-HTTPS — <code>https://dns.google/dns-query</code> or <code>https://1.1.1.1/dns-query</code></li>
+                <li>DNS-over-TLS — <code>tls://1.1.1.1</code> or <code>tls://8.8.8.8:853#dns.google</code> (optionally append <code>#hostname</code> for TLS verification)</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <h2>User</h2>
@@ -267,6 +328,7 @@ import { type User, UserRole } from "@/types/User.ts";
 import { useUserStore } from "@/stores/users.ts";
 import { useSetupStore } from "@/stores/setup.ts";
 import { Encryption, PasswordRule } from "@/types/Settings.ts";
+import { PAGE_SIZE_OPTIONS } from "@/composables/usePageSize.ts";
 
 // Stores
 const settingsStore = useSettingsStore();
