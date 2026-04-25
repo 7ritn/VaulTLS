@@ -1,0 +1,179 @@
+{
+  "common": {
+    "cancel": null,
+    "delete": null,
+    "save": null,
+    "download": null,
+    "loading": null,
+    "hours": null,
+    "days": null,
+    "months": null,
+    "years": null,
+    "actions": null,
+    "password": null,
+    "email": null,
+    "username": null,
+    "validity": null,
+    "creating": null,
+    "hideOu": null,
+    "addOu": null,
+    "ouGroup": null,
+    "colName": null,
+    "colGroup": null,
+    "colType": null,
+    "colCreatedOn": null,
+    "colValidUntil": null,
+    "colCaId": null
+  },
+  "sidebar": {
+    "overview": null,
+    "ca": null,
+    "users": null,
+    "settings": null,
+    "logout": null,
+    "lightMode": null,
+    "darkMode": null,
+    "autoMode": null,
+    "version": null
+  },
+  "login": {
+    "loginButton": null,
+    "loginWithOAuth": null,
+    "noPasswordAuth": null,
+    "loginFailed": null
+  },
+  "setup": {
+    "hello": null,
+    "oidcNotice": null,
+    "caName": null,
+    "caValidity": null,
+    "passwordHintOidc": null,
+    "passwordHintRequired": null,
+    "completeSetup": null,
+    "setupFailed": null
+  },
+  "overview": {
+    "title": null,
+    "colUser": null,
+    "colRenewMethod": null,
+    "revoke": null,
+    "createCertificate": null,
+    "loadingCerts": null,
+    "revokedSection": null,
+    "colCreated": null,
+    "colValidity": null,
+    "colRevoked": null,
+    "noRevokedCerts": null,
+    "generateModal": {
+      "title": null,
+      "commonName": null,
+      "certType": null,
+      "tlsClient": null,
+      "tlsServer": null,
+      "sshClient": null,
+      "sshServer": null,
+      "dnsNames": null,
+      "principals": null,
+      "usagePlaceholder": null,
+      "user": null,
+      "selectUser": null,
+      "ca": null,
+      "selectCa": null,
+      "systemPassword": null,
+      "renewMethod": null,
+      "renewNone": null,
+      "renewRemind": null,
+      "renewRenew": null,
+      "renewAndNotify": null,
+      "notifyUser": null,
+      "create": null
+    },
+    "revokeModal": {
+      "title": null,
+      "confirm": null,
+      "revoke": null
+    },
+    "deleteModal": {
+      "title": null,
+      "confirm": null,
+      "disclaimer": null
+    }
+  },
+  "ca": {
+    "title": null,
+    "crl": null,
+    "toggle_dropdown": null,
+    "der_format": null,
+    "pem_format": null,
+    "createCa": null,
+    "loadingCas": null,
+    "createModal": {
+      "title": null,
+      "caName": null,
+      "caType": null,
+      "create": null
+    },
+    "deleteModal": {
+      "title": null,
+      "confirm": null
+    }
+  },
+  "users": {
+    "title": null,
+    "colRole": null,
+    "createUser": null,
+    "createModal": {
+      "title": null,
+      "role": null,
+      "create": null
+    },
+    "deleteModal": {
+      "title": null,
+      "confirm": null,
+      "disclaimer": null
+    }
+  },
+  "settings": {
+    "title": null,
+    "common": {
+      "heading": null,
+      "passwordEnabled": null,
+      "vaultlsUrl": null,
+      "passwordRule": null,
+      "passwordRuleOptional": null,
+      "passwordRuleRequired": null,
+      "passwordRuleSystem": null,
+      "crlValidity": null,
+      "crlHours": null,
+      "crlDays": null,
+      "crlWeeks": null,
+      "defaultLanguage": null
+    },
+    "mail": {
+      "heading": null,
+      "smtpHost": null,
+      "port": null,
+      "encryption": null,
+      "encryptionNone": null,
+      "encryptionTls": null,
+      "encryptionStarttls": null,
+      "from": null
+    },
+    "oidc": {
+      "heading": null,
+      "clientId": null,
+      "clientSecret": null,
+      "authUrl": null,
+      "callbackUrl": null
+    },
+    "user": {
+      "heading": null,
+      "changePassword": null,
+      "oldPassword": null,
+      "newPassword": null,
+      "confirmPassword": null,
+      "profile": null
+    },
+    "savedSuccessfully": null
+  }
+}
