@@ -51,6 +51,8 @@ ssh-key = { version = "0.6.7", features = ["ed25519", "alloc", "serde", "encrypt
 rand = "0.10.1"
 zip = "8.5.1"
 rand_core = "0.10.1"
+reqwest = { version = "0.12", default-features = false, features = ["http2", "rustls-tls"] }
+hickory-resolver = { version = "0.25", features = ["tokio", "system-config", "tls-ring"] }
 rcgen = { version = "0.14.7", features = ["pem", "x509-parser", "crypto", "aws_lc_rs"] }
 rustls-pki-types = "1.14.0"
 time = "0.3.47"

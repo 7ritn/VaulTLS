@@ -16,8 +16,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { ref, watch, onMounted } from 'vue';
 import Sidebar from '@/components/Sidebar.vue';
+import { useAuthStore } from '@/stores/auth';
+import { useSettingsStore } from '@/stores/settings';
+
+const authStore = useAuthStore();
+const settingsStore = useSettingsStore();
 
 const currentTab = ref('Overview');
 const sidebarVisible = ref(false);
@@ -38,6 +43,12 @@ const toggleSidebar = () => {
 watch(() => window.innerWidth, (width) => {
   if (width >= 992) {
     sidebarVisible.value = false;
+  }
+});
+
+onMounted(async () => {
+  if (authStore.isAdmin) {
+    await settingsStore.fetchSettings();
   }
 });
 </script>

@@ -136,9 +136,18 @@ pub(crate) struct Common {
     password_rule: PasswordRule,
     #[serde(default = "default_crl_hours")]
     crl_next_update_hours: i64,
+    #[serde(default)]
+    acme_enabled: bool,
+    #[serde(default)]
+    notify_acme_issuance: bool,
+    #[serde(default)]
+    acme_dns_resolver: String,
+    #[serde(default = "default_page_size")]
+    default_page_size: u32,
 }
 
 fn default_crl_hours() -> i64 { 7 * 24 }
+fn default_page_size() -> u32 { 20 }
 
 impl Common {
     /// Replace common settings with environment variables.
@@ -148,6 +157,12 @@ impl Common {
         }
         if let Ok(vaultls_url) = env::var("VAULTLS_URL") {
             self.vaultls_url = vaultls_url;
+        }
+        if let Ok(acme_enabled) = env::var("VAULTLS_ACME_ENABLED") {
+            self.acme_enabled = acme_enabled == "true";
+        }
+        if let Ok(dns_resolver) = env::var("VAULTLS_ACME_DNS_RESOLVER") {
+            self.acme_dns_resolver = dns_resolver;
         }
     }
 }
@@ -159,6 +174,10 @@ impl Default for Common {
             vaultls_url: Default::default(),
             password_rule: Default::default(),
             crl_next_update_hours: 7 * 24, // 7 days
+            acme_enabled: false,
+            notify_acme_issuance: false,
+            acme_dns_resolver: String::new(),
+            default_page_size: 20,
         }
     }
 }
@@ -319,6 +338,12 @@ impl InnerSettings {
     }
 
     fn get_password_rule(&self) -> PasswordRule { self.common.password_rule }
+
+    fn get_acme_enabled(&self) -> bool { self.common.acme_enabled }
+
+    fn get_notify_acme_issuance(&self) -> bool { self.common.notify_acme_issuance }
+
+    fn get_acme_dns_resolver(&self) -> &str { &self.common.acme_dns_resolver }
 }
 
 impl Settings {
@@ -396,5 +421,20 @@ impl Settings {
     pub(crate) fn get_password_rule(&self) -> PasswordRule {
         let settings = self.0.read();
         settings.get_password_rule()
+    }
+
+    pub(crate) fn get_acme_enabled(&self) -> bool {
+        let settings = self.0.read();
+        settings.get_acme_enabled()
+    }
+
+    pub(crate) fn get_notify_acme_issuance(&self) -> bool {
+        let settings = self.0.read();
+        settings.get_notify_acme_issuance()
+    }
+
+    pub(crate) fn get_acme_dns_resolver(&self) -> String {
+        let settings = self.0.read();
+        settings.get_acme_dns_resolver().to_string()
     }
 }

@@ -1,3 +1,5 @@
 pytest
 playwright
 requests
+cryptography
+dnslib
