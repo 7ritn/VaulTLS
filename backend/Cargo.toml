@@ -57,5 +57,5 @@ time = "0.3.47"
 
 [dev-dependencies]
 x509-parser = "0.18.1"
-rustls = { version = "0.23.37", features = ["aws-lc-rs"] }
+rustls = { version = "0.23.40", features = ["aws-lc-rs"] }
 tokio-rustls = "0.26.4"
