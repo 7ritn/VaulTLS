@@ -52,7 +52,7 @@ rand = "0.10.1"
 zip = "8.5.1"
 rand_core = "0.10.1"
 rcgen = { version = "0.14.7", features = ["pem", "x509-parser", "crypto", "aws_lc_rs"] }
-rustls-pki-types = "1.14.0"
+rustls-pki-types = "1.14.1"
 time = "0.3.47"
 
 [dev-dependencies]
