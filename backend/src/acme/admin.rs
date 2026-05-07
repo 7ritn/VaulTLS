@@ -1,9 +1,10 @@
+use base64::Engine;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use rand_core::Rng;
 use rocket::{delete, get, post, put, State};
 use rocket::serde::json::Json;
 use rocket_okapi::openapi;
 use crate::acme::guard::AcmeEnabled;
-use crate::acme::jws::base64url_encode;
 use crate::acme::types::{AcmeAccount, AdminAcmeOrder, CreateAcmeAccountRequest, CreateAcmeAccountResponse, UpdateAcmeAccountRequest};
 use crate::auth::session_auth::AuthenticatedPrivileged;
 use crate::data::error::ApiError;
@@ -61,7 +62,7 @@ pub async fn create_acme_account(
         id: account.id,
         name: account.name,
         eab_kid,
-        eab_hmac_key: base64url_encode(&eab_hmac_key),
+        eab_hmac_key: URL_SAFE_NO_PAD.encode(&eab_hmac_key),
     }))
 }
 

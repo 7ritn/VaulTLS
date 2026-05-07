@@ -1,7 +1,9 @@
 use std::time::{SystemTime, UNIX_EPOCH};
+use base64::Engine;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use chrono::{DateTime, Utc};
 use rand_core::Rng;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 use rocket::{get, head, post, routes, State};
 use rocket::data::{Data, FromData, ToByteUnit, Outcome as DataOutcome};
 use rocket::http::Status;
@@ -12,10 +14,10 @@ use crate::acme::types::AcmeOrderRow;
 use crate::acme::domain::check_domains;
 use crate::acme::client_ip::ClientIp;
 use crate::acme::guard::AcmeEnabled;
-use crate::acme::jws::{base64url_decode, base64url_encode, jwk_thumbprint, jwk_to_pkey, parse_jws, verify_eab, verify_signature};
+use crate::acme::jws::{jwk_thumbprint, jwk_to_pkey, parse_jws, verify_eab, verify_signature};
 use crate::acme::types::{
     AcmeAuthorization, AcmeChallenge, AcmeCreatedResponse, AcmeError, AcmeIdentifier, AcmeOrder,
-    AcmePemResponse, Directory, DirectoryMeta,
+    AcmePemResponse, Directory, DirectoryMeta, JwsRequest,
 };
 use crate::certs::common::Certificate;
 use crate::acme::domain::is_valid_dns_name;
@@ -26,6 +28,10 @@ use crate::notification::notifier::notify_admins_acme_issued;
 
 static HTTP_CHALLENGE_CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
 static DOH_CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+
+const MS_PER_DAY: i64 = 1000 * 60 * 60 * 24;
+const ORDER_EXPIRY_DAYS: i64 = 1;
+const CERT_VALIDITY_DAYS: i64 = 90;
 
 fn challenge_http_client() -> &'static reqwest::Client {
     HTTP_CHALLENGE_CLIENT.get_or_init(|| {
@@ -381,13 +387,10 @@ pub(crate) async fn new_account(
     if header.kid.is_some() {
         return Err(AcmeError::malformed("new-account request must use jwk, not kid"));
     }
-    if header.jwk.is_some() && header.kid.is_some() {
-        return Err(AcmeError::malformed("JWS protected header must not contain both jwk and kid"));
-    }
 
     let jwk = header.jwk.ok_or_else(|| AcmeError::malformed("Missing jwk in protected header for new-account"))?;
 
-    let req_parsed: crate::acme::types::JwsRequest = serde_json::from_str(&body.0)
+    let req_parsed: JwsRequest = serde_json::from_str(&body.0)
         .map_err(|e| AcmeError::malformed(format!("Invalid JWS: {e}")))?;
     verify_signature(&header.alg, &jwk, &req_parsed.protected, &req_parsed.payload, &signature)?;
 
@@ -399,7 +402,7 @@ pub(crate) async fn new_account(
 
     let eab_kid = eab_jws["protected"]
         .as_str()
-        .and_then(|p| base64url_decode(p).ok())
+        .and_then(|p| URL_SAFE_NO_PAD.decode(p).ok())
         .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
         .and_then(|h| h["kid"].as_str().map(|s| s.to_string()))
         .ok_or_else(|| AcmeError::malformed("Cannot extract EAB kid"))?;
@@ -520,15 +523,15 @@ pub(crate) async fn new_order(
     //     return Err(AcmeError::malformed("Order rate limit exceeded: max 20 orders per 24 hours per account"));
     // }
 
-    let expires_ms = now_ms + 86_400_000_i64;
-    let not_after_ms = now_ms + 90 * 86_400_000_i64;
+    let expires_ms = now_ms + ORDER_EXPIRY_DAYS * MS_PER_DAY;
+    let not_after_ms = now_ms + CERT_VALIDITY_DAYS * MS_PER_DAY;
 
     let identifiers_with_tokens: Vec<crate::acme::types::AcmeIdentifier> = identifiers
         .into_iter()
         .map(|mut ident| {
             let mut token_bytes = [0u8; 32];
             rand::rng().fill_bytes(&mut token_bytes);
-            ident.token = base64url_encode(&token_bytes);
+            ident.token = URL_SAFE_NO_PAD.encode(&token_bytes);
             ident
         })
         .collect();
@@ -628,7 +631,8 @@ pub(crate) async fn finalize_order(
 
     let csr_b64 = payload["csr"].as_str()
         .ok_or_else(|| AcmeError::malformed("Missing csr field"))?;
-    let csr_der = base64url_decode(csr_b64)?;
+    let csr_der = URL_SAFE_NO_PAD.decode(csr_b64)
+        .map_err(|_| AcmeError::malformed("Invalid base64url encoding"))?;
 
     let identifiers: Vec<AcmeIdentifier> = serde_json::from_str(&order.identifiers)
         .map_err(|_| AcmeError::server_internal("Failed to parse order identifiers"))?;
@@ -739,7 +743,7 @@ pub(crate) async fn get_authz(
     let token = if identifier.token.is_empty() {
         let mut token_bytes = [0u8; 32];
         rand::rng().fill_bytes(&mut token_bytes);
-        base64url_encode(&token_bytes)
+        URL_SAFE_NO_PAD.encode(&token_bytes)
     } else {
         identifier.token.clone()
     };
@@ -824,11 +828,12 @@ pub(crate) async fn get_challenge(
 
     let domain = &identifier.value;
     let new_status: &str = if account.auto_validate {
+        warn!(challenge_type = challenge_type, domain = domain, order_id = order_id, "Auto-validating ACME challenge without verification");
         "valid"
     } else if challenge_type == "dns-01" {
         let digest = openssl::hash::hash(openssl::hash::MessageDigest::sha256(), expected_key_auth.as_bytes())
             .map_err(|_| AcmeError::server_internal("SHA-256 computation failed"))?;
-        let expected_dns_value = base64url_encode(&digest);
+        let expected_dns_value = URL_SAFE_NO_PAD.encode(&digest);
         let resolver_addr = state.settings.get_acme_dns_resolver();
         info!(challenge_type=challenge_type, domain=domain, resolver=resolver_addr, "Attempting ACME validation");
         if validate_dns01(domain, &expected_dns_value, &resolver_addr).await {
@@ -944,7 +949,8 @@ pub(crate) async fn revoke_cert(
 
     let cert_b64 = payload["certificate"].as_str()
         .ok_or_else(|| AcmeError::malformed("Missing certificate field"))?;
-    let cert_der = base64url_decode(cert_b64)?;
+    let cert_der = URL_SAFE_NO_PAD.decode(cert_b64)
+        .map_err(|_| AcmeError::malformed("Invalid base64url encoding"))?;
 
     let cert_x509 = openssl::x509::X509::from_der(&cert_der)
         .map_err(|_| AcmeError::malformed("Invalid certificate DER"))?;

@@ -1,4 +1,6 @@
 use std::collections::BTreeMap;
+use base64::Engine;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use openssl::bn::{BigNum, BigNumContext};
 use openssl::ecdsa::EcdsaSig;
 use openssl::ec::{EcGroup, EcKey, EcPoint};
@@ -12,42 +14,14 @@ use serde_json::Value;
 
 use super::types::{AcmeError, JwsProtectedHeader, JwsRequest};
 
-pub fn base64url_decode(input: &str) -> Result<Vec<u8>, AcmeError> {
-    if input.contains('+') || input.contains('/') {
-        return Err(AcmeError::malformed("Invalid base64url encoding: use '-' and '_', not '+' and '/'"));
-    }
-
-    let standard = input.replace('-', "+").replace('_', "/");
-
-    let padded = match standard.len() % 4 {
-        0 => standard,
-        2 => standard + "==",
-        3 => standard + "=",
-        _ => {
-            return Err(AcmeError::malformed("Invalid base64url encoding"));
-        }
-    };
-
-    openssl::base64::decode_block(&padded)
-        .map_err(|_| AcmeError::malformed("Invalid base64url encoding"))
-}
-
-pub fn base64url_encode(input: &[u8]) -> String {
-    openssl::base64::encode_block(input)
-        .replace('\n', "")
-        .replace('+', "-")
-        .replace('/', "_")
-        .trim_end_matches('=')
-        .to_owned()
-}
-
 pub fn parse_jws(
     body: &str,
 ) -> Result<(JwsProtectedHeader, Vec<u8>, Vec<u8>, Vec<u8>), AcmeError> {
     let req: JwsRequest = serde_json::from_str(body)
         .map_err(|e| AcmeError::malformed(format!("Invalid JWS JSON: {e}")))?;
 
-    let protected_bytes = base64url_decode(&req.protected)?;
+    let protected_bytes = URL_SAFE_NO_PAD.decode(&req.protected)
+        .map_err(|_| AcmeError::malformed("Invalid base64url encoding"))?;
     let header: JwsProtectedHeader = serde_json::from_slice(&protected_bytes)
         .map_err(|e| AcmeError::malformed(format!("Invalid protected header: {e}")))?;
 
@@ -55,10 +29,12 @@ pub fn parse_jws(
     let payload_bytes = if req.payload.is_empty() {
         Vec::new()
     } else {
-        base64url_decode(&req.payload)?
+        URL_SAFE_NO_PAD.decode(&req.payload)
+            .map_err(|_| AcmeError::malformed("Invalid base64url encoding"))?
     };
 
-    let signature_bytes = base64url_decode(&req.signature)?;
+    let signature_bytes = URL_SAFE_NO_PAD.decode(&req.signature)
+        .map_err(|_| AcmeError::malformed("Invalid base64url encoding"))?;
 
     Ok((header, protected_bytes, payload_bytes, signature_bytes))
 }
@@ -107,8 +83,10 @@ pub fn verify_signature(
                 .as_str()
                 .ok_or_else(|| AcmeError::malformed("JWK missing y"))?;
 
-            let x_bytes = base64url_decode(x_b64)?;
-            let y_bytes = base64url_decode(y_b64)?;
+            let x_bytes = URL_SAFE_NO_PAD.decode(x_b64)
+                .map_err(|_| AcmeError::malformed("Invalid base64url encoding"))?;
+            let y_bytes = URL_SAFE_NO_PAD.decode(y_b64)
+                .map_err(|_| AcmeError::malformed("Invalid base64url encoding"))?;
 
             let group = EcGroup::from_curve_name(Nid::X9_62_PRIME256V1)
                 .map_err(|_| AcmeError::server_internal("Failed to create EC group"))?;
@@ -165,8 +143,10 @@ pub fn verify_signature(
                 .as_str()
                 .ok_or_else(|| AcmeError::malformed("JWK missing e"))?;
 
-            let n_bytes = base64url_decode(n_b64)?;
-            let e_bytes = base64url_decode(e_b64)?;
+            let n_bytes = URL_SAFE_NO_PAD.decode(n_b64)
+                .map_err(|_| AcmeError::malformed("Invalid base64url encoding"))?;
+            let e_bytes = URL_SAFE_NO_PAD.decode(e_b64)
+                .map_err(|_| AcmeError::malformed("Invalid base64url encoding"))?;
 
             let n_bn = BigNum::from_slice(&n_bytes)
                 .map_err(|_| AcmeError::malformed("Invalid JWK n"))?;
@@ -230,7 +210,8 @@ pub fn verify_eab(
         .as_str()
         .ok_or_else(|| AcmeError::malformed("EAB missing signature"))?;
 
-    let protected_bytes = base64url_decode(protected_b64)?;
+    let protected_bytes = URL_SAFE_NO_PAD.decode(protected_b64)
+        .map_err(|_| AcmeError::malformed("Invalid base64url encoding"))?;
     let header: JwsProtectedHeader = serde_json::from_slice(&protected_bytes)
         .map_err(|e| AcmeError::malformed(format!("Invalid EAB protected header: {e}")))?;
 
@@ -251,7 +232,8 @@ pub fn verify_eab(
         None => return Err(AcmeError::malformed("EAB protected header missing kid")),
     }
 
-    let payload_bytes = base64url_decode(payload_b64)?;
+    let payload_bytes = URL_SAFE_NO_PAD.decode(payload_b64)
+        .map_err(|_| AcmeError::malformed("Invalid base64url encoding"))?;
     let payload_jwk: Value = serde_json::from_slice(&payload_bytes)
         .map_err(|e| AcmeError::malformed(format!("Invalid EAB payload JSON: {e}")))?;
 
@@ -277,7 +259,8 @@ pub fn verify_eab(
         .sign_to_vec()
         .map_err(|_| AcmeError::server_internal("HMAC sign failed"))?;
 
-    let provided_mac = base64url_decode(signature_b64)?;
+    let provided_mac = URL_SAFE_NO_PAD.decode(signature_b64)
+        .map_err(|_| AcmeError::malformed("Invalid base64url encoding"))?;
 
     if !openssl::memcmp::eq(&computed_mac, &provided_mac) {
         return Err(AcmeError::malformed("EAB signature verification failed"));
@@ -295,8 +278,10 @@ pub fn jwk_to_pkey(alg: &str, key_data: &Value) -> Result<PKey<Public>, AcmeErro
         "ES256" => {
             let x_b64 = key_data["x"].as_str().ok_or_else(|| AcmeError::malformed("JWK missing x"))?;
             let y_b64 = key_data["y"].as_str().ok_or_else(|| AcmeError::malformed("JWK missing y"))?;
-            let x_bytes = base64url_decode(x_b64)?;
-            let y_bytes = base64url_decode(y_b64)?;
+            let x_bytes = URL_SAFE_NO_PAD.decode(x_b64)
+                .map_err(|_| AcmeError::malformed("Invalid base64url encoding"))?;
+            let y_bytes = URL_SAFE_NO_PAD.decode(y_b64)
+                .map_err(|_| AcmeError::malformed("Invalid base64url encoding"))?;
 
             let group = EcGroup::from_curve_name(Nid::X9_62_PRIME256V1)
                 .map_err(|_| AcmeError::server_internal("Failed to create EC group"))?;
@@ -318,8 +303,10 @@ pub fn jwk_to_pkey(alg: &str, key_data: &Value) -> Result<PKey<Public>, AcmeErro
         "RS256" => {
             let n_b64 = key_data["n"].as_str().ok_or_else(|| AcmeError::malformed("JWK missing n"))?;
             let e_b64 = key_data["e"].as_str().ok_or_else(|| AcmeError::malformed("JWK missing e"))?;
-            let n_bytes = base64url_decode(n_b64)?;
-            let e_bytes = base64url_decode(e_b64)?;
+            let n_bytes = URL_SAFE_NO_PAD.decode(n_b64)
+                .map_err(|_| AcmeError::malformed("Invalid base64url encoding"))?;
+            let e_bytes = URL_SAFE_NO_PAD.decode(e_b64)
+                .map_err(|_| AcmeError::malformed("Invalid base64url encoding"))?;
             let n_bn = BigNum::from_slice(&n_bytes)
                 .map_err(|_| AcmeError::malformed("Invalid JWK n"))?;
             let e_bn = BigNum::from_slice(&e_bytes)
@@ -385,7 +372,7 @@ pub fn jwk_thumbprint(jwk: &Value) -> Result<String, AcmeError> {
     let digest = openssl::hash::hash(MessageDigest::sha256(), canonical.as_bytes())
         .map_err(|_| AcmeError::server_internal("SHA-256 hash failed"))?;
 
-    Ok(base64url_encode(&digest))
+    Ok(URL_SAFE_NO_PAD.encode(&digest))
 }
 
 // ---------------------------------------------------------------------------
@@ -395,24 +382,6 @@ pub fn jwk_thumbprint(jwk: &Value) -> Result<String, AcmeError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_base64url_roundtrip() {
-        let original = b"hello world \x00\xff\xfe";
-        let encoded = base64url_encode(original);
-        // Must not contain standard base64 padding or URL-unsafe chars.
-        assert!(!encoded.contains('='));
-        assert!(!encoded.contains('+'));
-        assert!(!encoded.contains('/'));
-        let decoded = base64url_decode(&encoded).unwrap();
-        assert_eq!(decoded, original);
-    }
-
-    #[test]
-    fn test_base64url_known_vector() {
-        assert_eq!(base64url_decode("").unwrap(), b"");
-        assert_eq!(base64url_decode("Zg").unwrap(), b"f");
-    }
 
     #[test]
     fn test_jwk_thumbprint_ec() {
@@ -433,8 +402,8 @@ mod tests {
     #[test]
     fn test_parse_jws_structure() {
         let header_json = r#"{"alg":"ES256","nonce":"abc","url":"https://example.com/acme/new-acct","jwk":{"kty":"EC","crv":"P-256","x":"x","y":"y"}}"#;
-        let protected = base64url_encode(header_json.as_bytes());
-        let payload = base64url_encode(b"{}");
+        let protected = URL_SAFE_NO_PAD.encode(header_json.as_bytes());
+        let payload = URL_SAFE_NO_PAD.encode(b"{}");
         let body = format!(
             r#"{{"protected":"{protected}","payload":"{payload}","signature":"AAAA"}}"#
         );
