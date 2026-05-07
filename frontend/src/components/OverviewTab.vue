@@ -596,7 +596,6 @@ watch(passwordRule, (newVal) => {
 
 onMounted(async () => {
   await certificateStore.fetchCertificates();
-  await settingStore.fetchSettings();
   if (authStore.isAdmin) {
     await userStore.fetchUsers();
   }

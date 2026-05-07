@@ -14,9 +14,6 @@ export interface Settings {
         password_rule: PasswordRule;
         vaultls_url: string;
         crl_next_update_hours: number;
-        acme_enabled: boolean;
-        notify_acme_issuance: boolean;
-        acme_dns_resolver: string;
         default_page_size: number;
     },
     mail: {
@@ -32,5 +29,10 @@ export interface Settings {
         secret: string,
         auth_url: string,
         callback_url: string;
+    };
+    acme: {
+        enabled: boolean;
+        notify_issuance: boolean;
+        dns_resolver: string;
     }
 }

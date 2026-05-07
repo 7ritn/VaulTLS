@@ -776,6 +776,12 @@ pub(crate) async fn update_settings(
         false => info!("Mail notifications are inactive.")
     }
 
+    let acme_settings = state.settings.get_acme();
+    match acme_settings.enabled {
+        true => info!("ACME is active."),
+        false => info!("ACME is inactive.")
+    }
+
     info!("Settings updated.");
 
     Ok(())

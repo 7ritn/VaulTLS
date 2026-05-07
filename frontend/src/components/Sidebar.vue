@@ -56,7 +56,7 @@
               Users
             </a>
           </li>
-          <li v-if="isAdmin && settingsStore.settings?.common.acme_enabled" class="nav-item mb-2">
+          <li v-if="isAdmin && settingsStore.settings?.acme.enabled" class="nav-item mb-2">
             <a
                 href="#"
                 class="nav-link d-flex align-items-center gap-2"

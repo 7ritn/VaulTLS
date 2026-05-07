@@ -194,7 +194,7 @@
                 type="checkbox"
                 class="form-check-input"
                 id="acme-enabled"
-                v-model="settings.common.acme_enabled"
+                v-model="settings.acme.enabled"
                 role="switch"
             />
             <label class="form-check-label" for="acme-enabled">
@@ -206,7 +206,7 @@
                 type="checkbox"
                 class="form-check-input"
                 id="notify-acme-issuance"
-                v-model="settings.common.notify_acme_issuance"
+                v-model="settings.acme.notify_issuance"
                 role="switch"
             />
             <label class="form-check-label" for="notify-acme-issuance">
@@ -219,7 +219,7 @@
                 type="text"
                 class="form-control"
                 id="acme-dns-resolver"
-                v-model="settings.common.acme_dns_resolver"
+                v-model="settings.acme.dns_resolver"
                 placeholder="System default"
             />
             <div class="form-text">
@@ -327,7 +327,7 @@ import { useAuthStore } from '@/stores/auth';
 import { type User, UserRole } from "@/types/User.ts";
 import { useUserStore } from "@/stores/users.ts";
 import { useSetupStore } from "@/stores/setup.ts";
-import { Encryption, PasswordRule } from "@/types/Settings.ts";
+import { Encryption, PasswordRule, type Settings } from "@/types/Settings.ts";
 import { PAGE_SIZE_OPTIONS } from "@/composables/usePageSize.ts";
 
 // Stores
@@ -336,8 +336,8 @@ const authStore = useAuthStore();
 const userStore = useUserStore();
 const setupStore = useSetupStore();
 
-// Computed state
-const settings = computed(() => settingsStore.settings);
+// Local copy of settings — not committed to the store until Save is clicked
+const settings = ref<Settings | null>(null);
 const current_user = computed(() => authStore.current_user);
 const settings_error = computed(() => settingsStore.error);
 const user_error = computed(() => userStore.error);
@@ -379,7 +379,8 @@ const saveSettings = async () => {
   saved_successfully.value = false;
   let success = true;
 
-  if (current_user.value?.role === UserRole.Admin) {
+  if (current_user.value?.role === UserRole.Admin && settings.value) {
+    settingsStore.$patch({ settings: JSON.parse(JSON.stringify(settings.value)) });
     success &&= await settingsStore.saveSettings();
     await setupStore.reload();
   }
@@ -395,6 +396,9 @@ const saveSettings = async () => {
 onMounted(async () => {
   if (authStore.isAdmin) {
     await settingsStore.fetchSettings();
+    if (settingsStore.settings) {
+      settings.value = JSON.parse(JSON.stringify(settingsStore.settings));
+    }
     if (settings.value) {
       const hours = settings.value.common.crl_next_update_hours;
       if (hours % 168 === 0) {

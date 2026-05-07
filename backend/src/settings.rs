@@ -66,7 +66,9 @@ pub(crate) struct InnerSettings {
     #[serde(default)]
     oidc: OIDC,
     #[serde(default)]
-    logic: Logic
+    logic: Logic,
+    #[serde(default)]
+    acme: Acme,
 }
 
 /// Wrapper for the settings to make them serializable for the frontend.
@@ -84,6 +86,7 @@ impl Serialize for FrontendSettings {
         state.serialize_field("common", &settings.common)?;
         state.serialize_field("mail", &settings.mail)?;
         state.serialize_field("oidc", &settings.oidc)?;
+        state.serialize_field("acme", &settings.acme)?;
         state.end()
     }
 }
@@ -136,12 +139,6 @@ pub(crate) struct Common {
     password_rule: PasswordRule,
     #[serde(default = "default_crl_hours")]
     crl_next_update_hours: i64,
-    #[serde(default)]
-    acme_enabled: bool,
-    #[serde(default)]
-    notify_acme_issuance: bool,
-    #[serde(default)]
-    acme_dns_resolver: String,
     #[serde(default = "default_page_size")]
     default_page_size: u32,
 }
@@ -158,12 +155,6 @@ impl Common {
         if let Ok(vaultls_url) = env::var("VAULTLS_URL") {
             self.vaultls_url = vaultls_url;
         }
-        if let Ok(acme_enabled) = env::var("VAULTLS_ACME_ENABLED") {
-            self.acme_enabled = acme_enabled == "true";
-        }
-        if let Ok(dns_resolver) = env::var("VAULTLS_ACME_DNS_RESOLVER") {
-            self.acme_dns_resolver = dns_resolver;
-        }
     }
 }
 
@@ -173,11 +164,30 @@ impl Default for Common {
             password_enabled: Default::default(),
             vaultls_url: Default::default(),
             password_rule: Default::default(),
-            crl_next_update_hours: 7 * 24, // 7 days
-            acme_enabled: false,
-            notify_acme_issuance: false,
-            acme_dns_resolver: String::new(),
+            crl_next_update_hours: 7 * 24,
             default_page_size: 20,
+        }
+    }
+}
+
+/// ACME settings for the backend.
+#[derive(Serialize, Deserialize, JsonSchema, Clone, Default, Debug)]
+pub(crate) struct Acme {
+    #[serde(default)]
+    pub(crate) enabled: bool,
+    #[serde(default)]
+    pub(crate) notify_issuance: bool,
+    #[serde(default)]
+    pub(crate) dns_resolver: String,
+}
+
+impl Acme {
+    fn load_from_env(&mut self) {
+        if let Ok(enabled) = env::var("VAULTLS_ACME_ENABLED") {
+            self.enabled = enabled == "true";
+        }
+        if let Ok(dns_resolver) = env::var("VAULTLS_ACME_DNS_RESOLVER") {
+            self.dns_resolver = dns_resolver;
         }
     }
 }
@@ -309,6 +319,7 @@ impl InnerSettings {
         self.common = settings.common.clone();
         self.mail = settings.mail.clone();
         self.oidc = settings.oidc.clone();
+        self.acme = settings.acme.clone();
 
         self.save_to_file(None)
     }
@@ -339,11 +350,13 @@ impl InnerSettings {
 
     fn get_password_rule(&self) -> PasswordRule { self.common.password_rule }
 
-    fn get_acme_enabled(&self) -> bool { self.common.acme_enabled }
+    fn get_acme(&self) -> &Acme { &self.acme }
 
-    fn get_notify_acme_issuance(&self) -> bool { self.common.notify_acme_issuance }
+    fn get_acme_enabled(&self) -> bool { self.acme.enabled }
 
-    fn get_acme_dns_resolver(&self) -> &str { &self.common.acme_dns_resolver }
+    fn get_notify_acme_issuance(&self) -> bool { self.acme.notify_issuance }
+
+    fn get_acme_dns_resolver(&self) -> &str { &self.acme.dns_resolver }
 }
 
 impl Settings {
@@ -364,6 +377,7 @@ impl Settings {
         settings.common.load_from_env();
         settings.mail.load_from_env();
         settings.oidc.load_from_env();
+        settings.acme.load_from_env();
 
         settings.save_to_file(Some(path))?;
 
@@ -421,6 +435,11 @@ impl Settings {
     pub(crate) fn get_password_rule(&self) -> PasswordRule {
         let settings = self.0.read();
         settings.get_password_rule()
+    }
+
+    pub(crate) fn get_acme(&self) -> Acme {
+        let settings = self.0.read();
+        settings.get_acme().clone()
     }
 
     pub(crate) fn get_acme_enabled(&self) -> bool {
