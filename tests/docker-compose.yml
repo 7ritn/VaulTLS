@@ -87,7 +87,7 @@ services:
       - "VAULTLS_URL=http://127.0.0.1/"
     volumes:
       - http_challenge_vol:/challenges
-    entrypoint: ["pytest", "/app/test_vaultls.py"]
+    entrypoint: ["pytest", "/app/"]
 
 volumes:
   http_challenge_vol: {}
