@@ -53,6 +53,28 @@ pub(crate) enum PasswordRule {
     System = 2
 }
 
+#[derive(Debug, Clone)]
+pub enum CertData {
+    Pkcs12(Vec<u8>),
+    Pem(Vec<u8>),
+    SshBundle(Vec<u8>),
+}
+
+impl CertData {
+    pub fn into_bytes(self) -> Vec<u8> {
+        match self { CertData::Pkcs12(b) | CertData::Pem(b) | CertData::SshBundle(b) => b }
+    }
+    pub fn as_bytes(&self) -> &[u8] {
+        match self { CertData::Pkcs12(b) | CertData::Pem(b) | CertData::SshBundle(b) => b }
+    }
+}
+
+impl Default for CertData {
+    fn default() -> Self {
+        CertData::Pkcs12(Vec::new())
+    }
+}
+
 #[derive(Serialize_repr, Deserialize_repr, JsonSchema, TryFromPrimitive, Clone, Debug, Copy, PartialEq, Eq, Default)]
 #[repr(u8)]
 pub enum CertificateType {

@@ -610,7 +610,7 @@ pub(crate) async fn download_certificate(
         CertificateType::SSHClient | CertificateType::SSHServer => format!("{}.zip", certificate.name),
     };
 
-    Ok(DownloadResponse::new(certificate.data, &file_name))
+    Ok(DownloadResponse::new(certificate.data.into_bytes(), &file_name))
 }
 
 #[openapi(tag = "Certificates")]

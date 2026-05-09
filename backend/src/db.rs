@@ -332,7 +332,7 @@ impl VaulTLSDB {
         db_do!(self.pool, |conn: &Connection| {
             conn.execute(
                 "INSERT INTO user_certificates (name, created_on, valid_until, data, password, type, renew_method, ca_id, user_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-                params![cert.name, cert.created_on, cert.valid_until, cert.data, cert.password, cert.certificate_type as u8, cert.renew_method as u8, cert.ca_id, cert.user_id],
+                params![cert.name, cert.created_on, cert.valid_until, cert.data.as_bytes(), cert.password, cert.certificate_type as u8, cert.renew_method as u8, cert.ca_id, cert.user_id],
             )?;
 
             cert.id = conn.last_insert_rowid();

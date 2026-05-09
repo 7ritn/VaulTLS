@@ -26,7 +26,7 @@ use crate::ApiError;
 use crate::constants::{CA_DIR_PATH, CA_FILE_PATTERN, CA_TLS_FILE_PATH, CRL_DIR_PATH, CRL_FILE_PATTERN};
 #[cfg(feature = "test-mode")]
 use crate::constants::{CA_DIR_PATH, CA_FILE_PATTERN, CA_TLS_FILE_PATH};
-use crate::data::enums::{CertificateRenewMethod, CertificateType, TimespanUnit};
+use crate::data::enums::{CertData, CertificateRenewMethod, CertificateType, TimespanUnit};
 use crate::data::enums::CertificateType::{TLSClient, TLSServer};
 use crate::certs::common::{Certificate, CA};
 use crate::data::enums::CAType::TLS;
@@ -243,7 +243,7 @@ impl TLSCertificateBuilder {
             created_on: self.created_on,
             valid_until,
             certificate_type,
-            data: pkcs12.to_der()?,
+            data: CertData::Pkcs12(pkcs12.to_der()?),
             password: self.pkcs12_password,
             ca_id,
             user_id,
@@ -396,13 +396,20 @@ pub(crate) fn get_tls_pem(ca: &CA) -> Result<Vec<u8>, ErrorStack> {
 }
 
 pub fn extract_serial_number(cert: &Certificate) -> Result<Vec<u8>> {
-    if cert.data.starts_with(b"-----BEGIN CERTIFICATE-----") {
-        let x509 = X509::from_pem(&cert.data)?;
-        return Ok(x509.serial_number().to_bn()?.to_vec());
+    match &cert.data {
+        CertData::Pem(bytes) => {
+            let x509 = X509::from_pem(bytes)?;
+            Ok(x509.serial_number().to_bn()?.to_vec())
+        }
+        CertData::Pkcs12(bytes) => {
+            let encrypted_p12 = Pkcs12::from_der(bytes)?;
+            let Some(inner) = encrypted_p12.parse2(&cert.password)?.cert else {
+                return Err(anyhow!("No certificate found in PKCS#12"));
+            };
+            Ok(inner.serial_number().to_bn()?.to_vec())
+        }
+        CertData::SshBundle(_) => Err(anyhow!("SSH certificates do not have a serial number")),
     }
-    let encrypted_p12 = Pkcs12::from_der(&cert.data)?;
-    let Some(cert) = encrypted_p12.parse2(&cert.password)?.cert else { return Err(anyhow::anyhow!("No certificate found in PKCS#12"))};
-    Ok(cert.serial_number().to_bn()?.to_vec())
 }
 
 #[cfg(not(feature = "test-mode"))]
@@ -493,13 +500,22 @@ pub(crate) fn migrate_ca_storage() -> Result<()> {
 
 /// Extract DNS names stored in X509 certificate
 pub(crate) fn get_dns_names(cert: &Certificate) -> Result<Vec<String>, anyhow::Error> {
-    if cert.data.starts_with(b"-----BEGIN CERTIFICATE-----") {
-        let x509 = X509::from_pem(&cert.data)?;
-        let Some(san) = x509.subject_alt_names() else { return Ok(vec![]) };
-        return Ok(san.iter().filter_map(|name| name.dnsname().map(|s| s.to_string())).collect());
+    match &cert.data {
+        CertData::Pem(bytes) => {
+            let x509 = X509::from_pem(bytes)?;
+            let Some(san) = x509.subject_alt_names() else { return Ok(vec![]) };
+            Ok(san.iter().filter_map(|name| name.dnsname().map(|s| s.to_string())).collect())
+        }
+        CertData::Pkcs12(bytes) => {
+            let encrypted_p12 = Pkcs12::from_der(bytes)?;
+            let Some(inner) = encrypted_p12.parse2(&cert.password)?.cert else {
+                return Err(anyhow!("No certificate found in PKCS#12"));
+            };
+            let Some(san) = inner.subject_alt_names() else {
+                return Err(anyhow!("No SAN found in PKCS#12 certificate"));
+            };
+            Ok(san.iter().filter_map(|name| name.dnsname().map(|s| s.to_string())).collect())
+        }
+        CertData::SshBundle(_) => Ok(vec![]),
     }
-    let encrypted_p12 = Pkcs12::from_der(&cert.data)?;
-    let Some(cert) = encrypted_p12.parse2(&cert.password)?.cert else { return Err(anyhow::anyhow!("No certificate found in PKCS#12"))};
-    let Some(san) = cert.subject_alt_names() else { return Err(anyhow::anyhow!("No certificate found in PKCS#12"))};
-    Ok(san.iter().filter_map(|name| name.dnsname().map(|s| s.to_string())).collect())
 }

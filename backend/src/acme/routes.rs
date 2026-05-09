@@ -19,7 +19,7 @@ use crate::acme::types::{
 use crate::certs::common::Certificate;
 use crate::acme::domain::is_valid_dns_name;
 use crate::certs::tls_cert::issue_cert_from_csr;
-use crate::data::enums::{CertificateRenewMethod, CertificateType};
+use crate::data::enums::{CertData, CertificateRenewMethod, CertificateType};
 use crate::data::objects::{AppState, Name};
 use crate::notification::notifier::notify_admins_acme_issued;
 
@@ -613,7 +613,7 @@ pub(crate) async fn finalize_order(
         renew_method: CertificateRenewMethod::None,
         ca_id: ca.id,
         revoked_at: None,
-        data: chain_pem,
+        data: CertData::Pem(chain_pem),
         password: String::new(),
     };
 
@@ -830,11 +830,11 @@ pub(crate) async fn download_cert(
         return Err(AcmeError::unauthorized("Certificate does not belong to this account"));
     }
 
-    if !cert.data.starts_with(b"-----BEGIN CERTIFICATE-----") {
+    let CertData::Pem(pem_bytes) = cert.data else {
         return Err(AcmeError::malformed("Certificate is not in PEM format"));
-    }
+    };
 
-    Ok(AcmePemResponse { body: cert.data })
+    Ok(AcmePemResponse { body: pem_bytes })
 }
 
 #[post("/revoke-cert", data = "<body>")]
