@@ -137,7 +137,6 @@ pub struct UpdateAcmeAccountRequest {
     pub name: Option<String>,
     pub allowed_domains: Option<Vec<String>>,
     pub ca_id: Option<i64>,
-    pub status: Option<String>,
     pub auto_validate: Option<bool>,
 }
 

@@ -41,7 +41,6 @@ export interface UpdateAcmeAccountRequest {
   name?: string;
   allowed_domains?: string[];
   ca_id?: number;
-  status?: string;
   auto_validate?: boolean;
 }
 

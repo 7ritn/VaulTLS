@@ -365,11 +365,11 @@ def test_acme_edit_account(page):
     initial_count = count_acme_accounts(page)
     page.click(f"#EditButton-{acct_id}")
     page.fill("#editAcmeName", "e2e_edit_target_renamed")
-    page.select_option("#editAcmeStatus", "deactivated")
     page.click("button:has-text('Save')")
     page.wait_for_timeout(500)
 
-    assert count_acme_accounts(page) == initial_count - 1
+    assert count_acme_accounts(page) == initial_count
+    assert page.locator("[id^='AcmeName-']").get_by_text("e2e_edit_target_renamed").is_visible()
 
 
 def test_acme_deactivate_account(page):

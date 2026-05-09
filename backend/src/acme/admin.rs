@@ -75,12 +75,6 @@ pub async fn update_acme_account(
     req: Json<UpdateAcmeAccountRequest>,
     _acme: AcmeEnabled,
 ) -> Result<Json<AcmeAccount>, ApiError> {
-    if let Some(ref s) = req.status {
-        if s != "valid" && s != "deactivated" {
-            return Err(ApiError::BadRequest("Status must be 'valid' or 'deactivated'".to_string()));
-        }
-    }
-
     let allowed_domains = req.allowed_domains.as_ref().map(|d| d.join(","));
 
     state.db.update_acme_account(
@@ -88,7 +82,7 @@ pub async fn update_acme_account(
         req.name.clone(),
         allowed_domains,
         req.ca_id.map(Some),  // Some(Some(x)) = set to x; None = don't change
-        req.status.clone(),
+        None,
         req.auto_validate,
     ).await?;
 

@@ -428,17 +428,6 @@
                 No domains added yet.
               </div>
             </div>
-            <div class="mb-3">
-              <label for="editAcmeStatus" class="form-label">Status</label>
-              <select
-                  id="editAcmeStatus"
-                  v-model="editForm.status"
-                  class="form-select"
-              >
-                <option value="valid">valid</option>
-                <option value="deactivated">deactivated</option>
-              </select>
-            </div>
             <div class="mb-3 form-check">
               <input
                   id="editAcmeAutoValidate"
@@ -578,10 +567,9 @@ const createdCredentials = ref<CreateAcmeAccountResponse | null>(null);
 const isEditModalVisible = ref(false);
 const accountToEdit = ref<AcmeAccount | null>(null);
 const editDomainInput = ref('');
-const editForm = reactive<{ name: string; allowed_domains: string[]; status: string; auto_validate: boolean }>({
+const editForm = reactive<{ name: string; allowed_domains: string[]; auto_validate: boolean }>({
   name: '',
   allowed_domains: [],
-  status: 'valid',
   auto_validate: false,
 });
 
@@ -688,7 +676,6 @@ const openEditModal = (account: AcmeAccount) => {
   editForm.allowed_domains = account.allowed_domains
       ? account.allowed_domains.split(',').map(d => d.trim()).filter(d => d.length > 0)
       : [];
-  editForm.status = account.status;
   editForm.auto_validate = account.auto_validate;
   editDomainInput.value = '';
   isEditModalVisible.value = true;
@@ -717,7 +704,6 @@ const saveEdit = async () => {
     await acmeStore.updateAccount(accountToEdit.value.id, {
       name: editForm.name,
       allowed_domains: editForm.allowed_domains,
-      status: editForm.status,
       auto_validate: editForm.auto_validate,
     });
     closeEditModal();
