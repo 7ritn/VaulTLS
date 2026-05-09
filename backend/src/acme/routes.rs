@@ -583,14 +583,8 @@ pub(crate) async fn finalize_order(
 
     let cert_name = dns_names.first().map(|s| s.as_str()).unwrap_or("acme");
     let cert_common_name = Name { cn: cert_name.to_string(), ou: Some("ACME".to_string()) };
-    let build_result = TLSCertificateBuilder::from_csr(&csr_der)
-        .and_then(|b| b.set_name(cert_common_name.clone()))
-        .and_then(|b| b.set_valid_until(validity_days, TimespanUnit::Day))
-        .and_then(|b| b.set_dns_san(&dns_names))
-        .and_then(|b| b.set_ca(&ca))
-        .and_then(|b| b.build_server_pem());
 
-    let (_cert_pem, chain_pem, serial) = match build_result {
+    let (_cert_pem, chain_pem, serial) = match issue_cert_from_csr(&csr_der, &ca, validity_days, &dns_names) {
         Ok(result) => result,
         Err(e) => {
             error!("Certificate issuance failed for order {id}: {e}");

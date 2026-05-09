@@ -68,37 +68,6 @@ impl TLSCertificateBuilder {
         })
     }
 
-    /// Build a certificate from a CSR (the CSR's public key is used; no private key is held).
-    /// The CSR signature is verified to prove the requester holds the private key.
-    pub fn from_csr(csr_der: &[u8]) -> Result<Self> {
-        let csr = X509Req::from_der(csr_der)?;
-        let csr_pubkey = csr.public_key()?;
-        if !csr.verify(&csr_pubkey)? {
-            return Err(anyhow!("CSR signature verification failed"));
-        }
-
-        let asn1_serial = generate_serial_number()?;
-        let (created_on_unix, created_on_openssl) = get_timestamp(0, TimespanUnit::Hour)?;
-
-        let mut x509 = X509Builder::new()?;
-        x509.set_version(2)?;
-        x509.set_serial_number(&asn1_serial)?;
-        x509.set_not_before(&created_on_openssl)?;
-        x509.set_pubkey(&csr_pubkey)?;
-
-        Ok(Self {
-            x509,
-            private_key: None,
-            created_on: created_on_unix,
-            valid_until: None,
-            name: None,
-            pkcs12_password: String::new(),
-            ca: None,
-            user_id: None,
-            renew_method: Default::default(),
-        })
-    }
-
     /// Copy information over from an existing certificate
     /// Fields set are:\
     ///     - Name\
@@ -248,34 +217,12 @@ impl TLSCertificateBuilder {
         self.build_common(TLSServer)
     }
 
-    /// Build a server certificate and return PEM output `(cert_pem, chain_pem, serial_bytes)`.
-    /// For use with CSR-based issuance (e.g. ACME) where no private key is held by this builder.
-    pub fn build_server_pem(mut self) -> Result<(Vec<u8>, Vec<u8>, Vec<u8>)> {
-        let ext_key_usage = ExtendedKeyUsage::new()
-            .server_auth()
-            .build()?;
-        self.x509.append_extension(ext_key_usage)?;
-
-        let (_, ca_cert, ca_key) = self.ca.ok_or(anyhow!("X509: CA not set"))?;
-        apply_end_entity_extensions(&mut self.x509, &ca_cert, &ca_key)?;
-        let cert = self.x509.build();
-
-        let serial_bytes = cert.serial_number().to_bn()?.to_vec();
-        let cert_pem = cert.to_pem()?;
-        let ca_pem = ca_cert.to_pem()?;
-
-        let mut chain_pem = cert_pem.clone();
-        chain_pem.extend_from_slice(&ca_pem);
-
-        Ok((cert_pem, chain_pem, serial_bytes))
-    }
-
     pub fn build_common(mut self, certificate_type: CertificateType) -> Result<Certificate, anyhow::Error> {
         let name = self.name.ok_or(anyhow!("X509: name not set"))?;
         let valid_until = self.valid_until.ok_or(anyhow!("X509: valid_until not set"))?;
         let user_id = self.user_id.ok_or(anyhow!("X509: user_id not set"))?;
         let (ca_id, ca_cert, ca_key) = self.ca.ok_or(anyhow!("X509: CA not set"))?;
-        let private_key = self.private_key.ok_or(anyhow!("X509: no private key (use build_server_pem for CSR-based certs)"))?;
+        let private_key = self.private_key.ok_or(anyhow!("X509: no private key"))?;
 
         apply_end_entity_extensions(&mut self.x509, &ca_cert, &ca_key)?;
         let cert = self.x509.build();
@@ -306,8 +253,66 @@ impl TLSCertificateBuilder {
     }
 }
 
+/// Issues a server certificate from a CSR and returns `(cert_pem, chain_pem, serial_bytes)`.
+/// The CSR signature is verified before issuance. The subject CN is derived from the first DNS name.
+pub fn issue_cert_from_csr(
+    csr_der: &[u8],
+    ca: &CA,
+    validity_days: u64,
+    dns_names: &[String],
+) -> Result<(Vec<u8>, Vec<u8>, Vec<u8>)> {
+    let csr = X509Req::from_der(csr_der)?;
+    let csr_pubkey = csr.public_key()?;
+    if !csr.verify(&csr_pubkey)? {
+        return Err(anyhow!("CSR signature verification failed"));
+    }
+
+    let ca_cert = X509::from_der(&ca.cert)?;
+    let ca_key = PKey::private_key_from_der(&ca.key)?;
+
+    let asn1_serial = generate_serial_number()?;
+    let (_, not_before) = get_timestamp(0, TimespanUnit::Hour)?;
+    let (_, not_after) = get_timestamp(validity_days, TimespanUnit::Day)?;
+
+    let mut x509 = X509Builder::new()?;
+    x509.set_version(2)?;
+    x509.set_serial_number(&asn1_serial)?;
+    x509.set_not_before(&not_before)?;
+    x509.set_not_after(&not_after)?;
+    x509.set_pubkey(&csr_pubkey)?;
+
+    let cn = dns_names.first().map(|s| s.as_str()).unwrap_or("acme");
+    let mut name_builder = openssl::x509::X509NameBuilder::new()?;
+    name_builder.append_entry_by_text("CN", cn)?;
+    name_builder.append_entry_by_text("OU", "ACME")?;
+    x509.set_subject_name(&name_builder.build())?;
+
+    if !dns_names.is_empty() {
+        let mut san_builder = SubjectAlternativeName::new();
+        for dns in dns_names {
+            san_builder.dns(dns);
+        }
+        let san = san_builder.build(&x509.x509v3_context(None, None))?;
+        x509.append_extension(san)?;
+    }
+
+    let ext_key_usage = ExtendedKeyUsage::new().server_auth().build()?;
+    x509.append_extension(ext_key_usage)?;
+
+    apply_end_entity_extensions(&mut x509, &ca_cert, &ca_key)?;
+    let cert = x509.build();
+
+    let serial_bytes = cert.serial_number().to_bn()?.to_vec();
+    let cert_pem = cert.to_pem()?;
+    let ca_pem = ca_cert.to_pem()?;
+
+    let mut chain_pem = cert_pem.clone();
+    chain_pem.extend_from_slice(&ca_pem);
+
+    Ok((cert_pem, chain_pem, serial_bytes))
+}
+
 /// Applies the standard end-entity X509 extensions and signs the certificate.
-/// Used by both `build_common` (PKCS#12 output) and `build_server_pem` (PEM output).
 fn apply_end_entity_extensions(x509: &mut X509Builder, ca_cert: &X509, ca_key: &PKey<Private>) -> Result<()> {
     let basic_constraints = BasicConstraints::new().build()?;
     x509.append_extension(basic_constraints)?;
