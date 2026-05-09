@@ -406,7 +406,7 @@ impl Settings {
     }
     pub(crate) fn get_vaultls_url(&self) -> String {
         let settings = self.0.read();
-        settings.get_vaultls_url().to_string()
+        settings.get_vaultls_url().trim_end_matches('/').to_string()
     }
     pub(crate) fn get_crl_next_update_hours(&self) -> i64 {
         let settings = self.0.read();
