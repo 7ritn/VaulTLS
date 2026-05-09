@@ -10,7 +10,7 @@ use serde_json::Value;
 // AcmeError — RFC 8555 §6.7 problem document
 // ---------------------------------------------------------------------------
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct AcmeError {
     #[serde(rename = "type")]
     pub error_type: String,

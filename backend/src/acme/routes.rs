@@ -5,24 +5,21 @@ use chrono::{DateTime, Utc};
 use rand_core::Rng;
 use tracing::{error, info, warn};
 use rocket::{get, head, post, routes, State};
-use rocket::data::{Data, FromData, ToByteUnit, Outcome as DataOutcome};
 use rocket::http::Status;
 use rocket::serde::json::Json;
-use rocket::Request;
 use serde_json::Value;
-use crate::acme::types::AcmeOrderRow;
 use crate::acme::domain::check_domains;
 use crate::acme::client_ip::ClientIp;
-use crate::acme::guard::AcmeEnabled;
+use crate::acme::guard::{AcmeEnabled, AuthenticatedJws, JoseBody};
 use crate::acme::jws::{jwk_thumbprint, jwk_to_pkey, parse_jws, verify_eab, verify_signature};
 use crate::acme::types::{
     AcmeAuthorization, AcmeChallenge, AcmeCreatedResponse, AcmeError, AcmeIdentifier, AcmeOrder,
-    AcmePemResponse, Directory, DirectoryMeta, JwsRequest,
+    AcmeOrderRow, AcmePemResponse, Directory, DirectoryMeta, JwsRequest,
 };
 use crate::certs::common::Certificate;
 use crate::acme::domain::is_valid_dns_name;
-use crate::certs::tls_cert::TLSCertificateBuilder;
-use crate::data::enums::{CertificateRenewMethod, CertificateType, TimespanUnit};
+use crate::certs::tls_cert::issue_cert_from_csr;
+use crate::data::enums::{CertificateRenewMethod, CertificateType};
 use crate::data::objects::{AppState, Name};
 use crate::notification::notifier::notify_admins_acme_issued;
 
@@ -232,21 +229,6 @@ async fn validate_dns01(domain: &str, expected_value: &str, resolver_addr: &str)
     }
 }
 
-pub struct JoseBody(pub String);
-
-#[rocket::async_trait]
-impl<'r> FromData<'r> for JoseBody {
-    type Error = AcmeError;
-
-    async fn from_data(_req: &'r Request<'_>, data: Data<'r>) -> DataOutcome<'r, Self> {
-        let limit = 1.mebibytes();
-        match data.open(limit).into_string().await {
-            Ok(s) if s.is_complete() => DataOutcome::Success(JoseBody(s.into_inner())),
-            Ok(_) => DataOutcome::Error((Status::PayloadTooLarge, AcmeError::malformed("Request body too large"))),
-            Err(_) => DataOutcome::Error((Status::InternalServerError, AcmeError::server_internal("Failed to read body"))),
-        }
-    }
-}
 
 fn make_directory(base: &str) -> Directory {
     Directory {
@@ -258,58 +240,6 @@ fn make_directory(base: &str) -> Directory {
     }
 }
 
-async fn authenticate_jws(
-    state: &AppState,
-    body: &str,
-    expected_url: &str,
-) -> Result<(i64, Vec<u8>), AcmeError> {
-    let (header, _protected_bytes, payload_bytes, signature) = parse_jws(body)?;
-
-    if header.jwk.is_some() && header.kid.is_some() {
-        return Err(AcmeError::malformed("JWS protected header must not contain both jwk and kid"));
-    }
-
-    let nonce = header.nonce.as_deref().unwrap_or("");
-    let valid = state.db.validate_and_delete_nonce(nonce.to_string()).await
-        .map_err(|_| AcmeError::server_internal("Nonce validation failed"))?;
-    if !valid {
-        return Err(AcmeError::bad_nonce("Nonce is invalid or already used"));
-    }
-
-    match header.url.as_deref() {
-        Some(url) if url == expected_url => {}
-        Some(_) => return Err(AcmeError::unauthorized("JWS url mismatch")),
-        None => return Err(AcmeError::malformed("JWS protected header missing url")),
-    }
-
-    let kid = header.kid.ok_or_else(|| AcmeError::malformed("Missing kid in protected header"))?;
-    let base = state.settings.get_vaultls_url();
-    let expected_kid_prefix = format!("{base}/api/acme/account/");
-    if !kid.starts_with(&expected_kid_prefix) {
-        return Err(AcmeError::malformed("Invalid kid: unexpected URL prefix"));
-    }
-    let account_id: i64 = kid[expected_kid_prefix.len()..]
-        .parse()
-        .map_err(|_| AcmeError::malformed("Invalid kid: non-numeric account id"))?;
-
-    let account = state.db.get_acme_account(account_id).await
-        .map_err(|_| AcmeError::account_does_not_exist())?;
-
-    if account.status != "valid" {
-        return Err(AcmeError::unauthorized("Account is not active"));
-    }
-
-    let jwk_str = account.acme_jwk.ok_or_else(AcmeError::account_does_not_exist)?;
-    let jwk: Value = serde_json::from_str(&jwk_str)
-        .map_err(|_| AcmeError::server_internal("Stored JWK is invalid"))?;
-
-    let req: crate::acme::types::JwsRequest = serde_json::from_str(body)
-        .map_err(|e| AcmeError::malformed(format!("Invalid JWS: {e}")))?;
-
-    verify_signature(&header.alg, &jwk, &req.protected, &req.payload, &signature)?;
-
-    Ok((account_id, payload_bytes))
-}
 
 fn ms_to_rfc3339(ms: i64) -> String {
     DateTime::<Utc>::from_timestamp_millis(ms)
@@ -366,10 +296,11 @@ pub(crate) async fn new_account(
     body: JoseBody,
     _acme: AcmeEnabled,
 ) -> Result<AcmeCreatedResponse, AcmeError> {
+    let body = body.0?;
     let base = state.settings.get_vaultls_url();
     let expected_url = format!("{base}/api/acme/new-account");
 
-    let (header, _protected_bytes, payload_bytes, signature) = parse_jws(&body.0)?;
+    let (header, _protected_bytes, payload_bytes, signature) = parse_jws(&body)?;
 
     let nonce = header.nonce.as_deref().unwrap_or("");
     let valid = state.db.validate_and_delete_nonce(nonce.to_string()).await
@@ -390,7 +321,7 @@ pub(crate) async fn new_account(
 
     let jwk = header.jwk.ok_or_else(|| AcmeError::malformed("Missing jwk in protected header for new-account"))?;
 
-    let req_parsed: JwsRequest = serde_json::from_str(&body.0)
+    let req_parsed: JwsRequest = serde_json::from_str(&body)
         .map_err(|e| AcmeError::malformed(format!("Invalid JWS: {e}")))?;
     verify_signature(&header.alg, &jwk, &req_parsed.protected, &req_parsed.payload, &signature)?;
 
@@ -456,21 +387,21 @@ pub(crate) async fn new_account(
     Ok(AcmeCreatedResponse { location: account_url, body: body_bytes })
 }
 
-#[post("/new-order", data = "<body>")]
+#[post("/new-order", data = "<jws>")]
 pub(crate) async fn new_order(
     state: &State<AppState>,
-    body: JoseBody,
+    jws: AuthenticatedJws,
     _acme: AcmeEnabled,
     client_ip: ClientIp,
 ) -> Result<AcmeCreatedResponse, AcmeError> {
+    let jws = jws.0?;
     let base = state.settings.get_vaultls_url();
-    let expected_url = format!("{base}/api/acme/new-order");
-    let (account_id, payload_bytes) = authenticate_jws(state, &body.0, &expected_url).await?;
+    let account_id = jws.account_id;
 
     let account = state.db.get_acme_account(account_id).await
         .map_err(|_| AcmeError::server_internal("Account lookup failed"))?;
 
-    let payload: Value = serde_json::from_slice(&payload_bytes)
+    let payload: Value = serde_json::from_slice(&jws.payload)
         .map_err(|e| AcmeError::malformed(format!("Invalid payload: {e}")))?;
 
     let identifiers: Vec<AcmeIdentifier> = payload["identifiers"]
@@ -517,7 +448,7 @@ pub(crate) async fn new_order(
         .as_millis() as i64;
 
     // Rate limit: max 20 orders per account per 24 hours.
-    // let recent_count = state.db.count_recent_orders_for_account(account_id, 86_400_000).await
+    // let recent_count = state.db.count_recent_orders_for_account(account_id, ORDER_EXPIRY_DAYS * MS_PER_DAY).await
     //     .map_err(|_| AcmeError::server_internal("Rate limit check failed"))?;
     // if recent_count >= 20 {
     //     return Err(AcmeError::malformed("Order rate limit exceeded: max 20 orders per 24 hours per account"));
@@ -526,7 +457,7 @@ pub(crate) async fn new_order(
     let expires_ms = now_ms + ORDER_EXPIRY_DAYS * MS_PER_DAY;
     let not_after_ms = now_ms + CERT_VALIDITY_DAYS * MS_PER_DAY;
 
-    let identifiers_with_tokens: Vec<crate::acme::types::AcmeIdentifier> = identifiers
+    let identifiers_with_tokens: Vec<AcmeIdentifier> = identifiers
         .into_iter()
         .map(|mut ident| {
             let mut token_bytes = [0u8; 32];
@@ -575,37 +506,36 @@ pub(crate) async fn new_order(
     Ok(AcmeCreatedResponse { location: order_url, body: body_bytes })
 }
 
-#[post("/order/<id>", data = "<body>")]
+#[post("/order/<id>", data = "<jws>")]
 pub(crate) async fn get_order(
     state: &State<AppState>,
-    body: JoseBody,
+    jws: AuthenticatedJws,
     id: i64,
     _acme: AcmeEnabled,
 ) -> Result<Json<AcmeOrder>, AcmeError> {
+    let jws = jws.0?;
     let base = state.settings.get_vaultls_url();
-    let expected_url = format!("{base}/api/acme/order/{id}");
-    let (account_id, _payload) = authenticate_jws(state, &body.0, &expected_url).await?;
 
     let row = state.db.get_acme_order(id).await
         .map_err(|_| AcmeError::not_found())?;
 
-    if row.account_id != account_id {
+    if row.account_id != jws.account_id {
         return Err(AcmeError::unauthorized("Order does not belong to this account"));
     }
 
     Ok(Json(order_row_to_response(&row, &base)))
 }
 
-#[post("/order/<id>/finalize", data = "<body>")]
+#[post("/order/<id>/finalize", data = "<jws>")]
 pub(crate) async fn finalize_order(
     state: &State<AppState>,
-    body: JoseBody,
+    jws: AuthenticatedJws,
     id: i64,
     _acme: AcmeEnabled,
 ) -> Result<Json<AcmeOrder>, AcmeError> {
+    let jws = jws.0?;
     let base = state.settings.get_vaultls_url();
-    let expected_url = format!("{base}/api/acme/order/{id}/finalize");
-    let (account_id, payload_bytes) = authenticate_jws(state, &body.0, &expected_url).await?;
+    let account_id = jws.account_id;
 
     let order = state.db.get_acme_order(id).await
         .map_err(|_| AcmeError::not_found())?;
@@ -626,7 +556,7 @@ pub(crate) async fn finalize_order(
         return Err(AcmeError::malformed("Order has expired"));
     }
 
-    let payload: Value = serde_json::from_slice(&payload_bytes)
+    let payload: Value = serde_json::from_slice(&jws.payload)
         .map_err(|e| AcmeError::malformed(format!("Invalid payload: {e}")))?;
 
     let csr_b64 = payload["csr"].as_str()
@@ -713,23 +643,22 @@ pub(crate) async fn finalize_order(
     Ok(Json(order_row_to_response(&updated_order, &base)))
 }
 
-#[post("/authz/<authz_id>", data = "<body>")]
+#[post("/authz/<authz_id>", data = "<jws>")]
 pub(crate) async fn get_authz(
     state: &State<AppState>,
-    body: JoseBody,
+    jws: AuthenticatedJws,
     authz_id: String,
     _acme: AcmeEnabled,
 ) -> Result<Json<AcmeAuthorization>, AcmeError> {
+    let jws = jws.0?;
     let base = state.settings.get_vaultls_url();
-    let expected_url = format!("{base}/api/acme/authz/{authz_id}");
-    let (account_id, _payload) = authenticate_jws(state, &body.0, &expected_url).await?;
 
     let (order_id, domain_idx) = parse_authz_id(&authz_id)?;
 
     let order = state.db.get_acme_order(order_id).await
         .map_err(|_| AcmeError::not_found())?;
 
-    if order.account_id != account_id {
+    if order.account_id != jws.account_id {
         return Err(AcmeError::unauthorized("Authorization does not belong to this account"));
     }
 
@@ -775,20 +704,18 @@ pub(crate) async fn get_authz(
     }))
 }
 
-#[post("/chall/<order_id>/<challenge_type>/<domain_idx>", data = "<body>")]
+#[post("/chall/<order_id>/<challenge_type>/<domain_idx>", data = "<jws>")]
 pub(crate) async fn get_challenge(
     state: &State<AppState>,
-    body: JoseBody,
+    jws: AuthenticatedJws,
     order_id: i64,
     challenge_type: String,
     domain_idx: usize,
     _acme: AcmeEnabled,
 ) -> Result<Json<serde_json::Value>, AcmeError> {
-    use crate::acme::jws::jwk_thumbprint;
-
+    let jws = jws.0?;
     let base = state.settings.get_vaultls_url();
     let chall_url = format!("{base}/api/acme/chall/{order_id}/{challenge_type}/{domain_idx}");
-    let (account_id, _payload) = authenticate_jws(state, &body.0, &chall_url).await?;
 
     if challenge_type != "http-01" && challenge_type != "dns-01" {
         return Err(AcmeError::malformed(format!("Unsupported challenge type: {challenge_type}")));
@@ -796,7 +723,7 @@ pub(crate) async fn get_challenge(
 
     let order = state.db.get_acme_order(order_id).await
         .map_err(|_| AcmeError::not_found())?;
-    if order.account_id != account_id {
+    if order.account_id != jws.account_id {
         return Err(AcmeError::unauthorized("Challenge does not belong to this account"));
     }
 
@@ -818,7 +745,7 @@ pub(crate) async fn get_challenge(
 
     let token = identifier.token.clone();
 
-    let account = state.db.get_acme_account(account_id).await
+    let account = state.db.get_acme_account(jws.account_id).await
         .map_err(|_| AcmeError::server_internal("Account lookup failed"))?;
     let jwk_str = account.acme_jwk.ok_or_else(AcmeError::account_does_not_exist)?;
     let jwk: serde_json::Value = serde_json::from_str(&jwk_str)
@@ -886,21 +813,18 @@ pub(crate) async fn get_challenge(
     })))
 }
 
-#[post("/cert/<id>", data = "<body>")]
+#[post("/cert/<id>", data = "<jws>")]
 pub(crate) async fn download_cert(
     state: &State<AppState>,
-    body: JoseBody,
+    jws: AuthenticatedJws,
     id: i64,
     _acme: AcmeEnabled,
 ) -> Result<AcmePemResponse, AcmeError> {
-    let base = state.settings.get_vaultls_url();
-    let expected_url = format!("{base}/api/acme/cert/{id}");
-    let (account_id, _payload) = authenticate_jws(state, &body.0, &expected_url).await?;
-
+    let jws = jws.0?;
     let cert = state.db.get_user_cert_by_id(id).await
         .map_err(|_| AcmeError::not_found())?;
 
-    let owned = state.db.check_cert_acme_account(id, account_id).await
+    let owned = state.db.check_cert_acme_account(id, jws.account_id).await
         .map_err(|_| AcmeError::server_internal("DB error"))?;
     if !owned {
         return Err(AcmeError::unauthorized("Certificate does not belong to this account"));
@@ -919,10 +843,11 @@ pub(crate) async fn revoke_cert(
     body: JoseBody,
     _acme: AcmeEnabled,
 ) -> Result<Status, AcmeError> {
+    let body = body.0?;
     let base = state.settings.get_vaultls_url();
     let expected_url = format!("{base}/api/acme/revoke-cert");
 
-    let (header, _protected_bytes, payload_bytes, signature) = parse_jws(&body.0)?;
+    let (header, _protected_bytes, payload_bytes, signature) = parse_jws(&body)?;
 
     if header.jwk.is_some() && header.kid.is_some() {
         return Err(AcmeError::malformed("JWS protected header must not contain both jwk and kid"));
@@ -941,7 +866,7 @@ pub(crate) async fn revoke_cert(
         None => return Err(AcmeError::malformed("JWS protected header missing url")),
     }
 
-    let req: crate::acme::types::JwsRequest = serde_json::from_str(&body.0)
+    let req: JwsRequest = serde_json::from_str(&body)
         .map_err(|e| AcmeError::malformed(format!("Invalid JWS: {e}")))?;
 
     let payload: Value = serde_json::from_slice(&payload_bytes)
@@ -1024,22 +949,21 @@ pub(crate) async fn revoke_cert(
     }
 }
 
-#[post("/orders/<id>", data = "<body>")]
+#[post("/orders/<id>", data = "<jws>")]
 pub(crate) async fn get_account_orders(
     state: &State<AppState>,
-    body: JoseBody,
+    jws: AuthenticatedJws,
     id: i64,
     _acme: AcmeEnabled,
 ) -> Result<Json<serde_json::Value>, AcmeError> {
+    let jws = jws.0?;
     let base = state.settings.get_vaultls_url();
-    let expected_url = format!("{base}/api/acme/orders/{id}");
-    let (account_id, _payload) = authenticate_jws(state, &body.0, &expected_url).await?;
 
-    if account_id != id {
+    if jws.account_id != id {
         return Err(AcmeError::unauthorized("Account mismatch"));
     }
 
-    let orders = state.db.get_orders_by_account(account_id).await
+    let orders = state.db.get_orders_by_account(jws.account_id).await
         .map_err(|_| AcmeError::server_internal("DB error"))?;
 
     let order_urls: Vec<String> = orders.iter()

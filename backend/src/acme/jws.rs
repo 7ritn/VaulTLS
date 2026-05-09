@@ -12,6 +12,7 @@ use openssl::sign::Signer;
 use openssl::sign::Verifier;
 use serde_json::Value;
 
+use crate::data::objects::AppState;
 use super::types::{AcmeError, JwsProtectedHeader, JwsRequest};
 
 pub fn parse_jws(
@@ -373,6 +374,59 @@ pub fn jwk_thumbprint(jwk: &Value) -> Result<String, AcmeError> {
         .map_err(|_| AcmeError::server_internal("SHA-256 hash failed"))?;
 
     Ok(URL_SAFE_NO_PAD.encode(&digest))
+}
+
+pub async fn authenticate_jws(
+    state: &AppState,
+    body: &str,
+    expected_url: &str,
+) -> Result<(i64, Vec<u8>), AcmeError> {
+    let (header, _protected_bytes, payload_bytes, signature) = parse_jws(body)?;
+
+    if header.jwk.is_some() && header.kid.is_some() {
+        return Err(AcmeError::malformed("JWS protected header must not contain both jwk and kid"));
+    }
+
+    let nonce = header.nonce.as_deref().unwrap_or("");
+    let valid = state.db.validate_and_delete_nonce(nonce.to_string()).await
+        .map_err(|_| AcmeError::server_internal("Nonce validation failed"))?;
+    if !valid {
+        return Err(AcmeError::bad_nonce("Nonce is invalid or already used"));
+    }
+
+    match header.url.as_deref() {
+        Some(url) if url == expected_url => {}
+        Some(_) => return Err(AcmeError::unauthorized("JWS url mismatch")),
+        None => return Err(AcmeError::malformed("JWS protected header missing url")),
+    }
+
+    let kid = header.kid.ok_or_else(|| AcmeError::malformed("Missing kid in protected header"))?;
+    let base = state.settings.get_vaultls_url();
+    let expected_kid_prefix = format!("{base}/api/acme/account/");
+    if !kid.starts_with(&expected_kid_prefix) {
+        return Err(AcmeError::malformed("Invalid kid: unexpected URL prefix"));
+    }
+    let account_id: i64 = kid[expected_kid_prefix.len()..]
+        .parse()
+        .map_err(|_| AcmeError::malformed("Invalid kid: non-numeric account id"))?;
+
+    let account = state.db.get_acme_account(account_id).await
+        .map_err(|_| AcmeError::account_does_not_exist())?;
+
+    if account.status != "valid" {
+        return Err(AcmeError::unauthorized("Account is not active"));
+    }
+
+    let jwk_str = account.acme_jwk.ok_or_else(AcmeError::account_does_not_exist)?;
+    let jwk: Value = serde_json::from_str(&jwk_str)
+        .map_err(|_| AcmeError::server_internal("Stored JWK is invalid"))?;
+
+    let req: JwsRequest = serde_json::from_str(body)
+        .map_err(|e| AcmeError::malformed(format!("Invalid JWS: {e}")))?;
+
+    verify_signature(&header.alg, &jwk, &req.protected, &req.payload, &signature)?;
+
+    Ok((account_id, payload_bytes))
 }
 
 // ---------------------------------------------------------------------------
