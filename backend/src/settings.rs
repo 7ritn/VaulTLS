@@ -139,12 +139,9 @@ pub(crate) struct Common {
     password_rule: PasswordRule,
     #[serde(default = "default_crl_hours")]
     crl_next_update_hours: i64,
-    #[serde(default = "default_page_size")]
-    default_page_size: u32,
 }
 
 fn default_crl_hours() -> i64 { 7 * 24 }
-fn default_page_size() -> u32 { 20 }
 fn default_true() -> bool { true }
 fn default_acme_rate_limit() -> u32 { 20 }
 
@@ -167,7 +164,6 @@ impl Default for Common {
             vaultls_url: Default::default(),
             password_rule: Default::default(),
             crl_next_update_hours: 7 * 24,
-            default_page_size: 20,
         }
     }
 }

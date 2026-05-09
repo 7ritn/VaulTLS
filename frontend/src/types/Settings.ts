@@ -14,7 +14,6 @@ export interface Settings {
         password_rule: PasswordRule;
         vaultls_url: string;
         crl_next_update_hours: number;
-        default_page_size: number;
     },
     mail: {
         smtp_host: string,
