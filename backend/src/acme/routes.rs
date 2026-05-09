@@ -447,12 +447,18 @@ pub(crate) async fn new_order(
         .unwrap_or_default()
         .as_millis() as i64;
 
-    // Rate limit: max 20 orders per account per 24 hours.
-    // let recent_count = state.db.count_recent_orders_for_account(account_id, ORDER_EXPIRY_DAYS * MS_PER_DAY).await
-    //     .map_err(|_| AcmeError::server_internal("Rate limit check failed"))?;
-    // if recent_count >= 20 {
-    //     return Err(AcmeError::malformed("Order rate limit exceeded: max 20 orders per 24 hours per account"));
-    // }
+    let acme_settings = state.settings.get_acme();
+    if acme_settings.rate_limit_enabled {
+        let recent_count = state.db.count_recent_orders_for_account(account_id, ORDER_EXPIRY_DAYS * MS_PER_DAY).await
+            .map_err(|_| AcmeError::server_internal("Rate limit check failed"))?;
+        if recent_count >= acme_settings.rate_limit as i64 {
+            warn!("ACME rate limit exceeded: account={} name={} recent_orders={} limit={}", account_id, account.name, recent_count, acme_settings.rate_limit);
+            return Err(AcmeError::malformed(&format!(
+                "Order rate limit exceeded: max {} orders per 24 hours per account",
+                acme_settings.rate_limit
+            )));
+        }
+    }
 
     let expires_ms = now_ms + ORDER_EXPIRY_DAYS * MS_PER_DAY;
     let not_after_ms = now_ms + CERT_VALIDITY_DAYS * MS_PER_DAY;

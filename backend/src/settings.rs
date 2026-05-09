@@ -145,6 +145,8 @@ pub(crate) struct Common {
 
 fn default_crl_hours() -> i64 { 7 * 24 }
 fn default_page_size() -> u32 { 20 }
+fn default_true() -> bool { true }
+fn default_acme_rate_limit() -> u32 { 20 }
 
 impl Common {
     /// Replace common settings with environment variables.
@@ -179,6 +181,10 @@ pub(crate) struct Acme {
     pub(crate) notify_issuance: bool,
     #[serde(default)]
     pub(crate) dns_resolver: String,
+    #[serde(default = "default_true")]
+    pub(crate) rate_limit_enabled: bool,
+    #[serde(default = "default_acme_rate_limit")]
+    pub(crate) rate_limit: u32,
 }
 
 impl Acme {

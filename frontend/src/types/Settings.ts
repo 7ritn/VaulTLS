@@ -34,5 +34,7 @@ export interface Settings {
         enabled: boolean;
         notify_issuance: boolean;
         dns_resolver: string;
+        rate_limit_enabled: boolean;
+        rate_limit: number;
     }
 }

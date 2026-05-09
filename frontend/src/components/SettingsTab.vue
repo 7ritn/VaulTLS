@@ -232,6 +232,30 @@
               </ul>
             </div>
           </div>
+          <div class="mb-3 form-check form-switch">
+            <input
+                type="checkbox"
+                class="form-check-input"
+                id="acme-rate-limit-enabled"
+                v-model="settings.acme.rate_limit_enabled"
+                role="switch"
+            />
+            <label class="form-check-label" for="acme-rate-limit-enabled">
+              Enable order rate limiting
+            </label>
+          </div>
+          <div class="mb-3">
+            <label class="form-label" for="acme-rate-limit">Maximum orders per account per 24 hours</label>
+            <input
+                type="number"
+                class="form-control"
+                id="acme-rate-limit"
+                v-model.number="settings.acme.rate_limit"
+                :disabled="!settings.acme.rate_limit_enabled"
+                min="1"
+                placeholder="20"
+            />
+          </div>
         </div>
       </div>
     </div>
