@@ -224,7 +224,24 @@ impl TLSCertificateBuilder {
         let (ca_id, ca_cert, ca_key) = self.ca.ok_or(anyhow!("X509: CA not set"))?;
         let private_key = self.private_key.ok_or(anyhow!("X509: no private key"))?;
 
-        apply_end_entity_extensions(&mut self.x509, &ca_cert, &ca_key)?;
+        let basic_constraints = BasicConstraints::new().build()?;
+        self.x509.append_extension(basic_constraints)?;
+
+        let key_usage = KeyUsage::new()
+            .digital_signature()
+            .key_encipherment()
+            .build()?;
+        self.x509.append_extension(key_usage)?;
+
+        self.x509.set_issuer_name(ca_cert.subject_name())?;
+
+        let subject_key_identifier = SubjectKeyIdentifier::new().build(&self.x509.x509v3_context(None, None))?;
+        self.x509.append_extension(subject_key_identifier)?;
+        
+        let authority_key_identifier = AuthorityKeyIdentifier::new().keyid(true).build(&self.x509.x509v3_context(Some(&ca_cert), None))?;
+        self.x509.append_extension(authority_key_identifier)?;
+
+        self.x509.sign(&ca_key, MessageDigest::sha256())?;
         let cert = self.x509.build();
 
         let mut ca_stack = Stack::new()?;
@@ -299,21 +316,6 @@ pub fn issue_cert_from_csr(
     let ext_key_usage = ExtendedKeyUsage::new().server_auth().build()?;
     x509.append_extension(ext_key_usage)?;
 
-    apply_end_entity_extensions(&mut x509, &ca_cert, &ca_key)?;
-    let cert = x509.build();
-
-    let serial_bytes = cert.serial_number().to_bn()?.to_vec();
-    let cert_pem = cert.to_pem()?;
-    let ca_pem = ca_cert.to_pem()?;
-
-    let mut chain_pem = cert_pem.clone();
-    chain_pem.extend_from_slice(&ca_pem);
-
-    Ok((cert_pem, chain_pem, serial_bytes))
-}
-
-/// Applies the standard end-entity X509 extensions and signs the certificate.
-fn apply_end_entity_extensions(x509: &mut X509Builder, ca_cert: &X509, ca_key: &PKey<Private>) -> Result<()> {
     let basic_constraints = BasicConstraints::new().build()?;
     x509.append_extension(basic_constraints)?;
 
@@ -325,17 +327,24 @@ fn apply_end_entity_extensions(x509: &mut X509Builder, ca_cert: &X509, ca_key: &
 
     x509.set_issuer_name(ca_cert.subject_name())?;
 
-    let subject_key_identifier = SubjectKeyIdentifier::new()
-        .build(&x509.x509v3_context(None, None))?;
+    let subject_key_identifier = SubjectKeyIdentifier::new().build(&x509.x509v3_context(None, None))?;
     x509.append_extension(subject_key_identifier)?;
-
-    let authority_key_identifier = AuthorityKeyIdentifier::new()
-        .keyid(true)
-        .build(&x509.x509v3_context(Some(ca_cert), None))?;
+    
+    let authority_key_identifier = AuthorityKeyIdentifier::new().keyid(true).build(&x509.x509v3_context(Some(&ca_cert), None))?;
     x509.append_extension(authority_key_identifier)?;
 
-    x509.sign(ca_key, MessageDigest::sha256())?;
-    Ok(())
+    x509.sign(&ca_key, MessageDigest::sha256())?;
+    
+    let cert = x509.build();
+
+    let serial_bytes = cert.serial_number().to_bn()?.to_vec();
+    let cert_pem = cert.to_pem()?;
+    let ca_pem = ca_cert.to_pem()?;
+
+    let mut chain_pem = cert_pem.clone();
+    chain_pem.extend_from_slice(&ca_pem);
+
+    Ok((cert_pem, chain_pem, serial_bytes))
 }
 
 /// Generates a new private key.
