@@ -23,7 +23,7 @@ export interface AcmeAccount {
   allowed_domains: string;
   eab_kid: string;
   status: string;
-  ca_id: number | null;
+  ca_id?: number;
   contacts: string;
   created_on: number;
   user_id: number;
@@ -33,7 +33,7 @@ export interface AcmeAccount {
 export interface CreateAcmeAccountRequest {
   name: string;
   allowed_domains: string[];
-  ca_id: number | null;
+  ca_id: number;
   auto_validate?: boolean;
 }
 

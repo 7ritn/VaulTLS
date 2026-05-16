@@ -562,7 +562,7 @@ impl VaulTLSDB {
         allowed_domains: String,
         eab_kid: String,
         eab_hmac_key: Vec<u8>,
-        ca_id: Option<i64>,
+        ca_id: i64,
         user_id: i64,
         auto_validate: bool,
     ) -> Result<AcmeAccount> {

@@ -46,7 +46,7 @@
             <span v-else class="badge bg-success" title="HTTP-01 and DNS-01 challenge validation is enforced">HTTP-01 / DNS-01</span>
           </td>
           <td :id="'AcmeCA-' + account.id">
-            {{ account.ca_id !== null ? account.ca_id : 'Default' }}
+            {{ account.ca_id }}
           </td>
           <td :id="'AcmeUser-' + account.id">{{ userStore.idToName(account.user_id) }}</td>
           <td :id="'AcmeCreated-' + account.id" class="d-none d-lg-table-cell">
@@ -195,14 +195,15 @@
               </div>
             </div>
             <div class="mb-3">
-              <label for="acmeCA" class="form-label">CA (optional)</label>
+              <label for="acmeCA" class="form-label">Certificate Authority</label>
               <select
                   id="acmeCA"
                   v-model="createForm.ca_id"
                   class="form-select"
+                  required
               >
-                <option :value="null">Default (Latest TLS CA)</option>
-                <option v-for="ca in cas.values()" :key="ca.id" :value="ca.id">
+                <option :value="undefined" disabled>Select a CA</option>
+                <option v-for="ca in availableCAs" :key="ca.id" :value="ca.id">
                   {{ ca.name.cn }} (ID: {{ ca.id }})
                 </option>
               </select>
@@ -230,7 +231,7 @@
             <button
                 type="button"
                 class="btn btn-primary"
-                :disabled="loading || !createForm.name"
+                :disabled="loading || !createForm.name || !createForm.ca_id"
                 @click="createAccount"
             >
               <span v-if="loading">Creating...</span>
@@ -369,6 +370,19 @@
               />
             </div>
             <div class="mb-3">
+              <label for="editAcmeCA" class="form-label">Certificate Authority</label>
+              <select
+                  id="editAcmeCA"
+                  v-model="editForm.ca_id"
+                  class="form-select"
+              >
+                <option :value="undefined" disabled>Select a CA</option>
+                <option v-for="ca in availableCAs" :key="ca.id" :value="ca.id">
+                  {{ ca.name.cn }} (ID: {{ ca.id }})
+                </option>
+              </select>
+            </div>
+            <div class="mb-3">
               <label class="form-label">Allowed Domains</label>
               <div class="input-group mb-2">
                 <input
@@ -481,6 +495,7 @@ import { useCAStore } from '@/stores/cas';
 import { useAuthStore } from '@/stores/auth';
 import { useUserStore } from '@/stores/users';
 import type { AcmeAccount, CreateAcmeAccountResponse } from '@/types/Acme';
+import { CAType } from '@/types/CA';
 
 // stores
 const acmeStore = useAcmeStore();
@@ -492,6 +507,9 @@ const userStore = useUserStore();
 const loading = computed(() => acmeStore.loading);
 const error = computed(() => acmeStore.error);
 const cas = computed(() => caStore.cas);
+const availableCAs = computed(() =>
+  Array.from(caStore.cas.values()).filter(ca => ca.ca_type === CAType.TLS).sort((a, b) => b.id - a.id)
+);
 
 const hideDeactivated = ref(true);
 const accountsArray = computed(() => {
@@ -503,10 +521,10 @@ const acmeDirectoryUrl = window.location.origin + '/api/acme/directory';
 // create modal
 const isCreateModalVisible = ref(false);
 const domainInput = ref('');
-const createForm = reactive<{ name: string; allowed_domains: string[]; ca_id: number | null; auto_validate: boolean }>({
+const createForm = reactive<{ name: string; allowed_domains: string[]; ca_id: number | undefined; auto_validate: boolean }>({
   name: '',
   allowed_domains: [],
-  ca_id: null,
+  ca_id: undefined,
   auto_validate: false,
 });
 
@@ -518,9 +536,10 @@ const createdCredentials = ref<CreateAcmeAccountResponse | null>(null);
 const isEditModalVisible = ref(false);
 const accountToEdit = ref<AcmeAccount | null>(null);
 const editDomainInput = ref('');
-const editForm = reactive<{ name: string; allowed_domains: string[]; auto_validate: boolean }>({
+const editForm = reactive<{ name: string; allowed_domains: string[]; ca_id: number | undefined; auto_validate: boolean }>({
   name: '',
   allowed_domains: [],
+  ca_id: undefined,
   auto_validate: false,
 });
 
@@ -583,7 +602,7 @@ const closeCreateModal = () => {
   isCreateModalVisible.value = false;
   createForm.name = '';
   createForm.allowed_domains = [];
-  createForm.ca_id = null;
+  createForm.ca_id = undefined;
   createForm.auto_validate = false;
   domainInput.value = '';
 };
@@ -604,7 +623,7 @@ const createAccount = async () => {
   const result = await acmeStore.createAccount({
     name: createForm.name,
     allowed_domains: createForm.allowed_domains,
-    ca_id: createForm.ca_id,
+    ca_id: createForm.ca_id!,
     auto_validate: createForm.auto_validate,
   });
   closeCreateModal();
@@ -627,6 +646,7 @@ const openEditModal = (account: AcmeAccount) => {
   editForm.allowed_domains = account.allowed_domains
       ? account.allowed_domains.split(',').map(d => d.trim()).filter(d => d.length > 0)
       : [];
+  editForm.ca_id = account.ca_id;
   editForm.auto_validate = account.auto_validate;
   editDomainInput.value = '';
   isEditModalVisible.value = true;
@@ -635,6 +655,7 @@ const openEditModal = (account: AcmeAccount) => {
 const closeEditModal = () => {
   isEditModalVisible.value = false;
   accountToEdit.value = null;
+  editForm.ca_id = undefined;
   editDomainInput.value = '';
 };
 
@@ -655,6 +676,7 @@ const saveEdit = async () => {
     await acmeStore.updateAccount(accountToEdit.value.id, {
       name: editForm.name,
       allowed_domains: editForm.allowed_domains,
+      ca_id: editForm.ca_id,
       auto_validate: editForm.auto_validate,
     });
     closeEditModal();

@@ -127,7 +127,7 @@ pub struct AcmeAccount {
 pub struct CreateAcmeAccountRequest {
     pub name: String,
     pub allowed_domains: Vec<String>,
-    pub ca_id: Option<i64>,
+    pub ca_id: i64,
     #[serde(default)]
     pub auto_validate: bool,
 }
