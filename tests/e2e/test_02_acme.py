@@ -152,18 +152,29 @@ def put_settings(session: requests.Session, settings: dict) -> None:
     r.raise_for_status()
 
 
+def get_first_ca_id(session: requests.Session) -> int:
+    r = session.get("http://127.0.0.1/api/certificates/ca")
+    r.raise_for_status()
+    cas = r.json()
+    assert cas, "No CAs available"
+    return cas[0]["id"]
+
+
 def register_account(
     admin_session: requests.Session,
     name: str,
     allowed_domains: list[str] = None,
     auto_validate: bool = True,
+    ca_id: int = None,
 ):
     """Create an EAB account and register it; returns (acct_id, kid, private_key)."""
     if allowed_domains is None:
         allowed_domains = ["test.internal"]
+    if ca_id is None:
+        ca_id = get_first_ca_id(admin_session)
     r = admin_session.post(
         "http://127.0.0.1/api/acme/accounts",
-        json={"name": name, "allowed_domains": allowed_domains, "auto_validate": auto_validate},
+        json={"name": name, "allowed_domains": allowed_domains, "auto_validate": auto_validate, "ca_id": ca_id},
     )
     r.raise_for_status()
     acct = r.json()
@@ -345,6 +356,7 @@ def test_acme_create_account(page):
     page.fill("#acmeName", "e2e_create_test")
     page.fill("#acmeDomainInput", "test.internal")
     page.click("button:has-text('Add')")
+    page.select_option("#acmeCA", index=1)
     page.check("#acmeAutoValidate")
     page.click("button:has-text('Create Account')")
     page.click("button:has-text('Close')")
@@ -380,6 +392,7 @@ def test_acme_deactivate_account(page):
     page.fill("#acmeName", "e2e_delete_target")
     page.fill("#acmeDomainInput", "test.internal")
     page.click("button:has-text('Add')")
+    page.select_option("#acmeCA", index=1)
     page.click("button:has-text('Create Account')")
     page.click("button:has-text('Close')")
     page.wait_for_timeout(500)
