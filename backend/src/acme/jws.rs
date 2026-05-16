@@ -11,6 +11,7 @@ use openssl::rsa::Rsa;
 use openssl::sign::Signer;
 use openssl::sign::Verifier;
 use serde_json::Value;
+use tracing::warn;
 
 use crate::data::objects::AppState;
 use super::types::{AcmeError, JwsProtectedHeader, JwsRequest};
@@ -391,12 +392,16 @@ pub async fn authenticate_jws(
     let valid = state.db.validate_and_delete_nonce(nonce.to_string()).await
         .map_err(|_| AcmeError::server_internal("Nonce validation failed"))?;
     if !valid {
+        warn!(nonce=%nonce, "ACME nonce rejected");
         return Err(AcmeError::bad_nonce("Nonce is invalid or already used"));
     }
 
     match header.url.as_deref() {
         Some(url) if url == expected_url => {}
-        Some(_) => return Err(AcmeError::unauthorized("JWS url mismatch")),
+        Some(url) => {
+            warn!(received=%url, expected=%expected_url, "ACME JWS url mismatch");
+            return Err(AcmeError::unauthorized("JWS url mismatch"));
+        }
         None => return Err(AcmeError::malformed("JWS protected header missing url")),
     }
 
@@ -404,16 +409,24 @@ pub async fn authenticate_jws(
     let base = state.settings.get_vaultls_url();
     let expected_kid_prefix = format!("{base}/api/acme/account/");
     if !kid.starts_with(&expected_kid_prefix) {
+        warn!(kid=%kid, expected_prefix=%expected_kid_prefix, request_url=%expected_url, "ACME invalid kid: unexpected URL prefix");
         return Err(AcmeError::malformed("Invalid kid: unexpected URL prefix"));
     }
     let account_id: i64 = kid[expected_kid_prefix.len()..]
         .parse()
-        .map_err(|_| AcmeError::malformed("Invalid kid: non-numeric account id"))?;
+        .map_err(|_| {
+            warn!(kid=%kid, request_url=%expected_url, "ACME invalid kid: non-numeric account id");
+            AcmeError::malformed("Invalid kid: non-numeric account id")
+        })?;
 
     let account = state.db.get_acme_account(account_id).await
-        .map_err(|_| AcmeError::account_does_not_exist())?;
+        .map_err(|_| {
+            warn!(account_id=%account_id, "ACME account not found");
+            AcmeError::account_does_not_exist()
+        })?;
 
     if account.status != "valid" {
+        warn!(account_id=%account_id, status=%account.status, "ACME account not active");
         return Err(AcmeError::unauthorized("Account is not active"));
     }
 

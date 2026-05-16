@@ -4,6 +4,7 @@ use rocket::http::Status;
 use rocket::request::{FromRequest, Outcome, Request};
 use rocket_okapi::r#gen::OpenApiGenerator;
 use rocket_okapi::request::{OpenApiFromRequest, RequestHeaderInput};
+use tracing::warn;
 use crate::acme::jws::authenticate_jws;
 use crate::acme::types::AcmeError;
 use crate::data::objects::AppState;
@@ -79,7 +80,10 @@ impl<'r> FromData<'r> for AuthenticatedJws {
 
         let result = match authenticate_jws(state, &body, &expected_url).await {
             Ok((account_id, payload)) => Ok(JwsData { account_id, payload }),
-            Err(e) => Err(e),
+            Err(e) => {
+                warn!(path=%req.uri().path(), error=%e.detail, "ACME JWS authentication failed");
+                Err(e)
+            }
         };
         DataOutcome::Success(AuthenticatedJws(result))
     }
