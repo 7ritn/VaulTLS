@@ -417,7 +417,7 @@ pub fn extract_serial_number(cert: &Certificate) -> Result<Vec<u8>> {
             };
             Ok(inner.serial_number().to_bn()?.to_vec())
         }
-        CertData::SshBundle(_) => Err(anyhow!("SSH certificates do not have a serial number")),
+        CertData::SshBundle(_) => Err(anyhow!("SSH certificates not supported here")),
     }
 }
 

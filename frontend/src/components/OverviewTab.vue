@@ -2,6 +2,15 @@
   <div>
     <h1>Certificates</h1>
     <hr />
+    <div class="form-check mb-2">
+      <input
+          id="hideAcmeCerts"
+          v-model="hideAcmeCerts"
+          type="checkbox"
+          class="form-check-input"
+      />
+      <label class="form-check-label" for="hideAcmeCerts">Hide ACME certificates</label>
+    </div>
     <div class="table-responsive">
       <table class="table table-striped active-certs">
         <thead>
@@ -19,7 +28,7 @@
           </tr>
         </thead>
         <tbody>
-          <tr v-for="cert in activeCertificates" :key="cert.id">
+          <tr v-for="cert in filteredActiveCertificates" :key="cert.id">
             <td :id="'UserId-' + cert.id" v-if="authStore.isAdmin">{{ userStore.idToName(cert.user_id) }}</td>
             <td :id="'CertName-' + cert.id" >{{ cert.name.cn }}</td>
             <td :id="'CertGroup-' + cert.id" v-if="hasAnyOU">{{ cert.name.ou ?? '' }}</td>
@@ -464,8 +473,15 @@ const caStore = useCAStore();
 // local state
 const shownCerts = ref(new Set<number>());
 const copiedCerts = ref(new Set<number>());
+const hideAcmeCerts = ref(localStorage.getItem('hideAcmeCerts') === 'true');
+watch(hideAcmeCerts, (val) => localStorage.setItem('hideAcmeCerts', String(val)));
 
 const certificates = computed(() => certificateStore.certificates);
+const filteredActiveCertificates = computed(() => {
+    const all = Array.from(certificates.value.values()).filter(cert => !cert.revoked_at);
+    if (!hideAcmeCerts.value) return all;
+    return all.filter(cert => cert.name.ou != 'ACME');
+});
 const activeCertificates = computed(() => {
   return Array.from(certificates.value.values()).filter(cert => !cert.revoked_at);
 });

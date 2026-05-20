@@ -108,7 +108,7 @@ export const useAcmeStore = defineStore('acme', {
             this.error = null;
             try {
                 await deleteAcmeAccount(id);
-                this.accounts.delete(id);
+                await this.fetchAccounts();
             } catch (err) {
                 if (axios.isAxiosError(err)) {
                     this.error = 'Failed to delete ACME account: ' + err.response?.data?.error;
