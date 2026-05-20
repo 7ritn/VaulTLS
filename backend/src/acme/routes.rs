@@ -697,10 +697,17 @@ pub(crate) async fn get_authz(
         status: challenge_status,
     };
 
+    let is_wildcard = identifier.value.starts_with("*.");
+    let challenges = if is_wildcard {
+        vec![dns_challenge]
+    } else {
+        vec![http_challenge, dns_challenge]
+    };
+
     Ok(Json(AcmeAuthorization {
         identifier,
         status: authz_status,
-        challenges: vec![http_challenge, dns_challenge],
+        challenges,
     }))
 }
 
@@ -743,6 +750,11 @@ pub(crate) async fn get_challenge(
         })));
     }
 
+    let is_wildcard = identifier.value.starts_with("*.");
+    if is_wildcard && challenge_type == "http-01" {
+        return Err(AcmeError::malformed("Wildcard identifiers require dns-01 challenge"));
+    }
+
     let token = identifier.token.clone();
 
     let account = state.db.get_acme_account(jws.account_id).await
@@ -762,8 +774,11 @@ pub(crate) async fn get_challenge(
             .map_err(|_| AcmeError::server_internal("SHA-256 computation failed"))?;
         let expected_dns_value = URL_SAFE_NO_PAD.encode(&digest);
         let resolver_addr = state.settings.get_acme_dns_resolver();
+        // For wildcard identifiers (*.example.com) the TXT record lives at the
+        // base domain (_acme-challenge.example.com), not _acme-challenge.*.example.com.
+        let domain_for_dns = domain.strip_prefix("*.").unwrap_or(domain);
         info!(challenge_type=challenge_type, domain=domain, resolver=resolver_addr, "Attempting ACME validation");
-        if validate_dns01(domain, &expected_dns_value, &resolver_addr).await {
+        if validate_dns01(domain_for_dns, &expected_dns_value, &resolver_addr).await {
             "valid"
         } else {
             "invalid"

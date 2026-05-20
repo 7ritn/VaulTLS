@@ -446,6 +446,21 @@ def test_acme_dns01_challenge(context, dns_resolver):
     assert "-----BEGIN CERTIFICATE-----" in pem
 
 
+def test_acme_wildcard_dns01_challenge(context, dns_resolver):
+    """Wildcard certificate (*.wildcard-test.local) issued via DNS-01 challenge."""
+    session = admin_login()
+    wildcard_domain = "*.wildcard-test.local"
+    # DNS-01 TXT record for a wildcard goes at the base domain, not *.base_domain.
+    base_domain = wildcard_domain[2:]
+
+    def setup_wildcard_dns01(token: str, key_auth: str):
+        digest = b64url(hashlib.sha256(key_auth.encode()).digest())
+        dns_resolver.set(f"_acme-challenge.{base_domain}", digest)
+
+    pem = run_acme_flow(session, wildcard_domain, "dns-01", setup_wildcard_dns01)
+    assert "-----BEGIN CERTIFICATE-----" in pem
+
+
 def test_acme_enabled_guard():
     """AcmeEnabled guard: all ACME protocol endpoints return 404 when ACME is disabled."""
     session = admin_login()

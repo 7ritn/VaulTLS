@@ -3,9 +3,12 @@
 /// Matching rules:
 /// - Patterns are compared case-insensitively after whitespace trimming.
 /// - An exact pattern (e.g. `example.com`) matches only that domain.
-/// - A wildcard pattern (e.g. `*.example.com`) matches exactly one DNS label
-///   to the left of the suffix; it does NOT match the bare suffix itself or
-///   deeper subdomains such as `a.b.example.com`.
+/// - A single-wildcard pattern (e.g. `*.example.com`) matches exactly one DNS
+///   label to the left of the suffix; it does NOT match the bare suffix itself
+///   or deeper subdomains such as `a.b.example.com`.
+/// - A double-wildcard pattern (e.g. `**.example.com`) matches one or more
+///   subdomain levels beneath the suffix (e.g. `a.example.com`,
+///   `a.b.example.com`) but does NOT match the bare suffix itself.
 pub fn matches_domain(pattern: &str, domain: &str) -> bool {
     let pattern = pattern.trim().to_lowercase();
     let domain = domain.trim().to_lowercase();
@@ -14,12 +17,15 @@ pub fn matches_domain(pattern: &str, domain: &str) -> bool {
         return false;
     }
 
-    if let Some(suffix) = pattern.strip_prefix("*.") {
-        // Wildcard: domain must end with ".<suffix>" and the part before that
-        // must be a single label (no dots).
+    if let Some(suffix) = pattern.strip_prefix("**.") {
+        // Double-wildcard: matches one or more subdomain levels but NOT the bare suffix.
+        let expected_suffix = format!(".{suffix}");
+        domain.ends_with(&expected_suffix) && domain.len() > expected_suffix.len()
+    } else if let Some(suffix) = pattern.strip_prefix("*.") {
+        // Single-wildcard: domain must end with ".<suffix>" and the part before
+        // that must be a single label (no dots).
         let expected_suffix = format!(".{suffix}");
         if let Some(label) = domain.strip_suffix(expected_suffix.as_str()) {
-            // The remaining label must be non-empty and contain no dots.
             !label.is_empty() && !label.contains('.')
         } else {
             false
@@ -30,14 +36,18 @@ pub fn matches_domain(pattern: &str, domain: &str) -> bool {
 }
 
 /// Returns true if `name` is a syntactically valid DNS name per RFC 952/1123.
+/// A leading `*.` wildcard prefix is accepted; the rest of the name is then
+/// validated as a normal DNS name (e.g. `*.example.com` is valid).
 pub fn is_valid_dns_name(name: &str) -> bool {
     let name = name.trim();
     if name.is_empty() || name.len() > 253 {
         return false;
     }
+    // Strip a single leading wildcard label so `*.example.com` is accepted.
+    let name = name.strip_prefix("*.").unwrap_or(name);
     // Reject IPv4 literals (all-numeric labels)
     // Reject IPv6 literals (contain colons or brackets)
-    if name.contains(':') || name.starts_with('[') {
+    if name.contains(':') || name.starts_with('[') || name.contains('*') {
         return false;
     }
     let labels: Vec<&str> = name.split('.').collect();
@@ -131,6 +141,34 @@ mod tests {
     }
 
     #[test]
+    fn double_wildcard_does_not_match_bare_suffix() {
+        assert!(!matches_domain("**.example.com", "example.com"));
+    }
+
+    #[test]
+    fn double_wildcard_matches_single_level() {
+        assert!(matches_domain("**.example.com", "foo.example.com"));
+        assert!(matches_domain("**.example.com", "bar.example.com"));
+    }
+
+    #[test]
+    fn double_wildcard_matches_multi_level() {
+        assert!(matches_domain("**.example.com", "a.b.example.com"));
+        assert!(matches_domain("**.example.com", "a.b.c.example.com"));
+    }
+
+    #[test]
+    fn double_wildcard_does_not_match_other_domains() {
+        assert!(!matches_domain("**.example.com", "other.com"));
+        assert!(!matches_domain("**.example.com", "notexample.com"));
+    }
+
+    #[test]
+    fn double_wildcard_case_insensitive() {
+        assert!(matches_domain("**.Example.COM", "a.b.example.com"));
+    }
+
+    #[test]
     fn check_domains_all_match() {
         let allowed = "*.example.com,api.internal";
         let requested = vec!["foo.example.com".to_string(), "api.internal".to_string()];
@@ -170,6 +208,18 @@ mod tests {
     fn check_domains_single_domain_single_pattern() {
         assert!(check_domains("example.com", &["example.com".to_string()]));
         assert!(!check_domains("example.com", &["other.com".to_string()]));
+    }
+
+
+    #[test]
+    fn check_domains_double_wildcard() {
+        let allowed = "**.example.com";
+        let requested = vec![
+            "a.example.com".to_string(),
+            "a.b.example.com".to_string(),
+        ];
+        assert!(check_domains(allowed, &requested));
+        assert!(!check_domains(allowed, &["example.com".to_string()]));
     }
 
     #[test]
@@ -218,5 +268,18 @@ mod tests {
     fn invalid_dns_too_long() {
         let long_name = "a".repeat(254);
         assert!(!is_valid_dns_name(&long_name));
+    }
+
+    #[test]
+    fn wildcard_dns_name_valid() {
+        assert!(is_valid_dns_name("*.example.com"));
+        assert!(is_valid_dns_name("*.foo-bar.example.com"));
+    }
+
+    #[test]
+    fn wildcard_dns_name_invalid() {
+        assert!(!is_valid_dns_name("*.*.example.com")); // double wildcard not a valid ACME identifier
+        assert!(!is_valid_dns_name("foo.*.example.com")); // wildcard not in leading position
+        assert!(!is_valid_dns_name("*example.com")); // wildcard not followed by dot
     }
 }

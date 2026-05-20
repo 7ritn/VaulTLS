@@ -103,6 +103,53 @@ If VaulTLS presents a certificate not trusted by your system, add `--insecure` t
   --webroot /var/www/html/
 ```
 
+## Wildcard Certificates
+
+VaulTLS supports issuing wildcard certificates (e.g. `*.example.com`) via ACME.
+
+**Important:** Wildcard certificates require the **DNS-01 challenge**. The HTTP-01 challenge cannot be used for wildcard identifiers (this is an ACME protocol requirement). Only dns-01 will be offered in the authorization for wildcard orders.
+
+### acme.sh example
+
+```bash
+./acme.sh --issue \
+  --domain "*.example.com" \
+  --server https://vaultls.example.com/api/acme/directory \
+  --dns dns_manual
+```
+
+Follow the prompts to add the `_acme-challenge.example.com` TXT record, then run the renewal command.
+
+### Traefik example
+
+Use `dnsChallenge` instead of `httpChallenge`:
+
+```yaml
+certificatesResolvers:
+  vaultls:
+    acme:
+      email: you@example.com
+      storage: /acme.json
+      caServer: https://vaultls.example.com/api/acme/directory
+      dnsChallenge:
+        provider: <your-dns-provider>
+      eab:
+        kid: <eab-key-id>
+        hmacEncoded: <eab-hmac-key>
+```
+
+## Allowed Domain Patterns
+
+When creating an ACME account you can restrict which domains it may request certificates for using **Allowed Domains**. Three matching modes are supported:
+
+| Pattern | Matches |
+|---------|---------|
+| `example.com` | Exactly `example.com` |
+| `*.example.com` | One subdomain level: `foo.example.com`, but **not** `a.b.example.com` or `example.com` |
+| `**.example.com` | Any depth: `example.com`, `foo.example.com`, `a.b.example.com`, etc. |
+
+Multiple patterns can be entered (one per line or comma-separated) and a domain is permitted if it matches **any** pattern in the list.
+
 ## HTTP Challenge
 
 The HTTP challenge requires your ACME client to serve a token at:
