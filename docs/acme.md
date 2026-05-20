@@ -171,3 +171,27 @@ VaulTLS (as the CA) will make an outbound HTTP request to validate this token. E
 extra_hosts:
   - "internal.example.com:10.0.5.110"
 ```
+
+## DNS Challenge Resolver
+
+By default VaulTLS uses the system resolver to validate DNS-01 challenges. You can override this with the `VAULTLS_ACME_DNS_RESOLVER` environment variable. Three formats are supported:
+
+| Format | Example | Protocol |
+|--------|---------|----------|
+| `<ip>` or `<ip>:<port>` | `9.9.9.9` or `9.9.9.9:53` | UDP |
+| `tls://<host>` | `tls://9.9.9.9` | DNS-over-TLS |
+| `https://<url>` | `https://dns.quad9.net/dns-query` | DNS-over-HTTPS |
+
+```bash
+-e VAULTLS_ACME_DNS_RESOLVER="9.9.9.9"
+```
+
+This is useful when your internal DNS does not expose `_acme-challenge` TXT records publicly, or when you want to use a specific resolver for validation.
+
+## Rate Limiting
+
+ACME order rate limiting is enabled by default and limits each account to **20 orders per 24 hours**. Both the limit and whether it is enforced can be changed in the ACME settings section of the admin UI.
+
+## Email Notifications
+
+If email (SMTP) is configured, VaulTLS can send a notification whenever an ACME certificate is issued. Enable this in the ACME settings section of the admin UI.
