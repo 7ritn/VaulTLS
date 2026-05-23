@@ -54,7 +54,7 @@ rand_core = "0.10.1"
 reqwest = { version = "0.12", default-features = false, features = ["http2", "rustls-tls"] }
 hickory-resolver = { version = "0.25", features = ["tokio", "system-config", "tls-ring"] }
 rcgen = { version = "0.14.7", features = ["pem", "x509-parser", "crypto", "aws_lc_rs"] }
-rustls-pki-types = "1.14.0"
+rustls-pki-types = "1.14.1"
 time = "0.3.47"
 base64 = "0.22.1"
 
