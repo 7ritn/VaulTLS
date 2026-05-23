@@ -28,5 +28,12 @@ export interface Settings {
         secret: string,
         auth_url: string,
         callback_url: string;
+    };
+    acme: {
+        enabled: boolean;
+        notify_issuance: boolean;
+        dns_resolver: string;
+        rate_limit_enabled: boolean;
+        rate_limit: number;
     }
 }

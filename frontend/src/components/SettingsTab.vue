@@ -173,6 +173,80 @@
           </div>
         </div>
       </div>
+
+      <!-- ACME Section -->
+      <h3>ACME</h3>
+      <div class="card mt-3 mb-3">
+        <div class="card-body">
+          <div class="mb-3 form-check form-switch">
+            <input
+                type="checkbox"
+                class="form-check-input"
+                id="acme-enabled"
+                v-model="settings.acme.enabled"
+                role="switch"
+            />
+            <label class="form-check-label" for="acme-enabled">
+              ACME server enabled
+            </label>
+          </div>
+          <div class="mb-3 form-check form-switch">
+            <input
+                type="checkbox"
+                class="form-check-input"
+                id="notify-acme-issuance"
+                v-model="settings.acme.notify_issuance"
+                role="switch"
+            />
+            <label class="form-check-label" for="notify-acme-issuance">
+              Notify admins on new ACME certificate issuance
+            </label>
+          </div>
+          <div class="mb-3">
+            <label class="form-label" for="acme-dns-resolver">DNS resolver</label>
+            <input
+                type="text"
+                class="form-control"
+                id="acme-dns-resolver"
+                v-model="settings.acme.dns_resolver"
+                placeholder="System default"
+            />
+            <div class="form-text">
+              DNS resolver used for DNS-01 challenge validation. Leave empty to use the system default.
+              Supported formats:
+              <ul class="mb-0 mt-1">
+                <li>Plain UDP — <code>8.8.8.8</code></li>
+                <li>DNS-over-HTTPS — <code>https://dns.google/dns-query</code> or <code>https://1.1.1.1/dns-query</code></li>
+                <li>DNS-over-TLS — <code>tls://1.1.1.1</code> or <code>tls://8.8.8.8:853#dns.google</code> (optionally append <code>#hostname</code> for TLS verification)</li>
+              </ul>
+            </div>
+          </div>
+          <div class="mb-3 form-check form-switch">
+            <input
+                type="checkbox"
+                class="form-check-input"
+                id="acme-rate-limit-enabled"
+                v-model="settings.acme.rate_limit_enabled"
+                role="switch"
+            />
+            <label class="form-check-label" for="acme-rate-limit-enabled">
+              Enable order rate limiting
+            </label>
+          </div>
+          <div class="mb-3">
+            <label class="form-label" for="acme-rate-limit">Maximum orders per account per 24 hours</label>
+            <input
+                type="number"
+                class="form-control"
+                id="acme-rate-limit"
+                v-model.number="settings.acme.rate_limit"
+                :disabled="!settings.acme.rate_limit_enabled"
+                min="1"
+                placeholder="20"
+            />
+          </div>
+        </div>
+      </div>
     </div>
 
     <h2>User</h2>
@@ -266,16 +340,15 @@ import { useAuthStore } from '@/stores/auth';
 import { type User, UserRole } from "@/types/User.ts";
 import { useUserStore } from "@/stores/users.ts";
 import { useSetupStore } from "@/stores/setup.ts";
-import { Encryption, PasswordRule } from "@/types/Settings.ts";
-
+import { Encryption, PasswordRule, type Settings } from "@/types/Settings.ts";
 // Stores
 const settingsStore = useSettingsStore();
 const authStore = useAuthStore();
 const userStore = useUserStore();
 const setupStore = useSetupStore();
 
-// Computed state
-const settings = computed(() => settingsStore.settings);
+// Local copy of settings — not committed to the store until Save is clicked
+const settings = ref<Settings | null>(null);
 const current_user = computed(() => authStore.current_user);
 const settings_error = computed(() => settingsStore.error);
 const user_error = computed(() => userStore.error);
@@ -317,7 +390,8 @@ const saveSettings = async () => {
   saved_successfully.value = false;
   let success = true;
 
-  if (current_user.value?.role === UserRole.Admin) {
+  if (current_user.value?.role === UserRole.Admin && settings.value) {
+    settingsStore.$patch({ settings: JSON.parse(JSON.stringify(settings.value)) });
     success &&= await settingsStore.saveSettings();
     await setupStore.reload();
   }
@@ -333,6 +407,9 @@ const saveSettings = async () => {
 onMounted(async () => {
   if (authStore.isAdmin) {
     await settingsStore.fetchSettings();
+    if (settingsStore.settings) {
+      settings.value = JSON.parse(JSON.stringify(settingsStore.settings));
+    }
     if (settings.value) {
       const hours = settings.value.common.crl_next_update_hours;
       if (hours % 168 === 0) {

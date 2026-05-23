@@ -1,5 +1,5 @@
 use crate::certs::tls_cert::{get_dns_names, TLSCertificateBuilder};
-use crate::data::enums::CertificateRenewMethod;
+use crate::data::enums::{CertificateRenewMethod, UserRole};
 use crate::data::enums::CertificateType::*;
 use crate::db::VaulTLSDB;
 use crate::notification::mail::{MailMessage, Mailer};
@@ -10,6 +10,20 @@ use tokio::sync::Mutex;
 use tokio::time::{interval  , MissedTickBehavior};
 use tracing::{info, trace};
 use crate::certs::common::Certificate;
+
+/// Notify all admin users that a new ACME certificate was issued.
+pub(crate) async fn notify_admins_acme_issued(db: &VaulTLSDB, mailer_mutex: Arc<Mutex<Option<Mailer>>>, cert: Certificate) {
+    let Ok(users) = db.get_all_user().await else { return };
+    let mailer_guard = mailer_mutex.lock().await;
+    let Some(mailer) = &*mailer_guard else { return };
+    for user in users.into_iter().filter(|u| u.role == UserRole::Admin) {
+        let _ = mailer.notify_acme_certificate_issued(MailMessage {
+            to: format!("{} <{}>", user.name, user.email),
+            username: user.name,
+            certificate: cert.clone(),
+        }).await;
+    }
+}
 
 pub(crate) async fn watch_expiry(db: VaulTLSDB, mailer_mutex: Arc<Mutex<Option<Mailer>>>) {
     info!("Starting certificate expiry watcher.");

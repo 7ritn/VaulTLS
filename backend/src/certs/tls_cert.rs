@@ -16,6 +16,7 @@ use openssl::stack::Stack;
 use openssl::x509::{X509Name, X509NameBuilder, X509Ref, X509};
 use openssl::x509::extension::{AuthorityKeyIdentifier, BasicConstraints, ExtendedKeyUsage, KeyUsage, SubjectAlternativeName, SubjectKeyIdentifier};
 use openssl::x509::{X509Builder};
+use openssl::x509::X509Req;
 use rcgen::{CertificateRevocationListParams, Issuer, KeyIdMethod, KeyPair, RevocationReason, RevokedCertParams, SerialNumber};
 use rustls_pki_types::CertificateDer;
 use time::{OffsetDateTime, Duration};
@@ -25,7 +26,7 @@ use crate::ApiError;
 use crate::constants::{CA_DIR_PATH, CA_FILE_PATTERN, CA_TLS_FILE_PATH, CRL_DIR_PATH, CRL_FILE_PATTERN};
 #[cfg(feature = "test-mode")]
 use crate::constants::{CA_DIR_PATH, CA_FILE_PATTERN, CA_TLS_FILE_PATH};
-use crate::data::enums::{CertificateRenewMethod, CertificateType, TimespanUnit};
+use crate::data::enums::{CertData, CertificateRenewMethod, CertificateType, TimespanUnit};
 use crate::data::enums::CertificateType::{TLSClient, TLSServer};
 use crate::certs::common::{Certificate, CA};
 use crate::data::enums::CAType::TLS;
@@ -33,7 +34,7 @@ use crate::data::objects::Name;
 
 pub struct TLSCertificateBuilder {
     x509: X509Builder,
-    private_key: PKey<Private>,
+    private_key: Option<PKey<Private>>,
     created_on: i64,
     valid_until: Option<i64>,
     name: Option<Name>,
@@ -56,7 +57,7 @@ impl TLSCertificateBuilder {
 
         Ok(Self {
             x509,
-            private_key,
+            private_key: Some(private_key),
             created_on: created_on_unix,
             valid_until: None,
             name: None,
@@ -182,7 +183,8 @@ impl TLSCertificateBuilder {
         let authority_key_identifier = AuthorityKeyIdentifier::new().keyid(true).build(&self.x509.x509v3_context(None, None))?;
         self.x509.append_extension(authority_key_identifier)?;
 
-        self.x509.sign(&self.private_key, MessageDigest::sha256())?;
+        let private_key = self.private_key.ok_or(anyhow!("X509: no private key for CA build"))?;
+        self.x509.sign(&private_key, MessageDigest::sha256())?;
         let cert = self.x509.build();
 
         Ok(CA{
@@ -192,7 +194,7 @@ impl TLSCertificateBuilder {
             valid_until,
             ca_type: TLS,
             cert: cert.to_der()?,
-            key: self.private_key.private_key_to_der()?,
+            key: private_key.private_key_to_der()?,
             crl_number: 0,
         })
     }
@@ -220,6 +222,7 @@ impl TLSCertificateBuilder {
         let valid_until = self.valid_until.ok_or(anyhow!("X509: valid_until not set"))?;
         let user_id = self.user_id.ok_or(anyhow!("X509: user_id not set"))?;
         let (ca_id, ca_cert, ca_key) = self.ca.ok_or(anyhow!("X509: CA not set"))?;
+        let private_key = self.private_key.ok_or(anyhow!("X509: no private key"))?;
 
         let basic_constraints = BasicConstraints::new().build()?;
         self.x509.append_extension(basic_constraints)?;
@@ -248,7 +251,7 @@ impl TLSCertificateBuilder {
             .name(&name.cn)
             .ca(ca_stack)
             .cert(&cert)
-            .pkey(&self.private_key)
+            .pkey(&private_key)
             .build2(&self.pkcs12_password)?;
 
         Ok(Certificate {
@@ -257,7 +260,7 @@ impl TLSCertificateBuilder {
             created_on: self.created_on,
             valid_until,
             certificate_type,
-            data: pkcs12.to_der()?,
+            data: CertData::Pkcs12(pkcs12.to_der()?),
             password: self.pkcs12_password,
             ca_id,
             user_id,
@@ -265,6 +268,83 @@ impl TLSCertificateBuilder {
             revoked_at: None
         })
     }
+}
+
+/// Issues a server certificate from a CSR and returns `(cert_pem, chain_pem, serial_bytes)`.
+/// The CSR signature is verified before issuance. The subject CN is derived from the first DNS name.
+pub fn issue_cert_from_csr(
+    csr_der: &[u8],
+    ca: &CA,
+    validity_days: u64,
+    dns_names: &[String],
+) -> Result<(Vec<u8>, Vec<u8>, Vec<u8>)> {
+    let csr = X509Req::from_der(csr_der)?;
+    let csr_pubkey = csr.public_key()?;
+    if !csr.verify(&csr_pubkey)? {
+        return Err(anyhow!("CSR signature verification failed"));
+    }
+
+    let ca_cert = X509::from_der(&ca.cert)?;
+    let ca_key = PKey::private_key_from_der(&ca.key)?;
+
+    let asn1_serial = generate_serial_number()?;
+    let (_, not_before) = get_timestamp(0, TimespanUnit::Hour)?;
+    let (_, not_after) = get_timestamp(validity_days, TimespanUnit::Day)?;
+
+    let mut x509 = X509Builder::new()?;
+    x509.set_version(2)?;
+    x509.set_serial_number(&asn1_serial)?;
+    x509.set_not_before(&not_before)?;
+    x509.set_not_after(&not_after)?;
+    x509.set_pubkey(&csr_pubkey)?;
+
+    let cn = dns_names.first().map(|s| s.as_str()).unwrap_or("acme");
+    let mut name_builder = openssl::x509::X509NameBuilder::new()?;
+    name_builder.append_entry_by_text("CN", cn)?;
+    name_builder.append_entry_by_text("OU", "ACME")?;
+    x509.set_subject_name(&name_builder.build())?;
+
+    if !dns_names.is_empty() {
+        let mut san_builder = SubjectAlternativeName::new();
+        for dns in dns_names {
+            san_builder.dns(dns);
+        }
+        let san = san_builder.build(&x509.x509v3_context(None, None))?;
+        x509.append_extension(san)?;
+    }
+
+    let ext_key_usage = ExtendedKeyUsage::new().server_auth().build()?;
+    x509.append_extension(ext_key_usage)?;
+
+    let basic_constraints = BasicConstraints::new().build()?;
+    x509.append_extension(basic_constraints)?;
+
+    let key_usage = KeyUsage::new()
+        .digital_signature()
+        .key_encipherment()
+        .build()?;
+    x509.append_extension(key_usage)?;
+
+    x509.set_issuer_name(ca_cert.subject_name())?;
+
+    let subject_key_identifier = SubjectKeyIdentifier::new().build(&x509.x509v3_context(None, None))?;
+    x509.append_extension(subject_key_identifier)?;
+    
+    let authority_key_identifier = AuthorityKeyIdentifier::new().keyid(true).build(&x509.x509v3_context(Some(&ca_cert), None))?;
+    x509.append_extension(authority_key_identifier)?;
+
+    x509.sign(&ca_key, MessageDigest::sha256())?;
+    
+    let cert = x509.build();
+
+    let serial_bytes = cert.serial_number().to_bn()?.to_vec();
+    let cert_pem = cert.to_pem()?;
+    let ca_pem = ca_cert.to_pem()?;
+
+    let mut chain_pem = cert_pem.clone();
+    chain_pem.extend_from_slice(&ca_pem);
+
+    Ok((cert_pem, chain_pem, serial_bytes))
 }
 
 /// Generates a new private key.
@@ -325,9 +405,20 @@ pub(crate) fn get_tls_pem(ca: &CA) -> Result<Vec<u8>, ErrorStack> {
 }
 
 pub fn extract_serial_number(cert: &Certificate) -> Result<Vec<u8>> {
-    let encrypted_p12 = Pkcs12::from_der(&cert.data)?;
-    let Some(cert) = encrypted_p12.parse2(&cert.password)?.cert else { return Err(anyhow::anyhow!("No certificate found in PKCS#12"))};
-    Ok(cert.serial_number().to_bn()?.to_vec())
+    match &cert.data {
+        CertData::Pem(bytes) => {
+            let x509 = X509::from_pem(bytes)?;
+            Ok(x509.serial_number().to_bn()?.to_vec())
+        }
+        CertData::Pkcs12(bytes) => {
+            let encrypted_p12 = Pkcs12::from_der(bytes)?;
+            let Some(inner) = encrypted_p12.parse2(&cert.password)?.cert else {
+                return Err(anyhow!("No certificate found in PKCS#12"));
+            };
+            Ok(inner.serial_number().to_bn()?.to_vec())
+        }
+        CertData::SshBundle(_) => Err(anyhow!("SSH certificates not supported here")),
+    }
 }
 
 #[cfg(not(feature = "test-mode"))]
@@ -418,8 +509,22 @@ pub(crate) fn migrate_ca_storage() -> Result<()> {
 
 /// Extract DNS names stored in X509 certificate
 pub(crate) fn get_dns_names(cert: &Certificate) -> Result<Vec<String>, anyhow::Error> {
-    let encrypted_p12 = Pkcs12::from_der(&cert.data)?;
-    let Some(cert) = encrypted_p12.parse2(&cert.password)?.cert else { return Err(anyhow::anyhow!("No certificate found in PKCS#12"))};
-    let Some(san) = cert.subject_alt_names() else { return Err(anyhow::anyhow!("No certificate found in PKCS#12"))};
-    Ok(san.iter().filter_map(|name| name.dnsname().map(|s| s.to_string())).collect())
+    match &cert.data {
+        CertData::Pem(bytes) => {
+            let x509 = X509::from_pem(bytes)?;
+            let Some(san) = x509.subject_alt_names() else { return Ok(vec![]) };
+            Ok(san.iter().filter_map(|name| name.dnsname().map(|s| s.to_string())).collect())
+        }
+        CertData::Pkcs12(bytes) => {
+            let encrypted_p12 = Pkcs12::from_der(bytes)?;
+            let Some(inner) = encrypted_p12.parse2(&cert.password)?.cert else {
+                return Err(anyhow!("No certificate found in PKCS#12"));
+            };
+            let Some(san) = inner.subject_alt_names() else {
+                return Err(anyhow!("No SAN found in PKCS#12 certificate"));
+            };
+            Ok(san.iter().filter_map(|name| name.dnsname().map(|s| s.to_string())).collect())
+        }
+        CertData::SshBundle(_) => Ok(vec![]),
+    }
 }

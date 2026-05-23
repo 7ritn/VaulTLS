@@ -613,7 +613,7 @@ pub(crate) async fn download_certificate(
         CertificateType::SSHClient | CertificateType::SSHServer => format!("{}.zip", certificate.name),
     };
 
-    Ok(DownloadResponse::new(certificate.data, &file_name))
+    Ok(DownloadResponse::new(certificate.data.into_bytes(), &file_name))
 }
 
 #[openapi(tag = "Certificates")]
@@ -777,6 +777,12 @@ pub(crate) async fn update_settings(
     match mailer.is_some() {
         true => info!("Mail notifications are active."),
         false => info!("Mail notifications are inactive.")
+    }
+
+    let acme_settings = state.settings.get_acme();
+    match acme_settings.enabled {
+        true => info!("ACME is active."),
+        false => info!("ACME is inactive.")
     }
 
     info!("Settings updated.");

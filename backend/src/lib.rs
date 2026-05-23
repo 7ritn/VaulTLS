@@ -10,6 +10,7 @@ use rocket_okapi::settings::UrlObject;
 use tokio::sync::Mutex;
 use tracing::{debug, info, trace};
 use tracing_subscriber::EnvFilter;
+use crate::acme::admin::*;
 use crate::api::*;
 use crate::auth::oidc_auth::OidcAuth;
 use crate::auth::password_auth::Password;
@@ -31,6 +32,7 @@ mod auth;
 pub mod constants;
 mod api;
 mod notification;
+mod acme;
 
 type ApiError = data::error::ApiError;
 
@@ -128,7 +130,12 @@ pub async fn create_rocket() -> Rocket<Build> {
         true => info!("Mail notifications are active."),
         false => info!("Mail notifications are inactive.")
     }
-    
+
+    match settings.get_acme_enabled() {
+        true => info!("ACME is active."),
+        false => info!("ACME is inactive.")
+    }
+
     // Migrate certs
     migrate_ca_storage().expect("Failed migrating CA storage paths");
 
@@ -189,9 +196,16 @@ pub async fn create_rocket() -> Rocket<Build> {
                 get_users,
                 create_user,
                 delete_user,
-                update_user
+                update_user,
+                get_acme_orders,
+                get_acme_accounts,
+                create_acme_account,
+                update_acme_account,
+                delete_acme_account
             ],
         )
+        .mount("/api/acme", crate::acme::protocol_routes())
+        .attach(crate::acme::NonceFairing)
         .mount(
             "/api",
             make_rapidoc(&RapiDocConfig {

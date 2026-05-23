@@ -1,10 +1,10 @@
 use rocket::serde::{Deserialize, Serialize};
 use rocket_okapi::JsonSchema;
 use passwords::PasswordGenerator;
-use crate::data::enums::{CAType, CertificateRenewMethod, CertificateType};
+use crate::data::enums::{CAType, CertData, CertificateRenewMethod, CertificateType};
 use crate::data::objects::Name;
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 /// Certificate can be either SSH or TLS certificate.
 pub struct Certificate {
     pub id: i64,
@@ -17,22 +17,32 @@ pub struct Certificate {
     pub ca_id: i64,
     pub revoked_at: Option<i64>,
     #[serde(skip)]
-    pub data: Vec<u8>,
+    pub data: CertData,
     #[serde(skip)]
     pub password: String
 }
 
 impl Certificate {
     pub(crate) fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        let raw: Vec<u8> = row.get(4)?;
+        let certificate_type: CertificateType = row.get(7)?;
+        let data = match certificate_type {
+            CertificateType::SSHClient | CertificateType::SSHServer => CertData::SshBundle(raw),
+            _ => if raw.starts_with(b"-----BEGIN CERTIFICATE-----") {
+                CertData::Pem(raw)
+            } else {
+                CertData::Pkcs12(raw)
+            },
+        };
         Ok(Certificate {
             id: row.get(0)?,
             name: row.get(1)?,
             created_on: row.get(2)?,
             valid_until: row.get(3)?,
-            data: row.get(4)?,
+            data,
             password: row.get(5).unwrap_or_default(),
             user_id: row.get(6)?,
-            certificate_type: row.get(7)?,
+            certificate_type,
             renew_method: row.get(8)?,
             ca_id: row.get(9)?,
             revoked_at: row.get(10)?

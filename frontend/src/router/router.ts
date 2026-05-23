@@ -10,6 +10,7 @@ import OverviewTab from '@/components/OverviewTab.vue';
 import SettingsTab from '@/components/SettingsTab.vue';
 import UserTab from "@/components/UserTab.vue";
 import CATab from "@/components/CATab.vue";
+import AcmeTab from '@/components/AcmeTab.vue';
 
 const router = createRouter({
     history: createWebHistory(),
@@ -47,6 +48,11 @@ const router = createRouter({
                     path: 'users',
                     name: 'Users',
                     component: UserTab,
+                },
+                {
+                    path: 'acme',
+                    name: 'ACME',
+                    component: AcmeTab,
                 },
                 {
                     path: 'settings',

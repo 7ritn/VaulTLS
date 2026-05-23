@@ -1,5 +1,5 @@
 use crate::certs::common::{Certificate, CA};
-use crate::data::enums::{CertificateRenewMethod, CertificateType, TimespanUnit};
+use crate::data::enums::{CertData, CertificateRenewMethod, CertificateType, TimespanUnit};
 use anyhow::anyhow;
 use anyhow::Result;
 use rand::prelude::*;
@@ -145,7 +145,7 @@ impl SSHCertificateBuilder {
         let cert = cert_builder.sign(&ca_key)?;
         trace!("SSH certificate signed with: {}", ca_key.fingerprint(Default::default()));
 
-        let data = create_cert_key_bundle(&name, cert, user_private_key)?;
+        let data = CertData::SshBundle(create_cert_key_bundle(&name, cert, user_private_key)?);
 
         Ok(Certificate {
             id: -1,
@@ -189,7 +189,7 @@ impl SSHCertificateBuilder {
         let cert = cert_builder.sign(&ca_key)?;
         trace!("SSH certificate signed with: {}", ca_key.fingerprint(Default::default()));
 
-        let data = create_cert_key_bundle(&name, cert, host_private_key)?;
+        let data = CertData::SshBundle(create_cert_key_bundle(&name, cert, host_private_key)?);
 
         Ok(Certificate {
             id: -1,
