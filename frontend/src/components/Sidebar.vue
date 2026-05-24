@@ -63,7 +63,7 @@
                 :class="{ active: activeRouteName === 'ACME' }"
                 @click.prevent="goToRoute('ACME')"
             >
-              ACME
+              {{ $t('sidebar.acme') }}
             </a>
           </li>
           <li class="nav-item">

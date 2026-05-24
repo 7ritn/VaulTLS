@@ -109,7 +109,7 @@
                     v-model="caReq.ca_name.cn"
                     type="text"
                     class="form-control"
-                    placeholder="Enter CA common name"
+                    :placeholder="$t('ca.enterCaCommonName')"
                     required
                 />
                 <button
@@ -153,7 +153,7 @@
                     type="number"
                     class="form-control"
                     min="1"
-                    placeholder="Enter validity period"
+                    :placeholder="$t('common.enterValidityPeriod')"
                 />
                 <select
                     id="validity_unit"

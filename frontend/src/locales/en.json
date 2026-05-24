@@ -23,12 +23,15 @@
     "colType": "Type",
     "colCreatedOn": "Created on",
     "colValidUntil": "Valid until",
-    "colCaId": "CA ID"
+    "colCaId": "CA ID",
+    "enterValidityPeriod": "Enter validity period",
+    "or": "or"
   },
   "sidebar": {
     "overview": "Overview",
     "ca": "Certificate Authorities",
     "users": "Users",
+    "acme": "ACME",
     "settings": "Settings",
     "logout": "Logout",
     "lightMode": "Light Mode",
@@ -54,6 +57,7 @@
   },
   "overview": {
     "title": "Certificates",
+    "hideAcmeCerts": "Hide ACME certificates",
     "colUser": "User",
     "colRenewMethod": "Renew Method",
     "revoke": "Revoke",
@@ -66,7 +70,9 @@
     "noRevokedCerts": "No revoked certificates found.",
     "generateModal": {
       "title": "Generate New Certificate",
+      "blank": "(Blank)",
       "commonName": "Common Name",
+      "enterCommonName": "Enter certificate common name",
       "certType": "Certificate Type",
       "tlsClient": "TLS Client",
       "tlsServer": "TLS Server",
@@ -77,9 +83,12 @@
       "usagePlaceholder": "Usage {n}",
       "user": "User",
       "selectUser": "Select a user",
+      "enterOU": "Enter organizational unit (optional)",
+      
       "ca": "Certificate Authority",
       "selectCa": "Select a CA",
       "systemPassword": "System Generated Password",
+      "enterPassword": "Enter password",
       "renewMethod": "Certificate Renew Method",
       "renewNone": "None",
       "renewRemind": "Remind",
@@ -107,6 +116,7 @@
     "pem_format": "PEM Format",
     "createCa": "Create New CA",
     "loadingCas": "Loading CAs...",
+    "enterCaCommonName": "Enter CA Common Name",
     "createModal": {
       "title": "Create New Certificate Authority",
       "caName": "CA Name (CN)",
@@ -174,6 +184,86 @@
       "confirmPassword": "Confirm New Password",
       "profile": "Profile"
     },
+    "acme": {
+      "heading": "ACME",
+      "serverEnabled": "ACME server enabled",
+      "notifyIssuance": "Notify admins on new ACME certificate issuance",
+      "dnsResolver": "DNS resolver",
+      "dnsResolverPlaceholder": "System default",
+      "dnsResolverHelp": "DNS resolver used for DNS-01 challenge validation. Leave empty to use the system default. Supported formats:",
+      "dnsFormatUdp": "Plain UDP",
+      "dnsFormatHttps": "DNS-over-HTTPS",
+      "dnsFormatTls": "DNS-over-TLS",
+      "rateLimitEnabled": "Enable order rate limiting",
+      "rateLimit": "Maximum orders per account per 24 hours",
+      "optionallyAppend": "(optionally append <code>#hostname</code> for TLS verification)"
+    },
     "savedSuccessfully": "Settings saved successfully"
+  },
+  "acme": {
+    "title": "ACME Accounts",
+    "ordersTitle": "ACME Orders",
+    "hideDeactivated": "Hide deactivated accounts",
+    "colId": "ID",
+    "colAllowedDomains": "Allowed Domains",
+    "colStatus": "Status",
+    "colValidation": "Validation",
+    "colCreated": "Created",
+    "colAccount": "Account",
+    "colDomains": "Domains",
+    "colExpires": "Expires",
+    "colCertId": "Certificate ID",
+    "colClientIp": "Client IP",
+    "colError": "Error",
+    "noOrders": "No orders yet.",
+    "autoValidateTitle": "Challenge validation is skipped for this account",
+    "http01ValidateTitle": "HTTP-01 and DNS-01 challenge validation is enforced",
+    "edit": "Edit",
+    "deactivate": "Deactivate",
+    "createAccount": "Create ACME Account",
+    "loadingAccounts": "Loading ACME accounts...",
+    "autoApproved": "Auto Approved",
+    "valid": "Valid",
+    "deactivated": "Deactivated",
+    "pending": "Pending",
+    "createModal": {
+      "title": "Create ACME Account",
+      "namePlaceholder": "Enter account name",
+      "allowedDomains": "Allowed Domains",
+      "domainPlaceholder": "e.g. *.example.com or api.internal",
+      "addDomain": "Add",
+      "noDomainsAdded": "No domains added yet.",
+      "selectCa": "Select a CA",
+      "autoValidate": "Auto-validate challenges",
+      "autoValidateHelp": "When enabled, challenge validation (HTTP-01 and DNS-01) is skipped. The allowed domains allowlist above becomes the sole access control for certificate issuance.",
+      "create": "Create Account"
+    },
+    "credentialsModal": {
+      "title": "Account Created Successfully!",
+      "hmacWarning": "Save the HMAC key now — it won't be shown again.",
+      "eabKeyId": "EAB Key ID",
+      "eabHmacKey": "EAB HMAC Key",
+      "copy": "Copy",
+      "exampleUsage": "Example Usage",
+      "dns01Examples": "DNS-01 examples",
+      "close": "Close"
+    },
+    "editModal": {
+      "title": "Edit ACME Account",
+      "namePlaceholder": "Enter account name",
+      "selectCa": "Select a CA",
+      "allowedDomains": "Allowed Domains",
+      "domainPlaceholder": "e.g. *.example.com or api.internal",
+      "addDomain": "Add",
+      "noDomainsAdded": "No domains added yet.",
+      "autoValidate": "Auto-validate challenges",
+      "autoValidateHelp": "When enabled, challenge validation (HTTP-01 and DNS-01) is skipped. The allowed domains allowlist becomes the sole access control for certificate issuance.",
+      "saving": "Saving..."
+    },
+    "deactivateModal": {
+      "title": "Deactivate ACME Account",
+      "confirm": "Are you sure you want to deactivate the ACME account {name}? The account will no longer be able to issue certificates.",
+      "deactivate": "Deactivate"
+    }
   }
 }

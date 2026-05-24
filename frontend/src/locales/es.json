@@ -23,12 +23,15 @@
     "colType": "Tipo",
     "colCreatedOn": "Creado el",
     "colValidUntil": "Válido hasta",
-    "colCaId": "ID de CA"
+    "colCaId": "ID de CA",
+    "enterValidityPeriod": "Introduzca el periodo de validez",
+    "or": "o"
   },
   "sidebar": {
     "overview": "Resumen",
     "ca": "Autoridades de Certificación",
     "users": "Usuarios",
+    "acme": "ACME",
     "settings": "Configuración",
     "logout": "Cerrar sesión",
     "lightMode": "Modo claro",
@@ -54,6 +57,7 @@
   },
   "overview": {
     "title": "Certificados",
+    "hideAcmeCerts": "Ocultar certificados ACME",
     "colUser": "Usuario",
     "colRenewMethod": "Método de renovación",
     "revoke": "Revocar",
@@ -66,7 +70,9 @@
     "noRevokedCerts": "No se encontraron certificados revocados.",
     "generateModal": {
       "title": "Generar nuevo certificado",
+      "blank": "(Blanco)",
       "commonName": "Nombre común",
+      "enterCommonName": "Introduzca el nombre común del certificado",
       "certType": "Tipo de certificado",
       "tlsClient": "Cliente TLS",
       "tlsServer": "Servidor TLS",
@@ -77,9 +83,12 @@
       "usagePlaceholder": "Uso {n}",
       "user": "Usuario",
       "selectUser": "Seleccionar usuario",
+      "enterOU": "Introduzca la unidad organizativa (opcional)",
+      "enterValidityPeriod": "Introduzca el periodo de validez",
       "ca": "Autoridad de Certificación",
       "selectCa": "Seleccionar CA",
       "systemPassword": "Contraseña generada por el sistema",
+      "enterPassword": "Introduzca la contraseña",
       "renewMethod": "Método de renovación del certificado",
       "renewNone": "Ninguno",
       "renewRemind": "Recordar",
@@ -107,6 +116,7 @@
     "pem_format": "Formato PEM",
     "createCa": "Crear nueva CA",
     "loadingCas": "Cargando CAs...",
+    "enterCaCommonName": "Introduzca el nombre común de la CA",
     "createModal": {
       "title": "Crear nueva autoridad de certificación",
       "caName": "Nombre de CA (CN)",
@@ -151,7 +161,7 @@
     },
     "mail": {
       "heading": "Correo",
-      "smtpHost": "Host SMTP",
+      "smtpHost": "Servidor SMTP",
       "port": "Puerto",
       "encryption": "Cifrado",
       "encryptionNone": "Ninguno",
@@ -174,6 +184,86 @@
       "confirmPassword": "Confirmar nueva contraseña",
       "profile": "Perfil"
     },
+    "acme": {
+      "heading": "ACME",
+      "serverEnabled": "Servidor ACME habilitado",
+      "notifyIssuance": "Notificar a los administradores sobre la emisión de nuevos certificados ACME",
+      "dnsResolver": "Resolución DNS ",
+      "dnsResolverPlaceholder": "Predeterminado del sistema",
+      "dnsResolverHelp": "Resolución DNS usado para la validación del desafío DNS-01. Déjelo vacío para usar el predeterminado del sistema. Formatos soportados:",
+      "dnsFormatUdp": "UDP simple",
+      "dnsFormatHttps": "DNS sobre HTTPS",
+      "dnsFormatTls": "DNS sobre TLS",
+      "rateLimitEnabled": "Habilitar límite de tasa de órdenes",
+      "rateLimit": "Órdenes máximas por cuenta por 24 horas",
+      "optionallyAppend": "Opcionalmente, añada <code>#hostname</code> para la verificación TLS."
+    },
     "savedSuccessfully": "Configuración guardada correctamente"
+  },
+  "acme": {
+    "title": "Cuentas ACME",
+    "ordersTitle": "Órdenes ACME",
+    "hideDeactivated": "Ocultar cuentas desactivadas",
+    "colId": "ID",
+    "colAllowedDomains": "Dominios permitidos",
+    "colStatus": "Estado",
+    "colValidation": "Validación",
+    "colCreated": "Creado",
+    "colAccount": "Cuenta",
+    "colDomains": "Dominios",
+    "colExpires": "Vence",
+    "colCertId": "ID de certificado",
+    "colClientIp": "IP del cliente",
+    "colError": "Error",
+    "noOrders": "No hay órdenes aún.",
+    "autoValidateTitle": "La validación del desafío está omitida para esta cuenta",
+    "http01ValidateTitle": "La validación del desafío HTTP-01 y DNS-01 está habilitada",
+    "edit": "Editar",
+    "deactivate": "Desactivar",
+    "createAccount": "Crear cuenta ACME",
+    "loadingAccounts": "Cargando cuentas ACME...",
+    "autoApproved": "Aprobado automáticamente",
+    "valid": "Válido",
+    "deactivated": "Desactivado",
+    "pending": "Pendiente",
+    "createModal": {
+      "title": "Crear cuenta ACME",
+      "namePlaceholder": "Ingrese el nombre de la cuenta",
+      "allowedDomains": "Dominios permitidos",
+      "domainPlaceholder": "p. ej. *.ejemplo.com o api.interno",
+      "addDomain": "Agregar",
+      "noDomainsAdded": "No se han agregado dominios aún.",
+      "selectCa": "Seleccionar una CA",
+      "autoValidate": "Validar desafíos automáticamente",
+      "autoValidateHelp": "Cuando está habilitado, la validación del desafío (HTTP-01 y DNS-01) se omite. La lista de dominios permitidos se convierte en el único control de acceso para la emisión de certificados.",
+      "create": "Crear cuenta"
+    },
+    "credentialsModal": {
+      "title": "¡Cuenta creada exitosamente!",
+      "hmacWarning": "Guarde la clave HMAC ahora, no se mostrará de nuevo.",
+      "eabKeyId": "ID de clave EAB",
+      "eabHmacKey": "Clave HMAC EAB",
+      "copy": "Copiar",
+      "exampleUsage": "Ejemplo de uso",
+      "dns01Examples": "Ejemplos DNS-01",
+      "close": "Cerrar"
+    },
+    "editModal": {
+      "title": "Editar cuenta ACME",
+      "namePlaceholder": "Ingrese el nombre de la cuenta",
+      "selectCa": "Seleccionar una CA",
+      "allowedDomains": "Dominios permitidos",
+      "domainPlaceholder": "p. ej. *.ejemplo.com o api.interno",
+      "addDomain": "Agregar",
+      "noDomainsAdded": "No se han agregado dominios aún.",
+      "autoValidate": "Validar desafíos automáticamente",
+      "autoValidateHelp": "Cuando está habilitado, la validación del desafío (HTTP-01 y DNS-01) se omite. La lista de dominios permitidos se convierte en el único control de acceso para la emisión de certificados.",
+      "saving": "Guardando..."
+    },
+    "deactivateModal": {
+      "title": "Desactivar cuenta ACME",
+      "confirm": "¿Está seguro de que desea desactivar la cuenta ACME {name}? La cuenta ya no podrá emitir certificados.",
+      "deactivate": "Desactivar"
+    }
   }
 }

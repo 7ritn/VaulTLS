@@ -9,7 +9,7 @@
           type="checkbox"
           class="form-check-input"
       />
-      <label class="form-check-label" for="hideAcmeCerts">Hide ACME certificates</label>
+      <label class="form-check-label" for="hideAcmeCerts">{{ $t('overview.hideAcmeCerts') }}</label>
     </div>
     <div class="table-responsive">
       <table class="table table-striped active-certs">
@@ -44,7 +44,7 @@
                       :value="cert.password"
                       readonly
                       class="form-control form-control-sm"
-                      placeholder="(Blank)"
+                      :placeholder="$t('overview.generateModal.blank')"
                       style="font-family: monospace; max-width: 100px; min-width: 70px;"
                   />
                 </template>
@@ -199,7 +199,7 @@
                     v-model="certReq.cert_name.cn"
                     type="text"
                     class="form-control"
-                    placeholder="Enter certificate common name"
+                    :placeholder="$t('overview.generateModal.enterCommonName')"
                 />
                 <button
                     class="btn btn-outline-secondary"
@@ -218,7 +218,7 @@
                   v-model="certReq.cert_name.ou"
                   type="text"
                   class="form-control"
-                  placeholder="Enter organizational unit (optional)"
+                  :placeholder="$t('overview.generateModal.enterOU')"
               />
             </div>
             <div class="mb-3">
@@ -300,7 +300,7 @@
                     type="number"
                     class="form-control"
                     min="0"
-                    placeholder="Enter validity period"
+                    :placeholder="$t('common.enterValidityPeriod')"
                 />
                 <select
                     id="validity_unit"
@@ -335,7 +335,7 @@
                   v-model="certReq.cert_password"
                   type="text"
                   class="form-control"
-                  placeholder="Enter password"
+                  :placeholder="$t('overview.generateModal.enterPassword')"
               />
             </div>
             <div class="mb-3">
