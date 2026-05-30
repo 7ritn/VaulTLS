@@ -15,7 +15,8 @@ use crate::data::objects::Name;
 pub struct IsSetupResponse {
     pub setup: bool,
     pub password: bool,
-    pub oidc: String
+    pub oidc: String,
+    pub default_language: String,
 }
 
 #[derive(Serialize, Deserialize, JsonSchema)]
@@ -26,6 +27,7 @@ pub struct SetupRequest {
     pub validity_duration: Option<u64>,
     pub validity_unit: Option<TimespanUnit>,
     pub password: Option<String>,
+    pub default_language: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, JsonSchema)]

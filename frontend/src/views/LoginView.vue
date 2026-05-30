@@ -4,7 +4,7 @@
       <img src="/app/assets/logo.png" alt="Logo" class="w-50 d-block mx-auto mb-4">
       <form v-if="setupStore.passwordAuthEnabled" @submit.prevent="submitLogin">
         <div class="mb-3">
-          <label for="email" class="form-label">E-Mail</label>
+          <label for="email" class="form-label">{{ $t('common.email') }}</label>
           <input
               id="email"
               type="email"
@@ -14,7 +14,7 @@
           />
         </div>
         <div class="mb-3">
-          <label for="password" class="form-label">Password</label>
+          <label for="password" class="form-label">{{ $t('common.password') }}</label>
           <input
               id="password"
               type="password"
@@ -24,19 +24,19 @@
               required
           />
         </div>
-        <button type="submit" class="btn btn-primary w-100">Login</button>
+        <button type="submit" class="btn btn-primary w-100">{{ $t('login.loginButton') }}</button>
         <p v-if="loginError" class="text-danger mt-3">
           {{ loginError }}
         </p>
       </form>
 
       <p v-else class="text-center text-warning">
-        Password authentication is not set up.
+        {{ $t('login.noPasswordAuth') }}
       </p>
 
       <div v-if="setupStore.oidcUrl" class="mt-3">
         <button @click="redirectToOIDC" class="btn btn-outline-primary w-100">
-          <i class="bi bi-box-arrow-in-right me-2"></i> Login with OAuth
+          <i class="bi bi-box-arrow-in-right me-2"></i> {{ $t('login.loginWithOAuth') }}
         </button>
       </div>
     </div>
@@ -45,10 +45,12 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { useAuthStore } from '../stores/auth';
 import router from "@/router/router.ts";
 import {useSetupStore} from "@/stores/setup.ts";
 
+const { t } = useI18n();
 const email = ref('');
 const password = ref('');
 const loginError = ref('');
@@ -59,7 +61,7 @@ const submitLogin = async () => {
   loginError.value = '';
   const success = await authStore.login(email.value, password.value);
   if (!success) {
-    loginError.value = 'Login failed. Please try again.';
+    loginError.value = t('login.loginFailed');
   } else {
     await router.push("Overview");
   }

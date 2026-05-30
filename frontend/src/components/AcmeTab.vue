@@ -1,6 +1,6 @@
 <template>
   <div>
-    <h1>ACME Accounts</h1>
+    <h1>{{ $t('acme.title') }}</h1>
     <hr />
     <div class="form-check mb-2">
       <input
@@ -9,21 +9,21 @@
           type="checkbox"
           class="form-check-input"
       />
-      <label class="form-check-label" for="hideDeactivatedAccounts">Hide deactivated accounts</label>
+      <label class="form-check-label" for="hideDeactivatedAccounts">{{ $t('acme.hideDeactivated') }}</label>
     </div>
     <div class="table-responsive">
       <table class="table table-striped">
         <thead>
         <tr>
-          <th>ID</th>
-          <th>Name</th>
-          <th>Allowed Domains</th>
-          <th>Status</th>
-          <th>Validation</th>
-          <th>CA</th>
-          <th>User</th>
-          <th class="d-none d-lg-table-cell">Created</th>
-          <th>Actions</th>
+          <th>{{ $t('acme.colId') }}</th>
+          <th>{{ $t('common.colName') }}</th>
+          <th>{{ $t('acme.colAllowedDomains') }}</th>
+          <th>{{ $t('acme.colStatus') }}</th>
+          <th>{{ $t('acme.colValidation') }}</th>
+          <th>{{ $t('common.colCaId') }}</th>
+          <th>{{ $t('users.title') }}</th>
+          <th class="d-none d-lg-table-cell">{{ $t('acme.colCreated') }}</th>
+          <th>{{ $t('common.actions') }}</th>
         </tr>
         </thead>
         <tbody>
@@ -39,11 +39,11 @@
             <span
                 class="badge"
                 :class="statusBadgeClass(account.status)"
-            >{{ account.status }}</span>
+            >{{ $te(`acme.${account.status}`) ? $t(`acme.${account.status}`) : account.status }}</span>
           </td>
           <td :id="'AcmeAutoValidate-' + account.id">
-            <span v-if="account.auto_validate" class="badge bg-warning text-dark" title="Challenge validation is skipped for this account">Auto</span>
-            <span v-else class="badge bg-success" title="HTTP-01 and DNS-01 challenge validation is enforced">HTTP-01 / DNS-01</span>
+            <span v-if="account.auto_validate" class="badge bg-warning text-dark" :title="$t('acme.autoValidateTitle')">{{ $t(`acme.autoApproved`) }}</span>
+            <span v-else class="badge bg-success" :title="$t('acme.http01ValidateTitle')">HTTP-01 / DNS-01</span>
           </td>
           <td :id="'AcmeCA-' + account.id">
             {{ account.ca_id }}
@@ -60,7 +60,7 @@
                   class="btn btn-outline-primary btn-sm flex-grow-1"
                   @click="openEditModal(account)"
               >
-                Edit
+                {{ $t('acme.edit') }}
               </button>
               <button
                   :id="'DeleteButton-' + account.id"
@@ -68,7 +68,7 @@
                   class="btn btn-danger btn-sm flex-grow-1"
                   @click="confirmDeletion(account)"
               >
-                Deactivate
+                {{ $t('acme.deactivate') }}
               </button>
             </div>
           </td>
@@ -83,27 +83,27 @@
         class="btn btn-primary mx-1"
         @click="openCreateModal"
     >
-      Create ACME Account
+      {{ $t('acme.createAccount') }}
     </button>
 
-    <div v-if="loading" class="text-center mt-3">Loading ACME accounts...</div>
+    <div v-if="loading" class="text-center mt-3">{{ $t('acme.loadingAccounts') }}</div>
     <div v-if="error" class="alert alert-danger mt-3">{{ error }}</div>
 
     <hr class="mt-4" />
-    <h1>ACME Orders</h1>
+    <h1>{{ $t('acme.ordersTitle') }}</h1>
     <hr />
     <div class="table-responsive">
       <table class="table table-striped">
         <thead>
         <tr>
-          <th>ID</th>
-          <th>Account</th>
-          <th>Status</th>
-          <th>Domains</th>
-          <th class="d-none d-lg-table-cell">Expires</th>
-          <th>Certificate ID</th>
-          <th class="d-none d-lg-table-cell">Client IP</th>
-          <th>Error</th>
+          <th>{{ $t('acme.colId') }}</th>
+          <th>{{ $t('acme.colAccount') }}</th>
+          <th>{{ $t('acme.colStatus') }}</th>
+          <th>{{ $t('acme.colDomains') }}</th>
+          <th class="d-none d-lg-table-cell">{{ $t('acme.colExpires') }}</th>
+          <th>{{ $t('acme.colCertId') }}</th>
+          <th class="d-none d-lg-table-cell">{{ $t('acme.colClientIp') }}</th>
+          <th>{{ $t('acme.colError') }}</th>
         </tr>
         </thead>
         <tbody>
@@ -111,7 +111,7 @@
           <td>{{ order.id }}</td>
           <td>{{ order.account_name }}</td>
           <td>
-            <span class="badge" :class="orderStatusBadgeClass(order.status)">{{ order.status }}</span>
+            <span class="badge" :class="orderStatusBadgeClass(order.status)">{{ $t(`acme.${order.status}`) }}</span>
           </td>
           <td>{{ order.identifiers.map(i => i.value).join(', ') }}</td>
           <td class="d-none d-lg-table-cell">{{ new Date(order.expires).toLocaleDateString() }}</td>
@@ -125,7 +125,7 @@
           </td>
         </tr>
         <tr v-if="acmeStore.orders.size === 0">
-          <td colspan="8" class="text-center text-muted">No orders yet.</td>
+          <td colspan="8" class="text-center text-muted">{{ $t('acme.noOrders') }}</td>
         </tr>
         </tbody>
       </table>
@@ -141,30 +141,30 @@
       <div class="modal-dialog">
         <div class="modal-content">
           <div class="modal-header">
-            <h5 class="modal-title">Create ACME Account</h5>
+            <h5 class="modal-title">{{ $t('acme.createModal.title') }}</h5>
             <button type="button" class="btn-close" @click="closeCreateModal"></button>
           </div>
           <div class="modal-body">
             <div class="mb-3">
-              <label for="acmeName" class="form-label">Name</label>
+              <label for="acmeName" class="form-label">{{ $t('common.colName') }}</label>
               <input
                   id="acmeName"
                   v-model="createForm.name"
                   type="text"
                   class="form-control"
-                  placeholder="Enter account name"
+                  :placeholder="$t('acme.createModal.namePlaceholder')"
                   required
               />
             </div>
             <div class="mb-3">
-              <label class="form-label">Allowed Domains</label>
+              <label class="form-label">{{ $t('acme.createModal.allowedDomains') }}</label>
               <div class="input-group mb-2">
                 <input
                     id="acmeDomainInput"
                     v-model="domainInput"
                     type="text"
                     class="form-control"
-                    placeholder="e.g. *.example.com or api.internal"
+                    :placeholder="$t('acme.createModal.domainPlaceholder')"
                     @keydown.enter.prevent="addDomain"
                 />
                 <button
@@ -172,7 +172,7 @@
                     type="button"
                     @click="addDomain"
                 >
-                  Add
+                  {{ $t('acme.createModal.addDomain') }}
                 </button>
               </div>
               <div class="d-flex flex-wrap gap-1">
@@ -191,18 +191,18 @@
                 </span>
               </div>
               <div v-if="createForm.allowed_domains.length === 0" class="text-muted small mt-1">
-                No domains added yet.
+                {{ $t('acme.createModal.noDomainsAdded') }}
               </div>
             </div>
             <div class="mb-3">
-              <label for="acmeCA" class="form-label">Certificate Authority</label>
+              <label for="acmeCA" class="form-label">{{ $t('overview.generateModal.ca') }}</label>
               <select
                   id="acmeCA"
                   v-model="createForm.ca_id"
                   class="form-select"
                   required
               >
-                <option :value="undefined" disabled>Select a CA</option>
+                <option :value="undefined" disabled>{{ $t('acme.createModal.selectCa') }}</option>
                 <option v-for="ca in availableCAs" :key="ca.id" :value="ca.id">
                   {{ ca.name.cn }} (ID: {{ ca.id }})
                 </option>
@@ -216,17 +216,16 @@
                   class="form-check-input"
               />
               <label for="acmeAutoValidate" class="form-check-label">
-                Auto-validate challenges
+                {{ $t('acme.createModal.autoValidate') }}
               </label>
               <div class="form-text text-warning">
-                When enabled, challenge validation (HTTP-01 and DNS-01) is skipped. The allowed domains
-                allowlist above becomes the sole access control for certificate issuance.
+                {{ $t('acme.createModal.autoValidateHelp') }}
               </div>
             </div>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" @click="closeCreateModal">
-              Cancel
+              {{ $t('common.cancel') }}
             </button>
             <button
                 type="button"
@@ -234,8 +233,8 @@
                 :disabled="loading || !createForm.name || !createForm.ca_id"
                 @click="createAccount"
             >
-              <span v-if="loading">Creating...</span>
-              <span v-else>Create Account</span>
+              <span v-if="loading">{{ $t('common.creating') }}</span>
+              <span v-else>{{ $t('acme.createModal.create') }}</span>
             </button>
           </div>
         </div>
@@ -252,15 +251,15 @@
       <div class="modal-dialog modal-lg">
         <div class="modal-content">
           <div class="modal-header">
-            <h5 class="modal-title">Account Created Successfully!</h5>
+            <h5 class="modal-title">{{ $t('acme.credentialsModal.title') }}</h5>
             <button type="button" class="btn-close" @click="closeCredentialsModal"></button>
           </div>
           <div class="modal-body">
             <div class="alert alert-warning">
-              <strong>Save the HMAC key now — it won't be shown again.</strong>
+              <strong>{{ $t('acme.credentialsModal.hmacWarning') }}</strong>
             </div>
             <div class="mb-3">
-              <label class="form-label">EAB Key ID</label>
+              <label class="form-label">{{ $t('acme.credentialsModal.eabKeyId') }}</label>
               <div class="input-group">
                 <input
                     type="text"
@@ -272,14 +271,14 @@
                     class="btn btn-outline-secondary"
                     type="button"
                     @click="copyToClipboard(createdCredentials!.eab_kid)"
-                    title="Copy to clipboard"
+                    :title="$t('acme.credentialsModal.copy')"
                 >
-                  Copy
+                  {{ $t('acme.credentialsModal.copy') }}
                 </button>
               </div>
             </div>
             <div class="mb-3">
-              <label class="form-label">EAB HMAC Key</label>
+              <label class="form-label">{{ $t('acme.credentialsModal.eabHmacKey') }}</label>
               <div class="input-group">
                 <input
                     type="text"
@@ -291,14 +290,14 @@
                     class="btn btn-outline-secondary"
                     type="button"
                     @click="copyToClipboard(createdCredentials!.eab_hmac_key)"
-                    title="Copy to clipboard"
+                    :title="$t('acme.credentialsModal.copy')"
                 >
-                  Copy
+                  {{ $t('acme.credentialsModal.copy') }}
                 </button>
               </div>
             </div>
             <div class="mt-4">
-              <h6>Example Usage</h6>
+              <h6>{{ $t('acme.credentialsModal.exampleUsage') }}</h6>
               <div class="mb-2">
                 <label class="form-label small text-muted">certbot</label>
                 <pre class="bg-body-secondary p-2 rounded small">certbot certonly \
@@ -315,7 +314,7 @@
   --eab-hmac-key {{ createdCredentials.eab_hmac_key }}</pre>
               </div>
               <div class="mt-3">
-                <h6 class="text-muted small">DNS-01 examples</h6>
+                <h6 class="text-muted small">{{ $t('acme.credentialsModal.dns01Examples') }}</h6>
                 <div class="mb-2">
                   <label class="form-label small text-muted">certbot (DNS-01)</label>
                   <pre class="bg-body-secondary p-2 rounded small">certbot certonly \
@@ -337,7 +336,7 @@
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-primary" @click="closeCredentialsModal">
-              Close
+              {{ $t('acme.credentialsModal.close') }}
             </button>
           </div>
         </div>
@@ -354,43 +353,43 @@
       <div class="modal-dialog">
         <div class="modal-content">
           <div class="modal-header">
-            <h5 class="modal-title">Edit ACME Account</h5>
+            <h5 class="modal-title">{{ $t('acme.editModal.title') }}</h5>
             <button type="button" class="btn-close" @click="closeEditModal"></button>
           </div>
           <div class="modal-body">
             <div class="mb-3">
-              <label for="editAcmeName" class="form-label">Name</label>
+              <label for="editAcmeName" class="form-label">{{ $t('common.colName') }}</label>
               <input
                   id="editAcmeName"
                   v-model="editForm.name"
                   type="text"
                   class="form-control"
-                  placeholder="Enter account name"
+                  :placeholder="$t('acme.editModal.namePlaceholder')"
                   required
               />
             </div>
             <div class="mb-3">
-              <label for="editAcmeCA" class="form-label">Certificate Authority</label>
+              <label for="editAcmeCA" class="form-label">{{ $t('overview.generateModal.ca') }}</label>
               <select
                   id="editAcmeCA"
                   v-model="editForm.ca_id"
                   class="form-select"
               >
-                <option :value="undefined" disabled>Select a CA</option>
+                <option :value="undefined" disabled>{{ $t('acme.editModal.selectCa') }}</option>
                 <option v-for="ca in availableCAs" :key="ca.id" :value="ca.id">
                   {{ ca.name.cn }} (ID: {{ ca.id }})
                 </option>
               </select>
             </div>
             <div class="mb-3">
-              <label class="form-label">Allowed Domains</label>
+              <label class="form-label">{{ $t('acme.editModal.allowedDomains') }}</label>
               <div class="input-group mb-2">
                 <input
                     id="editDomainInput"
                     v-model="editDomainInput"
                     type="text"
                     class="form-control"
-                    placeholder="e.g. *.example.com or api.internal"
+                    :placeholder="$t('acme.editModal.domainPlaceholder')"
                     @keydown.enter.prevent="addEditDomain"
                 />
                 <button
@@ -398,7 +397,7 @@
                     type="button"
                     @click="addEditDomain"
                 >
-                  Add
+                  {{ $t('acme.editModal.addDomain') }}
                 </button>
               </div>
               <div class="d-flex flex-wrap gap-1">
@@ -417,7 +416,7 @@
                 </span>
               </div>
               <div v-if="editForm.allowed_domains.length === 0" class="text-muted small mt-1">
-                No domains added yet.
+                {{ $t('acme.editModal.noDomainsAdded') }}
               </div>
             </div>
             <div class="mb-3 form-check">
@@ -428,17 +427,16 @@
                   class="form-check-input"
               />
               <label for="editAcmeAutoValidate" class="form-check-label">
-                Auto-validate challenges
+                {{ $t('acme.editModal.autoValidate') }}
               </label>
               <div class="form-text text-warning">
-                When enabled, challenge validation (HTTP-01 and DNS-01) is skipped. The allowed domains
-                allowlist becomes the sole access control for certificate issuance.
+                {{ $t('acme.editModal.autoValidateHelp') }}
               </div>
             </div>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" @click="closeEditModal">
-              Cancel
+              {{ $t('common.cancel') }}
             </button>
             <button
                 type="button"
@@ -446,8 +444,8 @@
                 :disabled="loading || !editForm.name"
                 @click="saveEdit"
             >
-              <span v-if="loading">Saving...</span>
-              <span v-else>Save</span>
+              <span v-if="loading">{{ $t('acme.editModal.saving') }}</span>
+              <span v-else>{{ $t('common.save') }}</span>
             </button>
           </div>
         </div>
@@ -464,22 +462,18 @@
       <div class="modal-dialog">
         <div class="modal-content">
           <div class="modal-header">
-            <h5 class="modal-title">Deactivate ACME Account</h5>
+            <h5 class="modal-title">{{ $t('acme.deactivateModal.title') }}</h5>
             <button type="button" class="btn-close" @click="closeDeleteModal"></button>
           </div>
           <div class="modal-body">
-            <p>
-              Are you sure you want to deactivate the ACME account
-              <strong>{{ accountToDelete?.name }}</strong>?
-              The account will no longer be able to issue certificates.
-            </p>
+            <p>{{ $t('acme.deactivateModal.confirm', { name: accountToDelete?.name }) }}</p>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" @click="closeDeleteModal">
-              Cancel
+              {{ $t('common.cancel') }}
             </button>
             <button id="ConfirmDeleteButton" type="button" class="btn btn-danger" @click="deleteAccount">
-              Deactivate
+              {{ $t('acme.deactivateModal.deactivate') }}
             </button>
           </div>
         </div>

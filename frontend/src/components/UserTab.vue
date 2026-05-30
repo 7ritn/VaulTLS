@@ -1,11 +1,11 @@
 // src/components/UserTab.vue
 <template>
   <div>
-    <h1>Users</h1>
+    <h1>{{ $t('users.title') }}</h1>
     <hr />
     <!-- Loading and Error states -->
     <div v-if="userStore.loading" class="alert alert-info">
-      Loading...
+      {{ $t('common.loading') }}
     </div>
     <div v-if="userStore.error" class="alert alert-danger">
       {{ userStore.error }}
@@ -16,10 +16,10 @@
       <table class="table table-striped">
         <thead>
           <tr>
-            <th>Username</th>
-            <th>E-Mail</th>
-            <th>Role</th>
-            <th>Actions</th>
+            <th>{{ $t('common.username') }}</th>
+            <th>{{ $t('common.email') }}</th>
+            <th>{{ $t('users.colRole') }}</th>
+            <th>{{ $t('common.actions') }}</th>
           </tr>
         </thead>
         <tbody>
@@ -34,7 +34,7 @@
                     class="btn btn-danger btn-sm flex-grow-1"
                     @click="confirmDeleteUser(user)"
                 >
-                  Delete
+                  {{ $t('common.delete') }}
                 </button>
               </div>
             </td>
@@ -44,16 +44,16 @@
     </div>
 
     <!-- Create User Button -->
-    <button 
+    <button
       class="btn btn-primary mb-3"
       @click="isCreateModalVisible = true"
     >
-      Create New User
+      {{ $t('users.createUser') }}
     </button>
 
     <!-- Create User Modal -->
-    <div 
-      class="modal fade" 
+    <div
+      class="modal fade"
       :class="{ 'show d-block': isCreateModalVisible }"
       tabindex="-1"
       v-if="isCreateModalVisible"
@@ -61,27 +61,27 @@
       <div class="modal-dialog">
         <div class="modal-content">
           <div class="modal-header">
-            <h5 class="modal-title">Create New User</h5>
-            <button 
-              type="button" 
-              class="btn-close" 
+            <h5 class="modal-title">{{ $t('users.createModal.title') }}</h5>
+            <button
+              type="button"
+              class="btn-close"
               @click="isCreateModalVisible = false"
             ></button>
           </div>
           <div class="modal-body">
             <form @submit.prevent="handleCreateUser">
               <div class="mb-3">
-                <label for="user_name" class="form-label">Username</label>
-                <input 
-                  type="text" 
-                  class="form-control" 
+                <label for="user_name" class="form-label">{{ $t('common.username') }}</label>
+                <input
+                  type="text"
+                  class="form-control"
                   id="user_name"
                   v-model="newUser.user_name"
                   required
                 >
               </div>
               <div class="mb-3">
-                <label for="user_email" class="form-label">E-Mail</label>
+                <label for="user_email" class="form-label">{{ $t('common.email') }}</label>
                 <input
                     type="text"
                     class="form-control"
@@ -91,16 +91,16 @@
                 >
               </div>
               <div class="mb-3">
-                <label for="password" class="form-label">Password</label>
-                <input 
-                  type="password" 
-                  class="form-control" 
+                <label for="password" class="form-label">{{ $t('common.password') }}</label>
+                <input
+                  type="password"
+                  class="form-control"
                   id="password"
                   v-model="newUser.password"
                 >
               </div>
               <div class="mb-3">
-                <label for="user_role" class="form-label">Role</label>
+                <label for="user_role" class="form-label">{{ $t('users.createModal.role') }}</label>
                 <select
                     class="form-select"
                     id="user_role"
@@ -113,15 +113,15 @@
               </div>
 
               <div class="modal-footer">
-                <button 
-                  type="button" 
-                  class="btn btn-secondary" 
+                <button
+                  type="button"
+                  class="btn btn-secondary"
                   @click="isCreateModalVisible = false"
                 >
-                  Cancel
+                  {{ $t('common.cancel') }}
                 </button>
                 <button type="submit" class="btn btn-primary">
-                  Create User
+                  {{ $t('users.createModal.create') }}
                 </button>
               </div>
             </form>
@@ -130,8 +130,8 @@
       </div>
     </div>
     <!-- Modal Backdrop -->
-    <div 
-      class="modal-backdrop fade show" 
+    <div
+      class="modal-backdrop fade show"
       v-if="isCreateModalVisible"
     ></div>
 
@@ -145,26 +145,23 @@
       <div class="modal-dialog">
         <div class="modal-content">
           <div class="modal-header">
-            <h5 class="modal-title">Delete User</h5>
+            <h5 class="modal-title">{{ $t('users.deleteModal.title') }}</h5>
             <button type="button" class="btn-close" @click="closeDeleteModal"></button>
           </div>
           <div class="modal-body">
             <p>
-              Are you sure you want to delete the user
-              <strong>{{ userToDelete?.name }}</strong>?
+              {{ $t('users.deleteModal.confirm', { name: userToDelete?.name }) }}
             </p>
             <p class="text-warning">
-              <small>
-                Disclaimer: Deleting the user will also delete their certificates. The certificates are still valid until expiry.
-              </small>
+              <small>{{ $t('users.deleteModal.disclaimer') }}</small>
             </p>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" @click="closeDeleteModal">
-              Cancel
+              {{ $t('common.cancel') }}
             </button>
             <button type="button" class="btn btn-danger" @click="deleteUser">
-              Delete
+              {{ $t('common.delete') }}
             </button>
           </div>
         </div>

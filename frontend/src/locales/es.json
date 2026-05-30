@@ -1,0 +1,270 @@
+{
+  "common": {
+    "cancel": "Cancelar",
+    "delete": "Eliminar",
+    "save": "Guardar",
+    "download": "Descargar",
+    "loading": "Cargando...",
+    "hours": "Horas",
+    "days": "Días",
+    "months": "Meses",
+    "years": "Años",
+    "actions": "Acciones",
+    "password": "Contraseña",
+    "email": "Correo electrónico",
+    "username": "Nombre de usuario",
+    "validity": "Validez",
+    "creating": "Creando...",
+    "hideOu": "Ocultar campo OU",
+    "addOu": "Agregar OU (Grupo)",
+    "ouGroup": "OU (Grupo)",
+    "colName": "Nombre",
+    "colGroup": "Grupo",
+    "colType": "Tipo",
+    "colCreatedOn": "Creado el",
+    "colValidUntil": "Válido hasta",
+    "colCaId": "ID de CA",
+    "enterValidityPeriod": "Introduzca el periodo de validez",
+    "or": "o",
+    "hostname": "nombre de host"
+  },
+  "sidebar": {
+    "overview": "Resumen",
+    "ca": "Autoridades de Certificación",
+    "users": "Usuarios",
+    "acme": "ACME",
+    "settings": "Configuración",
+    "logout": "Cerrar sesión",
+    "lightMode": "Modo claro",
+    "darkMode": "Modo oscuro",
+    "autoMode": "Modo automático",
+    "version": "Versión: {version}"
+  },
+  "login": {
+    "loginButton": "Iniciar sesión",
+    "loginWithOAuth": "Iniciar sesión con OAuth",
+    "noPasswordAuth": "La autenticación por contraseña no está configurada.",
+    "loginFailed": "Error al iniciar sesión. Por favor, inténtelo de nuevo."
+  },
+  "setup": {
+    "hello": "Hola",
+    "oidcNotice": "OAuth (OIDC) está configurado. Aún puede establecer una contraseña para el inicio de sesión local si lo desea.",
+    "caName": "Nombre de la entidad CA",
+    "caValidity": "Validez de la CA",
+    "passwordHintOidc": "Puede dejarlo vacío si usa OAuth (OIDC).",
+    "passwordHintRequired": "Requerida para el inicio de sesión local.",
+    "completeSetup": "Completar configuración",
+    "setupFailed": "Error en la configuración."
+  },
+  "overview": {
+    "title": "Certificados",
+    "hideAcmeCerts": "Ocultar certificados ACME",
+    "colUser": "Usuario",
+    "colRenewMethod": "Método de renovación",
+    "revoke": "Revocar",
+    "createCertificate": "Crear nuevo certificado",
+    "loadingCerts": "Cargando certificados...",
+    "revokedSection": "Certificados revocados",
+    "colCreated": "Creado",
+    "colValidity": "Validez",
+    "colRevoked": "Revocado",
+    "noRevokedCerts": "No se encontraron certificados revocados.",
+    "generateModal": {
+      "title": "Generar nuevo certificado",
+      "blank": "(Blanco)",
+      "commonName": "Nombre común",
+      "enterCommonName": "Introduzca el nombre común del certificado",
+      "certType": "Tipo de certificado",
+      "tlsClient": "Cliente TLS",
+      "tlsServer": "Servidor TLS",
+      "sshClient": "Cliente SSH",
+      "sshServer": "Servidor SSH",
+      "dnsNames": "Nombres DNS",
+      "principals": "Principales",
+      "usagePlaceholder": "Uso {n}",
+      "user": "Usuario",
+      "selectUser": "Seleccionar usuario",
+      "enterOU": "Introduzca la unidad organizativa (opcional)",
+      "enterValidityPeriod": "Introduzca el periodo de validez",
+      "ca": "Autoridad de Certificación",
+      "selectCa": "Seleccionar CA",
+      "systemPassword": "Contraseña generada por el sistema",
+      "enterPassword": "Introduzca la contraseña",
+      "renewMethod": "Método de renovación del certificado",
+      "renewNone": "Ninguno",
+      "renewRemind": "Recordar",
+      "renewRenew": "Renovar",
+      "renewAndNotify": "Renovar y notificar",
+      "notifyUser": "Notificar al usuario",
+      "create": "Crear certificado"
+    },
+    "revokeModal": {
+      "title": "Revocar certificado",
+      "confirm": "¿Está seguro de que desea revocar el certificado {name}?",
+      "revoke": "Revocar"
+    },
+    "deleteModal": {
+      "title": "Eliminar certificado",
+      "confirm": "¿Está seguro de que desea eliminar el certificado {name}?",
+      "disclaimer": "Aviso: Eliminar el certificado lo eliminará de la generación de CRL ya que no se conserva información sobre los certificados eliminados."
+    }
+  },
+  "ca": {
+    "title": "Autoridades de Certificación",
+    "crl": "CRL",
+    "toggle_dropdown": "Alternar menú",
+    "der_format": "Formato DER",
+    "pem_format": "Formato PEM",
+    "createCa": "Crear nueva CA",
+    "loadingCas": "Cargando CAs...",
+    "enterCaCommonName": "Introduzca el nombre común de la CA",
+    "createModal": {
+      "title": "Crear nueva autoridad de certificación",
+      "caName": "Nombre de CA (CN)",
+      "caType": "Tipo de CA",
+      "create": "Crear CA"
+    },
+    "deleteModal": {
+      "title": "Eliminar certificado",
+      "confirm": "¿Está seguro de que desea eliminar la CA {name}?"
+    }
+  },
+  "users": {
+    "title": "Usuarios",
+    "colRole": "Rol",
+    "createUser": "Crear nuevo usuario",
+    "createModal": {
+      "title": "Crear nuevo usuario",
+      "role": "Rol",
+      "create": "Crear usuario"
+    },
+    "deleteModal": {
+      "title": "Eliminar usuario",
+      "confirm": "¿Está seguro de que desea eliminar al usuario {name}?",
+      "disclaimer": "Aviso: Eliminar el usuario también eliminará sus certificados. Los certificados seguirán siendo válidos hasta su vencimiento."
+    }
+  },
+  "settings": {
+    "title": "Configuración",
+    "common": {
+      "heading": "General",
+      "passwordEnabled": "Inicio de sesión con contraseña habilitado",
+      "vaultlsUrl": "URL de VaulTLS",
+      "passwordRule": "Reglas de contraseña PKCS12",
+      "passwordRuleOptional": "Opcional",
+      "passwordRuleRequired": "Requerida",
+      "passwordRuleSystem": "Generada por el sistema",
+      "crlValidity": "Validez de CRL",
+      "crlHours": "Hora(s)",
+      "crlDays": "Día(s)",
+      "crlWeeks": "Semana(s)",
+      "defaultLanguage": "Idioma predeterminado"
+    },
+    "mail": {
+      "heading": "Correo",
+      "smtpHost": "Servidor SMTP",
+      "port": "Puerto",
+      "encryption": "Cifrado",
+      "encryptionNone": "Ninguno",
+      "encryptionTls": "TLS",
+      "encryptionStarttls": "STARTTLS",
+      "from": "De"
+    },
+    "oidc": {
+      "heading": "OIDC",
+      "clientId": "ID de cliente",
+      "clientSecret": "Secreto de cliente",
+      "authUrl": "URL de autorización",
+      "callbackUrl": "URL de devolución de llamada"
+    },
+    "user": {
+      "heading": "Usuario",
+      "changePassword": "Cambiar contraseña",
+      "oldPassword": "Contraseña antigua",
+      "newPassword": "Nueva contraseña",
+      "confirmPassword": "Confirmar nueva contraseña",
+      "profile": "Perfil"
+    },
+    "acme": {
+      "heading": "ACME",
+      "serverEnabled": "Servidor ACME habilitado",
+      "notifyIssuance": "Notificar a los administradores sobre la emisión de nuevos certificados ACME",
+      "dnsResolver": "Resolución DNS ",
+      "dnsResolverPlaceholder": "Predeterminado del sistema",
+      "dnsResolverHelp": "Resolución DNS usado para la validación del desafío DNS-01. Déjelo vacío para usar el predeterminado del sistema. Formatos soportados:",
+      "dnsFormatUdp": "UDP simple",
+      "dnsFormatHttps": "DNS sobre HTTPS",
+      "dnsFormatTls": "DNS sobre TLS",
+      "rateLimitEnabled": "Habilitar límite de tasa de órdenes",
+      "rateLimit": "Órdenes máximas por cuenta por 24 horas",
+      "optionallyAppend": "Opcionalmente, añada {hostname} para la verificación TLS."
+    },
+    "savedSuccessfully": "Configuración guardada correctamente"
+  },
+  "acme": {
+    "title": "Cuentas ACME",
+    "ordersTitle": "Órdenes ACME",
+    "hideDeactivated": "Ocultar cuentas desactivadas",
+    "colId": "ID",
+    "colAllowedDomains": "Dominios permitidos",
+    "colStatus": "Estado",
+    "colValidation": "Validación",
+    "colCreated": "Creado",
+    "colAccount": "Cuenta",
+    "colDomains": "Dominios",
+    "colExpires": "Vence",
+    "colCertId": "ID de certificado",
+    "colClientIp": "IP del cliente",
+    "colError": "Error",
+    "noOrders": "No hay órdenes aún.",
+    "autoValidateTitle": "La validación del desafío está omitida para esta cuenta",
+    "http01ValidateTitle": "La validación del desafío HTTP-01 y DNS-01 está habilitada",
+    "edit": "Editar",
+    "deactivate": "Desactivar",
+    "createAccount": "Crear cuenta ACME",
+    "loadingAccounts": "Cargando cuentas ACME...",
+    "autoApproved": "Aprobado automáticamente",
+    "valid": "Válido",
+    "deactivated": "Desactivado",
+    "pending": "Pendiente",
+    "createModal": {
+      "title": "Crear cuenta ACME",
+      "namePlaceholder": "Ingrese el nombre de la cuenta",
+      "allowedDomains": "Dominios permitidos",
+      "domainPlaceholder": "p. ej. *.ejemplo.com o api.interno",
+      "addDomain": "Agregar",
+      "noDomainsAdded": "No se han agregado dominios aún.",
+      "selectCa": "Seleccionar una CA",
+      "autoValidate": "Validar desafíos automáticamente",
+      "autoValidateHelp": "Cuando está habilitado, la validación del desafío (HTTP-01 y DNS-01) se omite. La lista de dominios permitidos se convierte en el único control de acceso para la emisión de certificados.",
+      "create": "Crear cuenta"
+    },
+    "credentialsModal": {
+      "title": "¡Cuenta creada exitosamente!",
+      "hmacWarning": "Guarde la clave HMAC ahora, no se mostrará de nuevo.",
+      "eabKeyId": "ID de clave EAB",
+      "eabHmacKey": "Clave HMAC EAB",
+      "copy": "Copiar",
+      "exampleUsage": "Ejemplo de uso",
+      "dns01Examples": "Ejemplos DNS-01",
+      "close": "Cerrar"
+    },
+    "editModal": {
+      "title": "Editar cuenta ACME",
+      "namePlaceholder": "Ingrese el nombre de la cuenta",
+      "selectCa": "Seleccionar una CA",
+      "allowedDomains": "Dominios permitidos",
+      "domainPlaceholder": "p. ej. *.ejemplo.com o api.interno",
+      "addDomain": "Agregar",
+      "noDomainsAdded": "No se han agregado dominios aún.",
+      "autoValidate": "Validar desafíos automáticamente",
+      "autoValidateHelp": "Cuando está habilitado, la validación del desafío (HTTP-01 y DNS-01) se omite. La lista de dominios permitidos se convierte en el único control de acceso para la emisión de certificados.",
+      "saving": "Guardando..."
+    },
+    "deactivateModal": {
+      "title": "Desactivar cuenta ACME",
+      "confirm": "¿Está seguro de que desea desactivar la cuenta ACME {name}? La cuenta ya no podrá emitir certificados.",
+      "deactivate": "Desactivar"
+    }
+  }
+}

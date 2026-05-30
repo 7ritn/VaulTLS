@@ -36,10 +36,12 @@ pub(crate) async fn is_setup(
     let is_setup = state.db.is_setup().await.is_ok();
     let has_password = state.settings.get_password_enabled();
     let oidc_url = state.settings.get_oidc().auth_url.clone();
+    let default_language = state.settings.get_default_language();
     Ok(Json(IsSetupResponse {
         setup: is_setup,
         password: has_password,
-        oidc: oidc_url
+        oidc: oidc_url,
+        default_language,
     }))
 }
 
@@ -95,6 +97,10 @@ pub(crate) async fn setup(
         .build_ca()?;
     ca = state.db.insert_ca(ca).await?;
     save_ca(&ca)?;
+
+    if let Some(lang) = setup_req.default_language.clone() {
+        state.settings.set_default_language(lang)?;
+    }
 
     info!("VaulTLS was successfully set up.");
 
