@@ -25,7 +25,8 @@
     "colValidUntil": "Válido hasta",
     "colCaId": "ID de CA",
     "enterValidityPeriod": "Introduzca el periodo de validez",
-    "or": "o"
+    "or": "o",
+    "hostname": "nombre de host"
   },
   "sidebar": {
     "overview": "Resumen",
@@ -196,7 +197,7 @@
       "dnsFormatTls": "DNS sobre TLS",
       "rateLimitEnabled": "Habilitar límite de tasa de órdenes",
       "rateLimit": "Órdenes máximas por cuenta por 24 horas",
-      "optionallyAppend": "Opcionalmente, añada <code>#hostname</code> para la verificación TLS."
+      "optionallyAppend": "Opcionalmente, añada {hostname} para la verificación TLS."
     },
     "savedSuccessfully": "Configuración guardada correctamente"
   },

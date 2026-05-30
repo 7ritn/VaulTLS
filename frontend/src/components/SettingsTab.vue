@@ -228,7 +228,7 @@
               <ul class="mb-0 mt-1">
                 <li>{{ $t('settings.acme.dnsFormatUdp') }} — <code>8.8.8.8</code></li>
                 <li>{{ $t('settings.acme.dnsFormatHttps') }} — <code>https://dns.google/dns-query</code> {{ $t('common.or') }} <code>https://1.1.1.1/dns-query</code></li>
-                <li>{{ $t('settings.acme.dnsFormatTls') }} — <code>tls://1.1.1.1</code> {{ $t('common.or') }} <code>tls://8.8.8.8:853#dns.google</code> {{ $t('settings.acme.optionallyAppend') }}</li>
+                <li>{{ $t('settings.acme.dnsFormatTls') }} — <code>tls://1.1.1.1</code> {{ $t('common.or') }} <code>tls://8.8.8.8:853#dns.google</code> <i18n-t keypath="settings.acme.optionallyAppend" tag="span"><template #hostname><code>#{{ $t('common.hostname') }}</code></template></i18n-t></li>
               </ul>
             </div>
           </div>

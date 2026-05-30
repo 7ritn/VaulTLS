@@ -25,7 +25,8 @@
     "colValidUntil": "Valid until",
     "colCaId": "CA ID",
     "enterValidityPeriod": "Enter validity period",
-    "or": "or"
+    "or": "or",
+    "hostname": "hostname"
   },
   "sidebar": {
     "overview": "Overview",
@@ -196,7 +197,7 @@
       "dnsFormatTls": "DNS-over-TLS",
       "rateLimitEnabled": "Enable order rate limiting",
       "rateLimit": "Maximum orders per account per 24 hours",
-      "optionallyAppend": "(optionally append <code>#hostname</code> for TLS verification)"
+      "optionallyAppend": "(optionally append {hostname} for TLS verification)"
     },
     "savedSuccessfully": "Settings saved successfully"
   },

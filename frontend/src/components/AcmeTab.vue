@@ -39,7 +39,7 @@
             <span
                 class="badge"
                 :class="statusBadgeClass(account.status)"
-            >{{ $t(`acme.${account.status}`) }}</span>
+            >{{ $te(`acme.${account.status}`) ? $t(`acme.${account.status}`) : account.status }}</span>
           </td>
           <td :id="'AcmeAutoValidate-' + account.id">
             <span v-if="account.auto_validate" class="badge bg-warning text-dark" :title="$t('acme.autoValidateTitle')">{{ $t(`acme.autoApproved`) }}</span>

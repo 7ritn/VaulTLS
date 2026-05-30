@@ -6,7 +6,7 @@ import fr from '@/locales/fr.json';
 export const SUPPORTED_LOCALES: Record<string, string> = {
   en: 'English',
   es: 'Español',
-  fr: 'French',
+  fr: 'Français',
 };
 
 export function resolveBrowserLocale(): string | null {

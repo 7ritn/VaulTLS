@@ -1,7 +1,8 @@
 <template>
   <div class="container d-flex justify-content-center align-items-center vh-100">
     <div class="card p-4 shadow" style="max-width: 400px; width: 100%;">
-      <div class="d-flex justify-content-end mb-2">
+      <div class="d-flex justify-content-end align-items-center mb-2 gap-2">
+        <small class="text-muted">{{ $t('settings.common.defaultLanguage') }}</small>
         <select
             class="form-select form-select-sm"
             style="max-width: 120px"
