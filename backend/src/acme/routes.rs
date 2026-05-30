@@ -1,7 +1,12 @@
+use std::net::SocketAddr;
+use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use chrono::{DateTime, Utc};
+use hickory_resolver::config::ConnectionConfig;
+use hickory_resolver::net::runtime::TokioRuntimeProvider;
+use hickory_resolver::proto::rr::Record;
 use rand_core::Rng;
 use tracing::{error, info, warn};
 use rocket::{get, head, post, routes, State};
@@ -51,32 +56,27 @@ fn doh_client() -> &'static reqwest::Client {
 
 fn build_udp_resolver(addr: &str) -> Result<hickory_resolver::TokioResolver, String> {
     use hickory_resolver::config::{NameServerConfig, ResolverConfig};
-    use hickory_resolver::name_server::TokioConnectionProvider;
-    use hickory_resolver::proto::xfer::Protocol;
     use hickory_resolver::Resolver;
-    use std::net::{IpAddr, SocketAddr};
+    use std::net::IpAddr;
 
     if addr.is_empty() {
-        return hickory_resolver::TokioResolver::builder_tokio()
-            .map(|b| b.build())
-            .map_err(|e| format!("Failed to read system DNS config: {e}"));
+        return Ok(Resolver::builder_tokio().unwrap().build().unwrap());
     }
 
     let socket_addr: SocketAddr = addr.parse()
         .or_else(|_| addr.parse::<IpAddr>().map(|ip| SocketAddr::new(ip, 53)))
         .map_err(|_| format!("Invalid DNS resolver address: {addr}"))?;
-
-    let ns = NameServerConfig::new(socket_addr, Protocol::Udp);
+    let mut connection_config = ConnectionConfig::udp();
+    connection_config.port = socket_addr.port();
+    let ns = NameServerConfig::new(socket_addr.ip(), false, vec![connection_config]);
     let config = ResolverConfig::from_parts(None, vec![], vec![ns]);
-    Ok(Resolver::builder_with_config(config, TokioConnectionProvider::default()).build())
+    Ok(Resolver::builder_with_config(config, TokioRuntimeProvider::default()).build().unwrap())
 }
 
 fn build_dot_resolver(addr: &str) -> Result<hickory_resolver::TokioResolver, String> {
     use hickory_resolver::config::{NameServerConfig, ResolverConfig};
-    use hickory_resolver::name_server::TokioConnectionProvider;
-    use hickory_resolver::proto::xfer::Protocol;
     use hickory_resolver::Resolver;
-    use std::net::{IpAddr, SocketAddr};
+    use std::net::IpAddr;
 
     let (addr_part, tls_name_opt) = match addr.find('#') {
         Some(idx) => (&addr[..idx], Some(addr[idx + 1..].to_string())),
@@ -95,17 +95,16 @@ fn build_dot_resolver(addr: &str) -> Result<hickory_resolver::TokioResolver, Str
 
     let ip: IpAddr = ip_str.parse()
         .map_err(|_| format!("Invalid DoT IP address: {ip_str}"))?;
-    let socket_addr = SocketAddr::new(ip, port);
     let tls_name = tls_name_opt.unwrap_or_else(|| ip_str.to_string());
-
-    let mut ns = NameServerConfig::new(socket_addr, Protocol::Tls);
-    ns.tls_dns_name = Some(tls_name);
+    let mut connection_config = ConnectionConfig::tls(Arc::from(tls_name));
+    connection_config.port = port;
+    let ns = NameServerConfig::new(ip, false, vec![connection_config]);
     let config = ResolverConfig::from_parts(None, vec![], vec![ns]);
-    Ok(Resolver::builder_with_config(config, TokioConnectionProvider::default()).build())
+    Ok(Resolver::builder_with_config(config, TokioRuntimeProvider::default()).build().unwrap())
 }
 
 async fn validate_dns01_doh(domain: &str, expected_value: &str, url: &str) -> bool {
-    use hickory_resolver::proto::op::{Message, MessageType, OpCode, Query};
+    use hickory_resolver::proto::op::{Message, Query};
     use hickory_resolver::proto::rr::{Name, RData, RecordType};
 
     let lookup_name = format!("_acme-challenge.{}.", domain);
@@ -121,11 +120,8 @@ async fn validate_dns01_doh(domain: &str, expected_value: &str, url: &str) -> bo
     query.set_name(name);
     query.set_query_type(RecordType::TXT);
 
-    let mut message = Message::new();
-    message.set_id(1);
-    message.set_message_type(MessageType::Query);
-    message.set_op_code(OpCode::Query);
-    message.set_recursion_desired(true);
+    let mut message = Message::query();
+    message.metadata.recursion_desired = true;
     message.add_query(query);
 
     let wire_bytes = match message.to_vec() {
@@ -172,11 +168,9 @@ async fn validate_dns01_doh(domain: &str, expected_value: &str, url: &str) -> bo
         }
     };
 
-    response.answers().iter().any(|record| {
-        if let RData::TXT(txt) = record.data() {
-            let record_text: String = txt.iter()
-                .map(|data| String::from_utf8_lossy(data).to_string())
-                .collect();
+    response.answers.iter().any(|record: &Record | {
+        if let RData::TXT(ref txt) = record.data {
+            let record_text: String = txt.to_string();
             record_text == expected_value
         } else {
             false
@@ -206,17 +200,13 @@ async fn validate_dns01(domain: &str, expected_value: &str, resolver_addr: &str)
     let lookup_name = format!("_acme-challenge.{domain}.");
     match resolver.txt_lookup(&lookup_name).await {
         Ok(records) => {
-            let matched = records.iter().any(|txt| {
-                let record_text: String = txt.iter()
-                    .map(|data| String::from_utf8_lossy(data).to_string())
-                    .collect();
+            let matched = records.answers().iter().any(|txt: &Record | {
+                let record_text: String = txt.data.to_string();
                 record_text == expected_value
             });
             if !matched {
-                let found: Vec<String> = records.iter().map(|txt| {
-                    txt.iter()
-                        .map(|data| String::from_utf8_lossy(data).to_string())
-                        .collect()
+                let found: Vec<String> = records.answers().iter().map(|txt: &Record | {
+                    txt.to_string()
                 }).collect();
                 error!(domain=domain, expected=expected_value, found=?found, "DNS-01 TXT value mismatch");
             }
