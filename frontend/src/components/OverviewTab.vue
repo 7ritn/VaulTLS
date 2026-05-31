@@ -99,6 +99,13 @@
                 >
                   {{ $t('overview.revoke') }}
                 </button>
+                <button
+                    v-if="authStore.isAdmin"
+                    class="btn btn-danger btn-sm flex-grow-1"
+                    @click="confirmDeletion(cert)"
+                >
+                  {{ $t('common.delete') }}
+                </button>
               </div>
             </td>
           </tr>
@@ -430,7 +437,7 @@
             <p>
               {{ $t('overview.deleteModal.confirm', { name: certToDelete?.name.cn }) }}
             </p>
-            <p class="text-warning">
+            <p v-if="certToDelete?.certificate_type === CertificateType.TLSClient || certToDelete?.certificate_type === CertificateType.TLSServer" class="text-warning">
               <small>{{ $t('overview.deleteModal.disclaimer') }}</small>
             </p>
           </div>
