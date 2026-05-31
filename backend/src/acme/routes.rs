@@ -54,6 +54,29 @@ fn doh_client() -> &'static reqwest::Client {
     })
 }
 
+fn doh_client_insecure() -> &'static reqwest::Client {
+    DOH_CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(10))
+            .danger_accept_invalid_certs(true)
+            .build()
+            .expect("Failed to build insecure DoH client")
+    })
+}
+
+fn doh_url_host_is_ip(url: &str) -> bool {
+    let without_scheme = url.strip_prefix("https://").unwrap_or(url);
+    let host_and_path = without_scheme.split('/').next().unwrap_or("");
+    let host = if host_and_path.starts_with('[') {
+        &host_and_path[..host_and_path.find(']').map(|i| i + 1).unwrap_or(host_and_path.len())]
+    } else {
+        host_and_path.split(':').next().unwrap_or(host_and_path)
+    };
+    host.trim_matches(|c| c == '[' || c == ']')
+        .parse::<std::net::IpAddr>()
+        .is_ok()
+}
+
 fn build_udp_resolver(addr: &str) -> Result<hickory_resolver::TokioResolver, String> {
     use hickory_resolver::config::{NameServerConfig, ResolverConfig};
     use hickory_resolver::Resolver;
@@ -75,7 +98,7 @@ fn build_udp_resolver(addr: &str) -> Result<hickory_resolver::TokioResolver, Str
 
 fn build_dot_resolver(addr: &str) -> Result<hickory_resolver::TokioResolver, String> {
     use hickory_resolver::config::{NameServerConfig, ResolverConfig};
-    use hickory_resolver::Resolver;
+    use hickory_resolver::{Resolver, TlsConfig};
     use std::net::IpAddr;
 
     let (addr_part, tls_name_opt) = match addr.find('#') {
@@ -95,12 +118,20 @@ fn build_dot_resolver(addr: &str) -> Result<hickory_resolver::TokioResolver, Str
 
     let ip: IpAddr = ip_str.parse()
         .map_err(|_| format!("Invalid DoT IP address: {ip_str}"))?;
+    let skip_verify = tls_name_opt.is_none();
     let tls_name = tls_name_opt.unwrap_or_else(|| ip_str.to_string());
     let mut connection_config = ConnectionConfig::tls(Arc::from(tls_name));
     connection_config.port = port;
     let ns = NameServerConfig::new(ip, false, vec![connection_config]);
     let config = ResolverConfig::from_parts(None, vec![], vec![ns]);
-    Ok(Resolver::builder_with_config(config, TokioRuntimeProvider::default()).build().unwrap())
+    let mut builder = Resolver::builder_with_config(config, TokioRuntimeProvider::default());
+    if skip_verify {
+        let mut tls_cfg = TlsConfig::new()
+            .map_err(|e| format!("Failed to create TLS config: {e}"))?;
+        tls_cfg.insecure_skip_verify();
+        builder = builder.with_tls_config(tls_cfg.config);
+    }
+    Ok(builder.build().unwrap())
 }
 
 async fn validate_dns01_doh(domain: &str, expected_value: &str, url: &str) -> bool {
@@ -132,7 +163,8 @@ async fn validate_dns01_doh(domain: &str, expected_value: &str, url: &str) -> bo
         }
     };
 
-    let resp = match doh_client()
+    let client = if doh_url_host_is_ip(url) { doh_client_insecure() } else { doh_client() };
+    let resp = match client
         .post(url)
         .header("Content-Type", "application/dns-message")
         .header("Accept", "application/dns-message")
