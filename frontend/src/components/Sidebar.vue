@@ -79,54 +79,68 @@
         </ul>
       </div>
       <div class="p-3">
-        <a
-            href="#"
-            class="nav-link d-flex align-items-center gap-2 mb-2"
-            @click="handleLogout"
-        >
-          {{ $t('sidebar.logout') }}
-        </a>
-        <div class="d-flex justify-content-center gap-2 mt-2">
-          <button
-              class="btn btn-sm"
-              :class="themeStore.theme === 'light' ? 'btn-primary' : 'btn-outline-secondary'"
-              @click="themeStore.setTheme('light')"
-              :title="$t('sidebar.lightMode')"
-          >
-            <i class="bi bi-sun-fill"></i>
-          </button>
-          <button
-              class="btn btn-sm"
-              :class="themeStore.theme === 'dark' ? 'btn-primary' : 'btn-outline-secondary'"
-              @click="themeStore.setTheme('dark')"
-              :title="$t('sidebar.darkMode')"
-          >
-            <i class="bi bi-moon-fill"></i>
-          </button>
-          <button
-              class="btn btn-sm"
-              :class="themeStore.theme === 'auto' ? 'btn-primary' : 'btn-outline-secondary'"
-              @click="themeStore.setTheme('auto')"
-              :title="$t('sidebar.autoMode')"
-          >
-            <i class="bi bi-circle-half"></i>
-          </button>
+        <div class="p-3 border-top border-secondary-subtle mt-auto">
+          <!-- 1. Logout: Centered with an icon -->
+          <div class="d-flex justify-content-center mb-3">
+            <a
+                href="#"
+                class="nav-link d-flex align-items-center gap-2 fw-semibold"
+                @click="handleLogout"
+            >
+              <i class="bi bi-box-arrow-right"></i>
+              {{ $t('sidebar.logout') }}
+            </a>
+          </div>
+
+          <!-- 2. Controls Row: Theme & Language Side-by-Side to save vertical space -->
+          <div class="d-flex align-items-center justify-content-between gap-2 pt-2">
+            <!-- Theme Toggle Group -->
+            <div class="d-flex justify-content-center gap-2 mt-2">
+              <button
+                  class="btn btn-sm"
+                  :class="themeStore.theme === 'light' ? 'btn-primary' : 'btn-outline-secondary'"
+                  @click="themeStore.setTheme('light')"
+                  :title="$t('sidebar.lightMode')"
+              >
+                <i class="bi bi-sun-fill"></i>
+              </button>
+              <button
+                  class="btn btn-sm"
+                  :class="themeStore.theme === 'dark' ? 'btn-primary' : 'btn-outline-secondary'"
+                  @click="themeStore.setTheme('dark')"
+                  :title="$t('sidebar.darkMode')"
+              >
+                <i class="bi bi-moon-fill"></i>
+              </button>
+              <button
+                  class="btn btn-sm"
+                  :class="themeStore.theme === 'auto' ? 'btn-primary' : 'btn-outline-secondary'"
+                  @click="themeStore.setTheme('auto')"
+                  :title="$t('sidebar.autoMode')"
+              >
+                <i class="bi bi-circle-half"></i>
+              </button>
+            </div>
+
+            <!-- Language Selector -->
+            <div :data-bs-theme="themeStore.theme">
+              <select
+                  class="form-select form-select-sm text-reset"
+                  style="max-width: 100px; background-color: rgba(170, 170, 170, 0.15); border: 1px solid rgba(170, 170, 170, 0.25);"
+                  :value="locale"
+                  @change="changeLocale(($event.target as HTMLSelectElement).value)"
+              >
+                <option v-for="(label, code) in SUPPORTED_LOCALES" :key="code" :value="code">
+                  {{ label }}
+                </option>
+              </select>
+            </div>
+          </div>
         </div>
-        <div class="d-flex justify-content-center mt-2">
-          <select
-              class="form-select form-select-sm"
-              style="max-width: 120px"
-              :value="locale"
-              @change="changeLocale(($event.target as HTMLSelectElement).value)"
-          >
-            <option v-for="(label, code) in SUPPORTED_LOCALES" :key="code" :value="code">
-              {{ label }}
-            </option>
-          </select>
+
+        <div class="text-center text-muted small pb-3">
+          {{ $t('sidebar.version', { version: setupStore.version }) }}
         </div>
-      </div>
-      <div class="text-center text-muted small p-2">
-        {{ $t('sidebar.version', { version: setupStore.version }) }}
       </div>
     </div>
   </div>
