@@ -33,13 +33,3 @@ impl Fairing for NonceFairing {
         let _ = state.db.cleanup_expired_orders().await;
     }
 }
-
-pub async fn generate_nonce(db: &crate::db::VaulTLSDB) -> Result<String, super::types::AcmeError> {
-    let nonce = Uuid::new_v4().to_string();
-    db.insert_acme_nonce(nonce.clone()).await
-        .map_err(|_| super::types::AcmeError::server_internal("Failed to generate nonce"))?;
-
-    let _ = db.cleanup_old_nonces().await;
-
-    Ok(nonce)
-}

@@ -247,7 +247,7 @@ pub(crate) async fn oidc_login(
     let mut cookie = Cookie::build(("oidc_state", state_data))
         .http_only(true)
         .same_site(SameSite::Lax)
-        .max_age(rocket::time::Duration::minutes(5))
+        .max_age(time::Duration::minutes(5))
         .secure(true);
 
     if let Ok(insecure) = env::var("VAULTLS_INSECURE") && insecure == "true" {

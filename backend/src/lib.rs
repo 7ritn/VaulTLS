@@ -204,8 +204,8 @@ pub async fn create_rocket() -> Rocket<Build> {
                 delete_acme_account
             ],
         )
-        .mount("/api/acme", crate::acme::protocol_routes())
-        .attach(crate::acme::NonceFairing)
+        .mount("/api/acme", acme::protocol_routes())
+        .attach(acme::NonceFairing)
         .mount(
             "/api",
             make_rapidoc(&RapiDocConfig {

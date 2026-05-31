@@ -299,7 +299,7 @@ pub fn issue_cert_from_csr(
     x509.set_pubkey(&csr_pubkey)?;
 
     let cn = dns_names.first().map(|s| s.as_str()).unwrap_or("acme");
-    let mut name_builder = openssl::x509::X509NameBuilder::new()?;
+    let mut name_builder = X509NameBuilder::new()?;
     name_builder.append_entry_by_text("CN", cn)?;
     name_builder.append_entry_by_text("OU", "ACME")?;
     x509.set_subject_name(&name_builder.build())?;
@@ -441,7 +441,7 @@ pub(crate) fn create_and_save_crl(ca: &mut CA, revoked_certs: Vec<(Vec<u8>, i64)
 
 fn extract_ski(cert: &X509Ref) -> Result<Vec<u8>, ErrorStack> {
     let ext = cert.subject_key_id()
-        .ok_or_else(|| ErrorStack::get())?;
+        .ok_or_else(ErrorStack::get)?;
     Ok(ext.as_slice().to_vec())
 }
 

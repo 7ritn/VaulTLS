@@ -374,7 +374,7 @@ pub fn jwk_thumbprint(jwk: &Value) -> Result<String, AcmeError> {
     let digest = openssl::hash::hash(MessageDigest::sha256(), canonical.as_bytes())
         .map_err(|_| AcmeError::server_internal("SHA-256 hash failed"))?;
 
-    Ok(URL_SAFE_NO_PAD.encode(&digest))
+    Ok(URL_SAFE_NO_PAD.encode(digest))
 }
 
 pub async fn authenticate_jws(

@@ -35,7 +35,7 @@ pub struct User {
 }
 
 impl fmt::Debug for User {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("User")
             .field("id", &self.id)
             .field("name", &self.name)

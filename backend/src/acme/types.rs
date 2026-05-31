@@ -81,7 +81,7 @@ impl<'r> Responder<'r, 'static> for AcmeError {
         let status = Status::from_code(self.status).unwrap_or(Status::InternalServerError);
         let body = serde_json::to_vec(&self).map_err(|_| Status::InternalServerError)?;
 
-        rocket::response::Response::build()
+        Response::build()
             .status(status)
             .header(ContentType::new("application", "problem+json"))
             .sized_body(body.len(), Cursor::new(body))
@@ -161,6 +161,7 @@ pub struct AcmeOrder {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub(crate) struct AcmeOrderRow {
     pub id: i64,
     pub account_id: i64,
@@ -234,14 +235,6 @@ pub struct JwsProtectedHeader {
     pub url: Option<String>,
     pub jwk: Option<Value>,
     pub kid: Option<String>,
-}
-
-#[derive(Debug)]
-pub struct AcmeCertificate {
-    pub cert_pem: Vec<u8>,
-    /// Full PEM chain: leaf certificate followed by CA certificate(s).
-    pub chain_pem: Vec<u8>,
-    pub serial_number: Vec<u8>,
 }
 
 pub struct AcmeCreatedResponse {

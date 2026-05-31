@@ -450,7 +450,7 @@ pub(crate) async fn new_order(
             .map_err(|_| AcmeError::server_internal("Rate limit check failed"))?;
         if recent_count >= acme_settings.rate_limit as i64 {
             warn!("ACME rate limit exceeded: account={} name={} recent_orders={} limit={}", account_id, account.name, recent_count, acme_settings.rate_limit);
-            return Err(AcmeError::malformed(&format!(
+            return Err(AcmeError::malformed(format!(
                 "Order rate limit exceeded: max {} orders per 24 hours per account",
                 acme_settings.rate_limit
             )));
@@ -465,12 +465,12 @@ pub(crate) async fn new_order(
         .map(|mut ident| {
             let mut token_bytes = [0u8; 32];
             rand::rng().fill_bytes(&mut token_bytes);
-            ident.token = URL_SAFE_NO_PAD.encode(&token_bytes);
+            ident.token = URL_SAFE_NO_PAD.encode(token_bytes);
             ident
         })
         .collect();
 
-    let identifiers_db: Vec<serde_json::Value> = identifiers_with_tokens.iter().map(|i| {
+    let identifiers_db: Vec<Value> = identifiers_with_tokens.iter().map(|i| {
         serde_json::json!({
             "type": i.identifier_type,
             "value": i.value,
@@ -669,7 +669,7 @@ pub(crate) async fn get_authz(
     let token = if identifier.token.is_empty() {
         let mut token_bytes = [0u8; 32];
         rand::rng().fill_bytes(&mut token_bytes);
-        URL_SAFE_NO_PAD.encode(&token_bytes)
+        URL_SAFE_NO_PAD.encode(token_bytes)
     } else {
         identifier.token.clone()
     };
@@ -716,7 +716,7 @@ pub(crate) async fn get_challenge(
     challenge_type: String,
     domain_idx: usize,
     _acme: AcmeEnabled,
-) -> Result<Json<serde_json::Value>, AcmeError> {
+) -> Result<Json<Value>, AcmeError> {
     let jws = jws.0?;
     let base = state.settings.get_vaultls_url();
     let chall_url = format!("{base}/api/acme/chall/{order_id}/{challenge_type}/{domain_idx}");
@@ -757,7 +757,7 @@ pub(crate) async fn get_challenge(
     let account = state.db.get_acme_account(jws.account_id).await
         .map_err(|_| AcmeError::server_internal("Account lookup failed"))?;
     let jwk_str = account.acme_jwk.ok_or_else(AcmeError::account_does_not_exist)?;
-    let jwk: serde_json::Value = serde_json::from_str(&jwk_str)
+    let jwk: Value = serde_json::from_str(&jwk_str)
         .map_err(|_| AcmeError::server_internal("Stored JWK is invalid"))?;
     let thumbprint = jwk_thumbprint(&jwk)?;
     let expected_key_auth = format!("{token}.{thumbprint}");
@@ -769,7 +769,7 @@ pub(crate) async fn get_challenge(
     } else if challenge_type == "dns-01" {
         let digest = openssl::hash::hash(openssl::hash::MessageDigest::sha256(), expected_key_auth.as_bytes())
             .map_err(|_| AcmeError::server_internal("SHA-256 computation failed"))?;
-        let expected_dns_value = URL_SAFE_NO_PAD.encode(&digest);
+        let expected_dns_value = URL_SAFE_NO_PAD.encode(digest);
         let resolver_addr = state.settings.get_acme_dns_resolver();
         // For wildcard identifiers (*.example.com) the TXT record lives at the
         // base domain (_acme-challenge.example.com), not _acme-challenge.*.example.com.
@@ -967,7 +967,7 @@ pub(crate) async fn get_account_orders(
     jws: AuthenticatedJws,
     id: i64,
     _acme: AcmeEnabled,
-) -> Result<Json<serde_json::Value>, AcmeError> {
+) -> Result<Json<Value>, AcmeError> {
     let jws = jws.0?;
     let base = state.settings.get_vaultls_url();
 

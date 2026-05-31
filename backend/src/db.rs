@@ -567,8 +567,7 @@ impl VaulTLSDB {
         auto_validate: bool,
     ) -> Result<AcmeAccount> {
         let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
+            .duration_since(UNIX_EPOCH)?
             .as_millis() as i64;
 
         let id = db_do!(self.pool, |conn: &Connection| {
