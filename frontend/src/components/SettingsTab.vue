@@ -236,6 +236,18 @@
             <input
                 type="checkbox"
                 class="form-check-input"
+                id="acme-accept-invalid-certs"
+                v-model="settings.acme.accept_invalid_certs"
+                role="switch"
+            />
+            <label class="form-check-label" for="acme-accept-invalid-certs">
+              {{ $t('settings.acme.acceptInvalidCerts') }}
+            </label>
+          </div>
+          <div class="mb-3 form-check form-switch">
+            <input
+                type="checkbox"
+                class="form-check-input"
                 id="acme-rate-limit-enabled"
                 v-model="settings.acme.rate_limit_enabled"
                 role="switch"

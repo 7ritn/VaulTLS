@@ -192,6 +192,7 @@
       "dnsResolver": "Resolución DNS ",
       "dnsResolverPlaceholder": "Predeterminado del sistema",
       "dnsResolverHelp": "Resolución DNS usado para la validación del desafío DNS-01. Déjelo vacío para usar el predeterminado del sistema. Formatos soportados:",
+      "acceptInvalidCerts": "Aceptar certificados no válidos para DoH",
       "dnsFormatUdp": "UDP simple",
       "dnsFormatHttps": "DNS sobre HTTPS",
       "dnsFormatTls": "DNS sobre TLS",

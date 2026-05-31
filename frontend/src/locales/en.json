@@ -192,6 +192,7 @@
       "dnsResolver": "DNS resolver",
       "dnsResolverPlaceholder": "System default",
       "dnsResolverHelp": "DNS resolver used for DNS-01 challenge validation. Leave empty to use the system default. Supported formats:",
+      "acceptInvalidCerts": "Accept invalid certificates for DoH",
       "dnsFormatUdp": "Plain UDP",
       "dnsFormatHttps": "DNS-over-HTTPS",
       "dnsFormatTls": "DNS-over-TLS",

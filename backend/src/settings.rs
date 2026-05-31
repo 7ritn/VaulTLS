@@ -113,6 +113,10 @@ impl JsonSchema for FrontendSettings {
             "oidc".to_string(),
             generator.subschema_for::<OIDC>(),
         );
+        props.insert(
+            "acme".to_string(),
+            generator.subschema_for::<Acme>(),
+        );
 
         Schema::Object(SchemaObject {
             instance_type: Some(SingleOrVec::Single(Box::new(schemars::schema::InstanceType::Object))),
@@ -122,6 +126,7 @@ impl JsonSchema for FrontendSettings {
                     "common".to_string(),
                     "mail".to_string(),
                     "oidc".to_string(),
+                    "acme".to_string(),
                 ]),
                 ..Default::default()
             })),
@@ -185,6 +190,8 @@ pub(crate) struct Acme {
     pub(crate) rate_limit_enabled: bool,
     #[serde(default = "default_acme_rate_limit")]
     pub(crate) rate_limit: u32,
+    #[serde(default)]
+    pub(crate) accept_invalid_certs: bool,
 }
 
 impl Acme {
@@ -374,6 +381,8 @@ impl InnerSettings {
     fn get_notify_acme_issuance(&self) -> bool { self.acme.notify_issuance }
 
     fn get_acme_dns_resolver(&self) -> &str { &self.acme.dns_resolver }
+
+    fn get_acme_accept_invalid_certs(&self) -> bool { self.acme.accept_invalid_certs }
 }
 
 impl Settings {
@@ -472,6 +481,11 @@ impl Settings {
     pub(crate) fn get_acme_dns_resolver(&self) -> String {
         let settings = self.0.read();
         settings.get_acme_dns_resolver().to_string()
+    }
+
+    pub(crate) fn get_acme_accept_invalid_certs(&self) -> bool {
+        let settings = self.0.read();
+        settings.get_acme_accept_invalid_certs()
     }
     
     pub(crate) fn get_default_language(&self) -> String {

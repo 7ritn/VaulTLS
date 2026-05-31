@@ -29,7 +29,6 @@ use crate::data::objects::{AppState, Name};
 use crate::notification::notifier::notify_admins_acme_issued;
 
 static HTTP_CHALLENGE_CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
-static DOH_CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
 
 const MS_PER_DAY: i64 = 1000 * 60 * 60 * 24;
 const ORDER_EXPIRY_DAYS: i64 = 1;
@@ -45,36 +44,12 @@ fn challenge_http_client() -> &'static reqwest::Client {
     })
 }
 
-fn doh_client() -> &'static reqwest::Client {
-    DOH_CLIENT.get_or_init(|| {
-        reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(10))
-            .build()
-            .expect("Failed to build DoH client")
-    })
-}
-
-fn doh_client_insecure() -> &'static reqwest::Client {
-    DOH_CLIENT.get_or_init(|| {
-        reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(10))
-            .danger_accept_invalid_certs(true)
-            .build()
-            .expect("Failed to build insecure DoH client")
-    })
-}
-
-fn doh_url_host_is_ip(url: &str) -> bool {
-    let without_scheme = url.strip_prefix("https://").unwrap_or(url);
-    let host_and_path = without_scheme.split('/').next().unwrap_or("");
-    let host = if host_and_path.starts_with('[') {
-        &host_and_path[..host_and_path.find(']').map(|i| i + 1).unwrap_or(host_and_path.len())]
-    } else {
-        host_and_path.split(':').next().unwrap_or(host_and_path)
-    };
-    host.trim_matches(|c| c == '[' || c == ']')
-        .parse::<std::net::IpAddr>()
-        .is_ok()
+fn doh_client(state: &State<AppState>) -> reqwest::Client {
+    reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .danger_accept_invalid_certs(state.settings.get_acme_accept_invalid_certs())
+        .build()
+        .expect("Failed to build DoH client")
 }
 
 fn build_udp_resolver(addr: &str) -> Result<hickory_resolver::TokioResolver, String> {
@@ -134,7 +109,7 @@ fn build_dot_resolver(addr: &str) -> Result<hickory_resolver::TokioResolver, Str
     Ok(builder.build().unwrap())
 }
 
-async fn validate_dns01_doh(domain: &str, expected_value: &str, url: &str) -> bool {
+async fn validate_dns01_doh(state: &State<AppState>, domain: &str, expected_value: &str, url: &str) -> bool {
     use hickory_resolver::proto::op::{Message, Query};
     use hickory_resolver::proto::rr::{Name, RData, RecordType};
 
@@ -163,7 +138,7 @@ async fn validate_dns01_doh(domain: &str, expected_value: &str, url: &str) -> bo
         }
     };
 
-    let client = if doh_url_host_is_ip(url) { doh_client_insecure() } else { doh_client() };
+    let client = doh_client(state);
     let resp = match client
         .post(url)
         .header("Content-Type", "application/dns-message")
@@ -210,9 +185,9 @@ async fn validate_dns01_doh(domain: &str, expected_value: &str, url: &str) -> bo
     })
 }
 
-async fn validate_dns01(domain: &str, expected_value: &str, resolver_addr: &str) -> bool {
+async fn validate_dns01(state: &State<AppState>, domain: &str, expected_value: &str, resolver_addr: &str) -> bool {
     if resolver_addr.starts_with("https://") {
-        return validate_dns01_doh(domain, expected_value, resolver_addr).await;
+        return validate_dns01_doh(state, domain, expected_value, resolver_addr).await;
     }
 
     let resolver_result = if let Some(addr) = resolver_addr.strip_prefix("tls://") {
@@ -800,7 +775,7 @@ pub(crate) async fn get_challenge(
         // base domain (_acme-challenge.example.com), not _acme-challenge.*.example.com.
         let domain_for_dns = domain.strip_prefix("*.").unwrap_or(domain);
         info!(challenge_type=challenge_type, domain=domain, resolver=resolver_addr, "Attempting ACME validation");
-        if validate_dns01(domain_for_dns, &expected_dns_value, &resolver_addr).await {
+        if validate_dns01(state, domain_for_dns, &expected_dns_value, &resolver_addr).await {
             "valid"
         } else {
             "invalid"

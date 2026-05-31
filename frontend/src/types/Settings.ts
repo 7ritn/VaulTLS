@@ -36,5 +36,6 @@ export interface Settings {
         dns_resolver: string;
         rate_limit_enabled: boolean;
         rate_limit: number;
+        accept_invalid_certs: boolean;
     }
 }
