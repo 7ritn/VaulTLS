@@ -325,6 +325,25 @@ pub(crate) async fn new_account(
     let payload: Value = serde_json::from_slice(&payload_bytes)
         .map_err(|e| AcmeError::malformed(format!("Invalid payload: {e}")))?;
 
+    // Handle existing account that was already created with an EAB.
+    if payload.get("onlyReturnExisting").and_then(|v| v.as_bool()).unwrap_or(false) {
+        let thumbprint = jwk_thumbprint(&jwk)?;
+        let account = state.db.get_acme_account_by_jwk_thumbprint(thumbprint).await
+            .map_err(|_| AcmeError::account_does_not_exist())?;
+        if account.status != "valid" {
+            return Err(AcmeError::account_does_not_exist());
+        }
+        let account_url = format!("{base}/api/acme/account/{}", account.id);
+        let resp_body = serde_json::json!({
+            "status": account.status,
+            "contact": account.contacts.split(',').filter(|s| !s.is_empty()).collect::<Vec<_>>(),
+            "orders": format!("{base}/api/acme/orders/{}", account.id),
+        });
+        let body_bytes = serde_json::to_vec(&resp_body)
+            .map_err(|_| AcmeError::server_internal("Serialization failed"))?;
+        return Ok(AcmeCreatedResponse { status: Status::Ok, location: account_url, body: body_bytes });
+    }
+
     let eab_jws = payload.get("externalAccountBinding")
         .ok_or_else(|| AcmeError::malformed("externalAccountBinding is required"))?;
 
@@ -381,7 +400,7 @@ pub(crate) async fn new_account(
     let body_bytes = serde_json::to_vec(&resp_body)
         .map_err(|_| AcmeError::server_internal("Serialization failed"))?;
 
-    Ok(AcmeCreatedResponse { location: account_url, body: body_bytes })
+    Ok(AcmeCreatedResponse { status: Status::Created, location: account_url, body: body_bytes })
 }
 
 #[post("/new-order", data = "<jws>")]
@@ -506,7 +525,7 @@ pub(crate) async fn new_order(
     let body_bytes = serde_json::to_vec(&order)
         .map_err(|_| AcmeError::server_internal("Serialization failed"))?;
 
-    Ok(AcmeCreatedResponse { location: order_url, body: body_bytes })
+    Ok(AcmeCreatedResponse { status: Status::Created, location: order_url, body: body_bytes })
 }
 
 #[post("/order/<id>", data = "<jws>")]
