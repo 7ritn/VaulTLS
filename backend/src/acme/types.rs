@@ -238,6 +238,7 @@ pub struct JwsProtectedHeader {
 }
 
 pub struct AcmeCreatedResponse {
+    pub status: Status,
     pub location: String,
     pub body: Vec<u8>,
 }
@@ -245,7 +246,7 @@ pub struct AcmeCreatedResponse {
 impl<'r> Responder<'r, 'static> for AcmeCreatedResponse {
     fn respond_to(self, _req: &'r Request<'_>) -> rocket::response::Result<'static> {
         Response::build()
-            .status(Status::Created)
+            .status(self.status)
             .header(ContentType::JSON)
             .raw_header("Location", self.location)
             .sized_body(self.body.len(), Cursor::new(self.body))
