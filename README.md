@@ -45,7 +45,7 @@ By specifying the `VAULTLS_DB_SECRET` environmental variable, the database is en
 
 ### Specifying log level
 The default log level is moderate. If a different one is desired, please specify it using the `VAULTLS_LOG_LEVEL` environmental variable.
-For bug reports, a trace or debug log report is desirable. Be logs can contain secrets. Please censor them before posting.
+For bug reports, a trace or debug log report is desirable. Be aware logs can contain secrets. Please censor them before posting.
 Available options are: `error`, `warn`, `info`, `debug` and `trace`.
 
 ### Setting up OIDC
