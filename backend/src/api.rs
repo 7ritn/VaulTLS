@@ -10,7 +10,7 @@ use crate::auth::oidc_auth::OidcAuth;
 use crate::auth::password_auth::Password;
 use crate::auth::session_auth::{generate_token, invalidate_token, Authenticated, AuthenticatedPrivileged};
 use crate::certs::common::{get_password, save_ca, Certificate, CA};
-use crate::certs::ssh_cert::{get_ssh_pem, SSHCertificateBuilder};
+use crate::certs::ssh_cert::{create_and_save_krl, create_krl, get_ssh_pem, retrieve_krl, SSHCertificateBuilder};
 use crate::certs::tls_cert::{create_and_save_crl, create_crl, get_timestamp, get_tls_pem, retrieve_crl, save_crl, TLSCertificateBuilder};
 use crate::constants::VAULTLS_VERSION;
 use crate::data::api::{CallbackQuery, ChangePasswordRequest, CreateCARequest, CreateUserCertificateRequest, CreateUserRequest, DownloadResponse, IsSetupResponse, LoginRequest, SetupRequest};
@@ -663,13 +663,10 @@ pub(crate) async fn delete_user_cert(
     Ok(())
 }
 
-async fn create_crl_params(state: &State<AppState>, ca_id: i64) -> Result<(CA, Vec<(Vec<u8>, i64)>, i64), ApiError>{
-    let ca = state.db.get_ca_by_id(ca_id).await.map_err(|_| ApiError::NotFound(None))?;
-    if ca.ca_type != CAType::TLS {
-        return Err(ApiError::Other("CRL is only supported for TLS CAs".to_string()));
-    }
+async fn create_crl_params(state: &State<AppState>, ca: &CA) -> Result<(Vec<(Vec<u8>, i64)>, i64), ApiError>{
+    assert_eq!(ca.ca_type, CAType::TLS);
 
-    let revoked_certs = state.db.get_user_certs(None, Some(ca_id), Some(true)).await.map_err(|e| ApiError::Other(e.to_string()))?;
+    let revoked_certs = state.db.get_user_certs(None, Some(ca.id), Some(true)).await.map_err(|e| ApiError::Other(e.to_string()))?;
 
     let mut revoked_params = Vec::new();
     for cert in revoked_certs {
@@ -681,7 +678,21 @@ async fn create_crl_params(state: &State<AppState>, ca_id: i64) -> Result<(CA, V
 
     let crl_next_update_hours = state.settings.get_crl_next_update_hours();
 
-    Ok((ca, revoked_params, crl_next_update_hours))
+    Ok((revoked_params, crl_next_update_hours))
+}
+
+async fn create_krl_params(state: &State<AppState>, ca: &CA) -> Result<Vec<Vec<u8>>, ApiError> {
+    assert_eq!(ca.ca_type, CAType::SSH);
+
+    let revoked_certs = state.db.get_user_certs(None, Some(ca.id), Some(true)).await.map_err(|e| ApiError::Other(e.to_string()))?;
+
+    let mut revoked_serials = Vec::new();
+    for cert in revoked_certs {
+        let serial = cert.get_serial()?;
+        revoked_serials.push(serial);
+    }
+
+    Ok(revoked_serials)
 }
 
 #[openapi(tag = "Certificates")]
@@ -696,45 +707,74 @@ pub(crate) async fn revoke_certificate(
     if cert.user_id != authentication._claims.id && authentication._claims.role != UserRole::Admin { return Err(ApiError::Forbidden(None)) }
     state.db.revoke_user_cert(id).await.map_err(|e| ApiError::Other(e.to_string()))?;
 
-    let (mut ca, revoked_params, crl_next_update_hours) = create_crl_params(state, cert.ca_id).await?;
-    create_and_save_crl(&mut ca, revoked_params, crl_next_update_hours)?;
-    state.db.increase_ca_crl_number(ca.id, ca.crl_number).await?;
+    let mut ca = state.db.get_ca_by_id(cert.ca_id).await.map_err(|_| ApiError::NotFound(None))?;
+    match ca.ca_type {
+        CAType::TLS => {
+            let (revoked_params, crl_next_update_hours) = create_crl_params(state, &ca).await?;
+            create_and_save_crl(&mut ca, revoked_params, crl_next_update_hours)?;
+            state.db.increase_ca_crl_number(ca.id, ca.crl_number).await?;
+        }
+        CAType::SSH => {
+            let revoked_serials = create_krl_params(state, &ca).await?;
+            create_and_save_krl(&mut ca, &revoked_serials)?;
+            state.db.increase_ca_crl_number(ca.id, ca.crl_number).await?;
+        }
+    }
 
     Ok(())
 }
 
 #[openapi(tag = "Certificates")]
 #[get("/certificates/ca/<id>/crl?<format>")]
-/// Get the Certificate Revocation List (CRL) for a TLS CA.
+/// Get the Certificate Revocation List (CRL) for a TLS CA or Key Revocation List (KRL) for an SSH CA.
 pub(crate) async fn download_crl(
     state: &State<AppState>,
     id: i64,
     format: Option<DataFormat>
 ) -> Result<DownloadResponse, ApiError> {
-    let crl_der = match retrieve_crl(id) {
-        Ok(crl_der) => crl_der,
-        Err(_) => {
-            // Probably no CRLs revoked yet, need to create empty CRL
-            let (mut ca, revoked_params, crl_next_update_hours) = create_crl_params(state, id).await?;
-            let crl_der = create_crl(&mut ca, revoked_params, crl_next_update_hours)?;
-            state.db.increase_ca_crl_number(ca.id, ca.crl_number).await?;
-            let _ = save_crl(crl_der.clone(), id); // Ignore errors
-            crl_der
-        }
-    };
+    let mut ca = state.db.get_ca_by_id(id).await.map_err(|_| ApiError::NotFound(None))?;
+    match ca.ca_type {
+        CAType::TLS => {
+            let crl_der = match retrieve_crl(id) {
+                Ok(crl_der) => crl_der,
+                Err(_) => {
+                    // Probably no CRLs revoked yet, need to create empty CRL
+                    let (revoked_params, crl_next_update_hours) = create_crl_params(state, &ca).await?;
+                    let crl_der = create_crl(&mut ca, revoked_params, crl_next_update_hours)?;
+                    state.db.increase_ca_crl_number(ca.id, ca.crl_number).await?;
+                    let _ = save_crl(crl_der.clone(), id); // Ignore errors
+                    crl_der
+                }
+            };
 
-    let (crl_data, extension) = match format.unwrap_or_default() {
-        DataFormat::DER => (crl_der, "crl"),
-        DataFormat::PEM => {
-            let pem = openssl::x509::X509Crl::from_der(&crl_der)
-                .map_err(|e| ApiError::Other(e.to_string()))?
-                .to_pem()
-                .map_err(|e| ApiError::Other(e.to_string()))?;
-            (pem, "pem")
-        }
-    };
+            let (crl_data, extension) = match format.unwrap_or_default() {
+                DataFormat::DER => (crl_der, "crl"),
+                DataFormat::PEM => {
+                    let pem = openssl::x509::X509Crl::from_der(&crl_der)
+                        .map_err(|e| ApiError::Other(e.to_string()))?
+                        .to_pem()
+                        .map_err(|e| ApiError::Other(e.to_string()))?;
+                    (pem, "pem")
+                }
+            };
 
-    Ok(DownloadResponse::new(crl_data, &format!("crl-{}.{}", id, extension)))
+            Ok(DownloadResponse::new(crl_data, &format!("crl-{}.{}", id, extension)))
+        }
+        CAType::SSH => {
+            let krl_bytes = match retrieve_krl(id) {
+                Ok(krl_bytes) => krl_bytes,
+                Err(_) => {
+                    // Probably no certs revoked yet, need to create empty KRL
+                    let revoked_serials = create_krl_params(state, &ca).await?;
+                    let krl_bytes = create_krl(&mut ca, &revoked_serials)?;
+                    state.db.increase_ca_crl_number(ca.id, ca.crl_number).await?;
+                    let _ = crate::certs::ssh_cert::save_krl(krl_bytes.clone(), id);
+                    krl_bytes
+                }
+            };
+            Ok(DownloadResponse::new(krl_bytes, &format!("krl-{}.krl", id)))
+        }
+    }
 }
 
 #[openapi(tag = "Settings")]

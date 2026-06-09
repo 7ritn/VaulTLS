@@ -691,3 +691,44 @@ async fn establish_tls_connection(
 
     Ok(())
 }
+
+#[tokio::test]
+async fn test_ssh_revocation_and_krl() -> Result<()> {
+    let client = VaulTLSClient::new_authenticated().await;
+    client.create_ssh_ca().await?;
+    let _ = client.create_ssh_client_cert().await?;
+
+    // Download SSH certificate to get serial
+    let request = client.get("/certificates/1/download");
+    let response = request.dispatch().await;
+    assert_eq!(response.status(), Status::Ok);
+    let zip_data = response.into_bytes().await.unwrap();
+    
+    let reader = std::io::Cursor::new(zip_data);
+    let mut zip = zip::ZipArchive::new(reader)?;
+    let mut cert_file = zip.by_name(&format!("{}.pub", TEST_SSH_CLIENT_CERT_NAME))?;
+    let mut cert_bytes = Vec::new();
+    use std::io::Read;
+    cert_file.read_to_end(&mut cert_bytes)?;
+    let cert_str = String::from_utf8_lossy(&cert_bytes);
+    let ssh_cert = ssh_key::Certificate::from_openssh(&cert_str)?;
+    let serial = ssh_cert.serial();
+
+    // Revoke SSH certificate
+    let request = client.post("/certificates/1/revoke");
+    let response = request.dispatch().await;
+    assert_eq!(response.status(), Status::Ok);
+
+    // Check KRL
+    let request = client.get("/certificates/ca/2/crl");
+    let response = request.dispatch().await;
+    assert_eq!(response.status(), Status::Ok);
+    let krl_data = response.into_bytes().await.unwrap();
+
+    assert!(krl_data.starts_with(b"SSHKRL"));
+    // Minimal verification that serial is in KRL
+    let serial_bytes = serial.to_be_bytes();
+    assert!(krl_data.windows(serial_bytes.len()).any(|window| window == serial_bytes));
+
+    Ok(())
+}
