@@ -404,21 +404,17 @@ pub(crate) fn get_tls_pem(ca: &CA) -> Result<Vec<u8>, ErrorStack> {
     cert.to_pem()
 }
 
-pub fn extract_serial_number(cert: &Certificate) -> Result<Vec<u8>> {
-    match &cert.data {
-        CertData::Pem(bytes) => {
-            let x509 = X509::from_pem(bytes)?;
-            Ok(x509.serial_number().to_bn()?.to_vec())
-        }
-        CertData::Pkcs12(bytes) => {
-            let encrypted_p12 = Pkcs12::from_der(bytes)?;
-            let Some(inner) = encrypted_p12.parse2(&cert.password)?.cert else {
-                return Err(anyhow!("No certificate found in PKCS#12"));
-            };
-            Ok(inner.serial_number().to_bn()?.to_vec())
-        }
-        CertData::SshBundle(_) => Err(anyhow!("SSH certificates not supported here")),
-    }
+pub(crate) fn extract_pem_serial_number(pem: &Vec<u8>) -> Result<Vec<u8>> {
+    let x509 = X509::from_pem(pem)?;
+    Ok(x509.serial_number().to_bn()?.to_vec())
+}
+
+pub(crate) fn extract_pkcs12_serial_number(pkcs12: &Vec<u8>, password: &str) -> Result<Vec<u8>> {
+    let encrypted_p12 = Pkcs12::from_der(pkcs12)?;
+    let Some(inner) = encrypted_p12.parse2(password)?.cert else {
+        return Err(anyhow!("No certificate found in PKCS#12"));
+    };
+    Ok(inner.serial_number().to_bn()?.to_vec())
 }
 
 #[cfg(not(feature = "test-mode"))]

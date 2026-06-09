@@ -673,7 +673,7 @@ async fn create_crl_params(state: &State<AppState>, ca_id: i64) -> Result<(CA, V
 
     let mut revoked_params = Vec::new();
     for cert in revoked_certs {
-        let serial = crate::certs::tls_cert::extract_serial_number(&cert)
+        let serial = cert.get_serial()
             .map_err(|_| ApiError::Other("Could not retrieve serial number from certificate to create CRL".to_string()))?;
 
         revoked_params.push((serial, cert.revoked_at.unwrap_or(0)));
