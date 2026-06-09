@@ -1,3 +1,6 @@
+use std::env::temp_dir;
+use std::fs;
+use std::process::Command;
 use x509_parser::revocation_list::CertificateRevocationList;
 use crate::common::constants::*;
 use crate::common::helper::{extract_ssh_cert_key_bundle, get_timestamp_ms, get_timestamp_s};
@@ -729,6 +732,24 @@ async fn test_ssh_revocation_and_krl() -> Result<()> {
     // Minimal verification that serial is in KRL
     let serial_bytes = serial.to_be_bytes();
     assert!(krl_data.windows(serial_bytes.len()).any(|window| window == serial_bytes));
+
+    let mut krl_path = temp_dir();
+    krl_path.push(format!("krl-{}.krl", 2));
+
+    let mut cert_path = temp_dir();
+    cert_path.push(format!("ssh-{}.pub", 1));
+    fs::write(&cert_path, cert_bytes)?;
+
+    let output = Command::new("ssh-keygen")
+        .arg("-Q") // Query the KRL
+        .arg("-f")
+        .arg(krl_path.as_path())
+        .arg(cert_path.as_path())
+        .output()?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(output.status.code(), Some(1));
+    assert!(stdout.contains("REVOKED"));
 
     Ok(())
 }
