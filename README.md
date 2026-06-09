@@ -45,7 +45,8 @@ By specifying the `VAULTLS_DB_SECRET` environmental variable, the database is en
 
 ### Specifying log level
 The default log level is moderate. If a different one is desired, please specify it using the `VAULTLS_LOG_LEVEL` environmental variable.
-For bug reports, a trace log report is desirable. Be aware that the trace does contain secrets.
+For bug reports, a trace or debug log report is desirable. Be logs can contain secrets. Please censor them before posting.
+Available options are: `error`, `warn`, `info`, `debug` and `trace`.
 
 ### Setting up OIDC
 To set up OIDC you need to create a new client in your authentication provider. For Authelia a configuration could look like this
