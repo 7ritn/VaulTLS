@@ -93,7 +93,6 @@
                   {{ $t('common.download') }}
                 </button>
                 <button
-                    v-if="cert.certificate_type === CertificateType.TLSClient || cert.certificate_type === CertificateType.TLSServer"
                     class="btn btn-warning btn-sm flex-grow-1"
                     @click="confirmRevocation(cert)"
                 >
@@ -437,7 +436,7 @@
             <p>
               {{ $t('overview.deleteModal.confirm', { name: certToDelete?.name.cn }) }}
             </p>
-            <p v-if="certToDelete?.certificate_type === CertificateType.TLSClient || certToDelete?.certificate_type === CertificateType.TLSServer" class="text-warning">
+            <p class="text-warning">
               <small>{{ $t('overview.deleteModal.disclaimer') }}</small>
             </p>
           </div>
