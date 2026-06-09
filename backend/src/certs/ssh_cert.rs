@@ -12,6 +12,12 @@ use tracing::trace;
 use zip::write::SimpleFileOptions;
 use zip::ZipWriter;
 use crate::data::enums::CAType::SSH;
+#[cfg(not(feature = "test-mode"))]
+use crate::constants::{KRL_DIR_PATH, KRL_FILE_PATTERN};
+use std::fs;
+#[cfg(feature = "test-mode")]
+use std::env::temp_dir;
+use crate::data::error::ApiError;
 
 pub struct SSHCertificateBuilder {
     created_on: i64,
@@ -242,5 +248,99 @@ pub fn extract_ssh_serial_number(data: &Vec<u8>, name: &str) -> Result<Vec<u8>> 
     cert_file.read_to_end(&mut cert_bytes).map_err(|e: std::io::Error| ApiError::Other(e.to_string()))?;
     let cert_str = String::from_utf8_lossy(&cert_bytes);
     let ssh_cert = ssh_key::Certificate::from_openssh(&cert_str).map_err(|e| ApiError::Other(e.to_string()))?;
-    Ok((ssh_cert.serial() as u32).to_be_bytes().into())
+    Ok(ssh_cert.serial().to_be_bytes().into())
+}
+
+#[cfg(not(feature = "test-mode"))]
+pub(crate) fn retrieve_krl(ca_id: i64) -> Result<Vec<u8>> {
+    let ca_id_file_path = KRL_FILE_PATTERN.replace("{}", &ca_id.to_string());
+    Ok(fs::read(ca_id_file_path)?)
+}
+
+#[cfg(feature = "test-mode")]
+pub(crate) fn retrieve_krl(ca_id: i64) -> Result<Vec<u8>> {
+    let mut path = temp_dir();
+    path.push(format!("krl-{}.krl", ca_id));
+    Ok(fs::read(path)?)
+}
+
+pub(crate) fn create_and_save_krl(ca: &mut CA, revoked_serials: &Vec<Vec<u8>>) -> Result<()> {
+    let krl_bytes = create_krl(ca, revoked_serials)?;
+    save_krl(krl_bytes, ca.id)
+}
+
+pub(crate) fn create_krl(ca: &mut CA, revoked_serials: &Vec<Vec<u8>>) -> Result<Vec<u8>> {
+    let mut krl = Vec::new();
+
+    // --- KRL Header ---
+    krl.extend_from_slice(b"SSHKRL\n\0"); // Format Identifier
+    krl.extend_from_slice(&1u32.to_be_bytes()); // Format Version
+
+    // KRL Version
+    ca.crl_number += 1;
+    let krl_version = (ca.crl_number as u64).to_be_bytes();
+    krl.extend_from_slice(&krl_version);
+
+    // Date
+    let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
+    krl.extend_from_slice(&now.to_be_bytes());
+
+    krl.extend_from_slice(&0u64.to_be_bytes()); // Flags
+    krl.extend_from_slice(&0u32.to_be_bytes()); // Reserved
+    krl.extend_from_slice(&0u32.to_be_bytes()); // Comment
+
+    // --- KRL Body ---
+    // Consists of one section
+    // Section consists of CA information and subsection with all revoked keys
+    krl.push(1 /* KRL_SECTION_CERTIFICATES */);
+
+    let mut section_data = Vec::new();
+
+    // Extract the CA pubkey blob from the CA private key bytes
+    let ca_private_key = PrivateKey::from_bytes(&ca.key)?;
+    let ca_pubkey_blob = ca_private_key.public_key().to_bytes()?;
+
+    // CA Key as String (Length + Bytes)
+    section_data.extend_from_slice(&(ca_pubkey_blob.len() as u32).to_be_bytes());
+    section_data.extend_from_slice(&ca_pubkey_blob);
+
+    // Reserved
+    section_data.extend_from_slice(&0u32.to_be_bytes());
+
+    // SUBSECTION: cert_section_type = 0x20 (KRL_SECTION_CERT_SERIAL_LIST)
+    section_data.push(0x20);
+
+    // SUBSECTION: cert_section_data
+    // OpenSSH expects pairs of (min, max) u64s.
+    // To revoke single serials, the min and max are identical.
+    let mut cert_section_data = Vec::new();
+    for serial in revoked_serials {
+        cert_section_data.extend_from_slice(serial);
+    }
+
+    // Write cert_section_data as an SSH string (length + data) into the section_data
+    section_data.extend_from_slice(&(cert_section_data.len() as u32).to_be_bytes());
+    section_data.extend_from_slice(&cert_section_data);
+
+    // Finally, write section_data as an SSH string into the main KRL buffer
+    krl.extend_from_slice(&(section_data.len() as u32).to_be_bytes());
+    krl.extend_from_slice(&section_data);
+
+    Ok(krl)
+}
+
+#[cfg(not(feature = "test-mode"))]
+pub(crate) fn save_krl(krl_bytes: Vec<u8>, ca_id: i64) -> Result<()> {
+    let ca_id_file_path = KRL_FILE_PATTERN.replace("{}", &ca_id.to_string());
+    fs::create_dir_all(KRL_DIR_PATH)?;
+    fs::write(ca_id_file_path, krl_bytes)?;
+    Ok(())
+}
+
+#[cfg(feature = "test-mode")]
+pub(crate) fn save_krl(krl_bytes: Vec<u8>, ca_id: i64) -> Result<()> {
+    let mut path = temp_dir();
+    path.push(format!("krl-{}.krl", ca_id));
+    fs::write(path, krl_bytes)?;
+    Ok(())
 }
