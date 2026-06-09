@@ -1,6 +1,9 @@
+use anyhow::Result;
 use rocket::serde::{Deserialize, Serialize};
 use rocket_okapi::JsonSchema;
 use passwords::PasswordGenerator;
+use crate::certs::ssh_cert::extract_ssh_serial_number;
+use crate::certs::tls_cert::{extract_pem_serial_number, extract_pkcs12_serial_number};
 use crate::data::enums::{CAType, CertData, CertificateRenewMethod, CertificateType};
 use crate::data::objects::Name;
 
@@ -47,6 +50,14 @@ impl Certificate {
             ca_id: row.get(9)?,
             revoked_at: row.get(10)?
         })
+    }
+
+    pub(crate) fn get_serial(&self) -> Result<Vec<u8>> {
+        match self.data {
+            CertData::Pkcs12(ref pkcs12) => { extract_pkcs12_serial_number(pkcs12, &self.password) }
+            CertData::Pem(ref pem) => { extract_pem_serial_number(pem) }
+            CertData::SshBundle(ref ssh) => { extract_ssh_serial_number(ssh, &self.name.to_string()) }
+        }
     }
 }
 

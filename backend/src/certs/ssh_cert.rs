@@ -6,7 +6,7 @@ use rand::prelude::*;
 use rand::rng;
 use ssh_key::rand_core::OsRng;
 use ssh_key::{certificate, Algorithm, LineEnding, PrivateKey};
-use std::io::{Cursor, Write};
+use std::io::{Cursor, Read, Write};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tracing::trace;
 use zip::write::SimpleFileOptions;
@@ -232,4 +232,15 @@ pub fn get_ssh_pem(ca: &CA) -> Result<Vec<u8>> {
     let private_key = PrivateKey::from_bytes(&ca.key)?;
     let public_key = private_key.public_key();
     Ok(public_key.to_openssh()?.as_bytes().to_vec())
+}
+
+pub fn extract_ssh_serial_number(data: &Vec<u8>, name: &str) -> Result<Vec<u8>> {
+    let reader = Cursor::new(data);
+    let mut zip = zip::ZipArchive::new(reader).map_err(|e: zip::result::ZipError| ApiError::Other(e.to_string()))?;
+    let mut cert_file = zip.by_name(&format!("{}.pub", name)).map_err(|e: zip::result::ZipError| ApiError::Other(e.to_string()))?;
+    let mut cert_bytes = Vec::new();
+    cert_file.read_to_end(&mut cert_bytes).map_err(|e: std::io::Error| ApiError::Other(e.to_string()))?;
+    let cert_str = String::from_utf8_lossy(&cert_bytes);
+    let ssh_cert = ssh_key::Certificate::from_openssh(&cert_str).map_err(|e| ApiError::Other(e.to_string()))?;
+    Ok((ssh_cert.serial() as u32).to_be_bytes().into())
 }
