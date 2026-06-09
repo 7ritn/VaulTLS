@@ -106,12 +106,13 @@
     "deleteModal": {
       "title": "Delete Certificate",
       "confirm": "Are you sure you want to delete the certificate {name}?",
-      "disclaimer": "Disclaimer: Deleting the certificate will remove it from CRL creation since no information on deleted certificates is kept."
+      "disclaimer": "Disclaimer: Deleting the certificate will remove it from CRL/KRL creation since no information on deleted certificates is kept."
     }
   },
   "ca": {
     "title": "Certificate Authorities",
     "crl": "CRL",
+    "krl": "KRL",
     "toggle_dropdown": "Toggle Dropdown",
     "der_format": "DER Format",
     "pem_format": "PEM Format",

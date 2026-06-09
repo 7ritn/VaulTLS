@@ -61,6 +61,14 @@
                 </ul>
               </div>
               <button
+                  v-if="ca.ca_type === CAType.SSH"
+                  :id="'KRLButton-' + ca.id"
+                  class="btn btn-outline-primary btn-sm flex-grow-1"
+                  @click="downloadCRL(ca.id)"
+              >
+                {{ $t('ca.krl') }}
+              </button>
+              <button
                   :id="'DeleteButton-' + ca.id"
                   v-if="authStore.isAdmin"
                   class="btn btn-danger btn-sm flex-grow-1"

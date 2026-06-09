@@ -106,12 +106,13 @@
     "deleteModal": {
       "title": "Eliminar certificado",
       "confirm": "¿Está seguro de que desea eliminar el certificado {name}?",
-      "disclaimer": "Aviso: Eliminar el certificado lo eliminará de la generación de CRL ya que no se conserva información sobre los certificados eliminados."
+      "disclaimer": "Aviso: Eliminar el certificado lo eliminará de la generación de CRL/KRL ya que no se conserva información sobre los certificados eliminados."
     }
   },
   "ca": {
     "title": "Autoridades de Certificación",
     "crl": "CRL",
+    "krl": "KRL",
     "toggle_dropdown": "Alternar menú",
     "der_format": "Formato DER",
     "pem_format": "Formato PEM",
