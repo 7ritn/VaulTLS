@@ -148,6 +148,11 @@ impl SSHCertificateBuilder {
             cert_builder.valid_principal(principal)?;
         }
 
+        // Attach some standard cert extensions that are normal for home lab usage
+        cert_builder.extension("permit-pty", "")?;
+        cert_builder.extension("permit-port-forwarding", "")?;
+        cert_builder.extension("permit-user-rc", "")?;
+
         let cert = cert_builder.sign(&ca_key)?;
         trace!("SSH certificate signed with: {}", ca_key.fingerprint(Default::default()));
 
