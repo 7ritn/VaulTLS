@@ -1,5 +1,5 @@
 import ApiClient from "@/api/ApiClient.ts";
-import type {CA, CARequirements} from "@/types/CA.ts";
+import type {CA, CARequirements, ImportCARequest} from "@/types/CA.ts";
 
 export const fetchCAs = async (): Promise<CA[]> => {
     return await ApiClient.get<CA[]>(`/certificates/ca`);
@@ -7,6 +7,10 @@ export const fetchCAs = async (): Promise<CA[]> => {
 
 export const createCA = async (certReq: CARequirements): Promise<number> => {
     return await ApiClient.post<number>('/certificates/ca', certReq);
+};
+
+export const importCA = async (importReq: ImportCARequest): Promise<number> => {
+    return await ApiClient.post<number>('/certificates/ca/import', importReq);
 };
 
 export const downloadCAByID = async (id: number): Promise<void> => {

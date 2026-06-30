@@ -5,10 +5,11 @@ import {
     fetchCertificatePassword,
     downloadCertificate,
     createCertificate,
+    importCertificate,
     deleteCertificate,
     revokeCertificate,
 } from '../api/certificates';
-import type {CertificateRequirements} from "@/types/CertificateRequirements.ts";
+import type {CertificateRequirements, ImportUserCertificateRequest} from "@/types/CertificateRequirements.ts";
 import axios from 'axios';
 
 export const useCertificateStore = defineStore('certificate', {
@@ -94,6 +95,24 @@ export const useCertificateStore = defineStore('certificate', {
                     this.error = 'Failed to create the certificate: ' + err.response?.data?.error;
                 } else {
                     this.error = 'Failed to create the certificate';
+                }
+                console.error(err);
+            } finally {
+                this.loading = false;
+            }
+        },
+
+        async importCertificate(importReq: ImportUserCertificateRequest): Promise<void> {
+            this.loading = true;
+            this.error = null;
+            try {
+                await importCertificate(importReq);
+                await this.fetchCertificates();
+            } catch (err) {
+                if (axios.isAxiosError(err)) {
+                    this.error = 'Failed to import the certificate: ' + err.response?.data?.error;
+                } else {
+                    this.error = 'Failed to import the certificate';
                 }
                 console.error(err);
             } finally {

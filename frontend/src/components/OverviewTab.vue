@@ -121,6 +121,15 @@
       {{ $t('overview.createCertificate') }}
     </button>
 
+    <button
+        id="ImportCertificateButton"
+        v-if="authStore.isAdmin"
+        class="btn btn-outline-primary mx-1"
+        @click="showImportModal"
+    >
+      {{ $t('overview.importCertificate') }}
+    </button>
+
     <div v-if="loading" class="text-center mt-3">{{ $t('overview.loadingCerts') }}</div>
     <div v-if="error" class="alert alert-danger mt-3">{{ error }}</div>
 
@@ -451,19 +460,111 @@
         </div>
       </div>
     </div>
+
+    <!-- Import Certificate Modal -->
+    <div
+        v-if="isImportModalVisible"
+        class="modal show d-block"
+        tabindex="-1"
+        style="background: rgba(0, 0, 0, 0.5)"
+    >
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">{{ $t('overview.importModal.title') }}</h5>
+            <button type="button" class="btn-close" @click="closeImportModal"></button>
+          </div>
+          <div class="modal-body">
+            <div class="mb-3">
+              <label for="importP12" class="form-label">PKCS#12 ({{ importImportReq.format === DataFormat.PEM ? 'PEM' : 'Base64 DER' }})</label>
+              <textarea
+                  id="importP12"
+                  v-model="importImportReq.p12"
+                  class="form-control"
+                  rows="4"
+                  required
+              ></textarea>
+            </div>
+            <div class="mb-3">
+              <label for="importPassword" class="form-label">{{ $t('common.password') }}</label>
+              <input
+                  id="importPassword"
+                  v-model="importImportReq.password"
+                  type="password"
+                  class="form-control"
+                  required
+              />
+            </div>
+            <div class="mb-3">
+              <label for="importFormat" class="form-label">{{ $t('common.format') }}</label>
+              <select class="form-select" id="importFormat" v-model="importImportReq.format">
+                <option :value="DataFormat.DER">DER (Base64)</option>
+                <option :value="DataFormat.PEM">PEM</option>
+              </select>
+            </div>
+            <div class="mb-3">
+              <label for="importUserId" class="form-label">{{ $t('overview.generateModal.user') }}</label>
+              <select id="importUserId" v-model="importImportReq.user_id" class="form-select">
+                <option v-for="user in userStore.users" :key="user.id" :value="user.id">
+                  {{ user.name }}
+                </option>
+              </select>
+            </div>
+            <div class="mb-3">
+              <label for="importCaId" class="form-label">{{ $t('overview.generateModal.ca') }}</label>
+              <select id="importCaId" v-model="importImportReq.ca_id" class="form-select">
+                <option v-for="ca in availableCAsForImport" :key="ca.id" :value="ca.id">
+                  {{ ca.name.cn }} (ID: {{ ca.id }})
+                </option>
+              </select>
+            </div>
+            <div class="mb-3">
+              <label for="importCertType" class="form-label">{{ $t('overview.generateModal.certType') }}</label>
+              <select class="form-select" id="importCertType" v-model="importImportReq.cert_type">
+                <option :value="CertificateType.TLSClient">{{ $t('overview.generateModal.tlsClient') }}</option>
+                <option :value="CertificateType.TLSServer">{{ $t('overview.generateModal.tlsServer') }}</option>
+              </select>
+            </div>
+            <div class="mb-3">
+              <label for="importRenewMethod" class="form-label">{{ $t('overview.generateModal.renewMethod') }}</label>
+              <select class="form-select" id="importRenewMethod" v-model="importImportReq.renew_method">
+                <option :value="CertificateRenewMethod.None">{{ $t('overview.generateModal.renewNone') }}</option>
+                <option :value="CertificateRenewMethod.Notify">{{ $t('overview.generateModal.renewRemind') }}</option>
+                <option :value="CertificateRenewMethod.Renew">{{ $t('overview.generateModal.renewRenew') }}</option>
+                <option :value="CertificateRenewMethod.RenewAndNotify">{{ $t('overview.generateModal.renewAndNotify') }}</option>
+              </select>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" @click="closeImportModal">
+              {{ $t('common.cancel') }}
+            </button>
+            <button
+                type="button"
+                class="btn btn-primary"
+                :disabled="loading || !importImportReq.p12"
+                @click="doImportCertificate"
+            >
+              <span v-if="loading">{{ $t('common.importing') }}</span>
+              <span v-else>{{ $t('common.import') }}</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 <script setup lang="ts">
 import {computed, onMounted, reactive, ref, watch} from 'vue';
 import {useCertificateStore} from '@/stores/certificates';
 import {type Certificate, CertificateRenewMethod, CertificateType} from "@/types/Certificate";
-import type {CertificateRequirements} from "@/types/CertificateRequirements";
+import type {CertificateRequirements, ImportUserCertificateRequest} from "@/types/CertificateRequirements";
 import {useAuthStore} from "@/stores/auth.ts";
 import {useUserStore} from "@/stores/users.ts";
 import {useSettingsStore} from "@/stores/settings.ts";
 import {PasswordRule} from "@/types/Settings.ts";
 import {useCAStore} from "@/stores/cas.ts";
-import {CAType} from "@/types/CA.ts";
+import {CAType, DataFormat} from "@/types/CA.ts";
 import {ValidityUnit} from "@/types/ValidityUnit.ts";
 // stores
 const certificateStore = useCertificateStore();
@@ -498,6 +599,7 @@ const hasAnyOU = computed(() => Array.from(certificates.value.values()).some(cer
 const isDeleteModalVisible = ref(false);
 const isGenerateModalVisible = ref(false);
 const isRevokeModalVisible = ref(false);
+const isImportModalVisible = ref(false);
 const showRevoked = ref(false);
 
 const certToDelete = ref<Certificate | null>(null);
@@ -521,6 +623,16 @@ const certReq = reactive<CertificateRequirements>({
   ca_id: undefined
 });
 
+const importImportReq = reactive<ImportUserCertificateRequest>({
+  p12: '',
+  password: '',
+  user_id: 0,
+  ca_id: 0,
+  renew_method: CertificateRenewMethod.None,
+  cert_type: CertificateType.TLSClient,
+  format: DataFormat.DER
+});
+
 const showOUField = ref(false);
 
 const isMailValid = computed(() => {
@@ -542,6 +654,10 @@ const availableCAs = computed(() => {
   if (!allowedType) return cas;
 
   return cas.filter(ca => allowedType.includes(ca.ca_type)).sort((a, b) => b.id - a.id);
+});
+
+const availableCAsForImport = computed(() => {
+  return Array.from(caStore.cas.values()).filter(ca => ca.ca_type === CAType.TLS).sort((a, b) => b.id - a.id);
 });
 
 
@@ -575,9 +691,41 @@ const closeGenerateModal = () => {
   showOUField.value = false;
 };
 
+const showImportModal = async () => {
+  await userStore.fetchUsers();
+  await caStore.fetchCAs();
+
+  // Set defaults for import
+  if (userStore.users.length > 0) {
+    importImportReq.user_id = userStore.users[0].id;
+  }
+  const tlsCAs = Array.from(caStore.cas.values()).filter(ca => ca.ca_type === CAType.TLS);
+  if (tlsCAs.length > 0) {
+    importImportReq.ca_id = tlsCAs[0].id;
+  }
+
+  isImportModalVisible.value = true;
+};
+
+const closeImportModal = () => {
+  isImportModalVisible.value = false;
+  importImportReq.p12 = '';
+  importImportReq.password = '';
+  importImportReq.user_id = 0;
+  importImportReq.ca_id = 0;
+  importImportReq.renew_method = CertificateRenewMethod.None;
+  importImportReq.cert_type = CertificateType.TLSClient;
+  importImportReq.format = DataFormat.DER;
+};
+
 const createCertificate = async () => {
     await certificateStore.createCertificate(certReq);
     closeGenerateModal();
+};
+
+const doImportCertificate = async () => {
+  await certificateStore.importCertificate(importImportReq);
+  closeImportModal();
 };
 
 const confirmDeletion = (cert: Certificate) => {

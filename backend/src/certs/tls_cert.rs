@@ -13,7 +13,7 @@ use openssl::nid::Nid;
 use openssl::pkcs12::Pkcs12;
 use openssl::pkey::{PKey, Private};
 use openssl::stack::Stack;
-use openssl::x509::{X509Name, X509NameBuilder, X509Ref, X509};
+use openssl::x509::{X509Name, X509NameBuilder, X509Ref, X509, X509Crl};
 use openssl::x509::extension::{AuthorityKeyIdentifier, BasicConstraints, ExtendedKeyUsage, KeyUsage, SubjectAlternativeName, SubjectKeyIdentifier};
 use openssl::x509::{X509Builder};
 use openssl::x509::X509Req;
@@ -26,7 +26,7 @@ use crate::ApiError;
 use crate::constants::{CA_DIR_PATH, CA_FILE_PATTERN, CA_TLS_FILE_PATH, CRL_DIR_PATH, CRL_FILE_PATTERN};
 #[cfg(feature = "test-mode")]
 use crate::constants::{CA_DIR_PATH, CA_FILE_PATTERN, CA_TLS_FILE_PATH};
-use crate::data::enums::{CertData, CertificateRenewMethod, CertificateType, TimespanUnit};
+use crate::data::enums::{CertData, CertificateRenewMethod, CertificateType, DataFormat, TimespanUnit};
 use crate::data::enums::CertificateType::{TLSClient, TLSServer};
 use crate::certs::common::{Certificate, CA};
 use crate::data::enums::CAType::TLS;
@@ -441,7 +441,7 @@ fn extract_ski(cert: &X509Ref) -> Result<Vec<u8>, ErrorStack> {
     Ok(ext.as_slice().to_vec())
 }
 
-pub(crate) fn create_crl(ca: &mut CA, revoked_certs: Vec<(Vec<u8>, i64)>, crl_next_update_hours: i64) -> Result<Vec<u8>> {
+pub fn create_crl(ca: &mut CA, revoked_certs: Vec<(Vec<u8>, i64)>, crl_next_update_hours: i64) -> Result<Vec<u8>> {
     let ca_key_pair = KeyPair::try_from(ca.key.clone())?;
     let cert_der = CertificateDer::from(ca.cert.clone());
     let issuer = Issuer::from_ca_cert_der(&cert_der, ca_key_pair)?;
@@ -523,4 +523,95 @@ pub(crate) fn get_dns_names(cert: &Certificate) -> Result<Vec<String>, anyhow::E
         }
         CertData::SshBundle(_) => Ok(vec![]),
     }
+}
+
+pub fn parse_ca(cert_bytes: &[u8], key_bytes: &[u8], data_format: DataFormat, crl_number: i64) -> Result<CA> {
+    let cert = match data_format {
+        DataFormat::DER => X509::from_der(cert_bytes)?,
+        DataFormat::PEM => X509::from_pem(cert_bytes)?
+    };
+
+    let key = match data_format {
+        DataFormat::DER => PKey::private_key_from_der(key_bytes)?,
+        DataFormat::PEM => PKey::private_key_from_pem(key_bytes)?
+    };
+
+    let subject = cert.subject_name();
+    let cn = subject.entries_by_nid(Nid::COMMONNAME)
+        .next()
+        .ok_or_else(|| anyhow!("No CN in CA certificate"))?
+        .data()
+        .as_utf8()?
+        .to_string();
+
+    let ou = subject.entries_by_nid(Nid::ORGANIZATIONALUNITNAME)
+        .next()
+        .and_then(|e| e.data().as_utf8().ok().map(|s| s.to_string()));
+    
+    let created_on_unix = asn1_time_to_unix(cert.not_before())?;
+    let valid_until_unix = asn1_time_to_unix(cert.not_after())?;
+
+    Ok(CA {
+        id: -1,
+        name: Name { cn, ou },
+        created_on: created_on_unix,
+        valid_until: valid_until_unix,
+        ca_type: TLS,
+        cert: cert.to_der()?,
+        key: key.private_key_to_der()?,
+        crl_number,
+    })
+}
+
+pub fn parse_p12(p12_bytes: &[u8], password: &str) -> Result<(Name, i64, i64, Vec<u8>)> {
+    let p12 = Pkcs12::from_der(p12_bytes)?;
+    let parsed = p12.parse2(password)?;
+    let cert = parsed.cert.ok_or_else(|| anyhow!("No certificate in PKCS#12"))?;
+    
+    let subject = cert.subject_name();
+    let cn = subject.entries_by_nid(Nid::COMMONNAME)
+        .next()
+        .ok_or_else(|| anyhow!("No CN in certificate"))?
+        .data()
+        .as_utf8()?
+        .to_string();
+
+    let ou = subject.entries_by_nid(Nid::ORGANIZATIONALUNITNAME)
+        .next()
+        .and_then(|e| e.data().as_utf8().ok().map(|s| s.to_string()));
+
+    let created_on_unix = asn1_time_to_unix(cert.not_before())?;
+    let valid_until_unix = asn1_time_to_unix(cert.not_after())?;
+
+    Ok((Name { cn, ou }, created_on_unix, valid_until_unix, cert.to_der()?))
+}
+
+pub fn extract_crl_number(crl_bytes: &[u8], format: DataFormat) -> Result<i64> {
+    let crl_der = match format {
+        DataFormat::DER => crl_bytes.to_vec(),
+        DataFormat::PEM => {
+            let crl = X509Crl::from_pem(crl_bytes)?;
+            crl.to_der()?
+        }
+    };
+
+    use x509_parser::prelude::FromDer;
+    let (_, crl) = x509_parser::revocation_list::CertificateRevocationList::from_der(&crl_der)
+        .map_err(|e| anyhow!("Failed to parse CRL with x509-parser: {}", e))?;
+    
+    for ext in crl.extensions() {
+        if let x509_parser::extensions::ParsedExtension::CRLNumber(num) = ext.parsed_extension() {
+            let crl_number = num.to_string().parse::<i64>()?;
+            return Ok(crl_number);
+        }
+    }
+
+    Err(anyhow!("No CRL number extension in CRL"))
+}
+
+fn asn1_time_to_unix(time: &openssl::asn1::Asn1TimeRef) -> Result<i64> {
+    // We can't directly convert to UNIX, need to compare with Epoch
+    let epoch = Asn1Time::from_unix(0)?;
+    let diff = time.diff(&epoch)?;
+    Ok((diff.days as i64 * 24 * 3600 + diff.secs as i64) * 1000)
 }

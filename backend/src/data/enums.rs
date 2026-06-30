@@ -152,7 +152,7 @@ pub enum TimespanUnit {
     Hour = 3
 }
 
-#[derive(serde::Deserialize, rocket::form::FromFormField, rocket_okapi::JsonSchema, Clone, Debug, Copy, PartialEq, Eq, Default)]
+#[derive(serde::Deserialize, serde::Serialize, rocket::form::FromFormField, rocket_okapi::JsonSchema, Clone, Debug, Copy, PartialEq, Eq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum DataFormat {
     #[default]
