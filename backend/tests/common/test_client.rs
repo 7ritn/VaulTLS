@@ -295,6 +295,16 @@ impl VaulTLSClient {
         Ok(serde_json::from_str(&response.into_string().await.unwrap())?)
     }
 
+    pub(crate) async fn get_certificates(&self) -> Result<Vec<Certificate>> {
+        let request = self
+            .get("/certificates");
+        let response = request.dispatch().await;
+        assert_eq!(response.status(), Status::Ok);
+        assert_eq!(response.content_type(), Some(ContentType::JSON));
+
+        Ok(serde_json::from_str(&response.into_string().await.unwrap())?)
+    }
+
     pub(crate) async fn create_second_ca(&self) -> Result<()> {
         let data = CreateCARequest {
             ca_name: TEST_SECOND_CA_NAME.to_string().into(),

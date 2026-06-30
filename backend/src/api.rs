@@ -1,3 +1,5 @@
+use base64::Engine;
+use base64::prelude::BASE64_STANDARD;
 use std::env;
 use openidconnect::{Nonce, PkceCodeVerifier};
 use rocket_okapi::openapi;
@@ -11,9 +13,9 @@ use crate::auth::password_auth::Password;
 use crate::auth::session_auth::{generate_token, invalidate_token, Authenticated, AuthenticatedPrivileged};
 use crate::certs::common::{get_password, save_ca, Certificate, CA};
 use crate::certs::ssh_cert::{create_and_save_krl, create_krl, get_ssh_pem, retrieve_krl, SSHCertificateBuilder};
-use crate::certs::tls_cert::{create_and_save_crl, create_crl, get_timestamp, get_tls_pem, retrieve_crl, save_crl, TLSCertificateBuilder};
+use crate::certs::tls_cert::{create_and_save_crl, create_crl, get_timestamp, get_tls_pem, parse_ca, parse_p12, retrieve_crl, save_crl, TLSCertificateBuilder};
 use crate::constants::VAULTLS_VERSION;
-use crate::data::api::{CallbackQuery, ChangePasswordRequest, CreateCARequest, CreateUserCertificateRequest, CreateUserRequest, DownloadResponse, IsSetupResponse, LoginRequest, SetupRequest};
+use crate::data::api::{CallbackQuery, ChangePasswordRequest, CreateCARequest, CreateUserCertificateRequest, CreateUserRequest, DownloadResponse, ImportCARequest, ImportUserCertificateRequest, IsSetupResponse, LoginRequest, SetupRequest};
 use crate::data::enums::{CAType, CertificateType, DataFormat, PasswordRule, TimespanUnit, UserRole};
 use crate::data::error::ApiError;
 use crate::data::objects::{AppState, Name, User};
@@ -320,6 +322,93 @@ pub(crate) async fn get_current_user(
 ) -> Result<Json<User>, ApiError> {
     let user = state.db.get_user(authentication.claims.id).await?;
     Ok(Json(user))
+}
+
+#[openapi(tag = "CA")]
+#[post("/certificates/ca/import", format = "json", data = "<payload>")]
+/// Import an existing CA.
+/// `cert` and `key` can be PEM-encoded strings or base64-encoded DER-encoded binary data.
+/// `crl` (optional) can also be PEM or base64 DER.
+/// The `format` field specifies whether the input is `PEM` or `DER`.
+/// If `format` is `DER`, the binary data must be base64-encoded.
+pub(crate) async fn import_ca(
+    state: &State<AppState>,
+    payload: Json<ImportCARequest>,
+    _authentication: AuthenticatedPrivileged
+) -> Result<Json<i64>, ApiError> {
+    let cert_bytes = match payload.format {
+        DataFormat::PEM => payload.cert.as_bytes().to_vec(),
+        DataFormat::DER => BASE64_STANDARD.decode(&payload.cert).map_err(|e| ApiError::BadRequest(format!("Invalid base64 in cert: {}", e)))?,
+    };
+
+    let key_bytes = match payload.format {
+        DataFormat::PEM => payload.key.as_bytes().to_vec(),
+        DataFormat::DER => BASE64_STANDARD.decode(&payload.key).map_err(|e| ApiError::BadRequest(format!("Invalid base64 in key: {}", e)))?,
+    };
+
+    let mut crl_number = 0;
+    let mut crl_bytes = Vec::new();
+
+    if let Some(crl_str) = &payload.crl {
+        crl_bytes = match payload.format {
+            DataFormat::PEM => crl_str.as_bytes().to_vec(),
+            DataFormat::DER => BASE64_STANDARD.decode(crl_str).map_err(|e| ApiError::BadRequest(format!("Invalid base64 in CRL: {}", e)))?,
+        };
+        debug!("Extracting CRL number from CRL");
+        match crate::certs::tls_cert::extract_crl_number(&crl_bytes, payload.format) {
+            Ok(extracted_crl_number) => {
+                info!(extracted_crl_number, "Extracted CRL number from imported CRL");
+                crl_number = extracted_crl_number;
+            }
+            Err(e) => {
+                warn!(error = e.to_string(), "Failed to extract CRL number from imported CRL");
+            }
+        }
+    }
+
+    let mut ca = parse_ca(&cert_bytes, &key_bytes, payload.format, crl_number)?;
+    ca = state.db.insert_ca(ca).await?;
+    save_ca(&ca)?;
+
+    if payload.crl.is_some() {
+        save_crl(crl_bytes, ca.id)?;
+    }
+
+    Ok(Json(ca.id))
+}
+
+#[openapi(tag = "Certificates")]
+#[post("/certificates/import", format = "json", data = "<payload>")]
+/// Import an existing user certificate from a PKCS#12 file.
+/// `p12` must be a base64-encoded PKCS#12 binary file if `format` is `DER`, or a PEM-encoded PKCS#12 file if `format` is `PEM`.
+/// If `format` is `DER`, the binary data must be base64-encoded.
+pub(crate) async fn import_user_certificate(
+    state: &State<AppState>,
+    payload: Json<ImportUserCertificateRequest>,
+    _authentication: AuthenticatedPrivileged
+) -> Result<Json<Certificate>, ApiError> {
+    let p12_bytes = match payload.format {
+        DataFormat::PEM => payload.p12.as_bytes().to_vec(),
+        DataFormat::DER => BASE64_STANDARD.decode(&payload.p12).map_err(|e| ApiError::BadRequest(format!("Invalid base64 in p12: {}", e)))?,
+    };
+    let (name, created_on, valid_until, _cert_der) = parse_p12(&p12_bytes, &payload.password)?;
+
+    let cert = Certificate {
+        id: -1,
+        name,
+        created_on,
+        valid_until,
+        certificate_type: payload.cert_type,
+        user_id: payload.user_id,
+        renew_method: payload.renew_method,
+        ca_id: payload.ca_id,
+        revoked_at: None,
+        data: crate::data::enums::CertData::Pkcs12(p12_bytes),
+        password: payload.password.clone(),
+    };
+
+    let inserted_cert = state.db.insert_user_cert(cert).await?;
+    Ok(Json(inserted_cert))
 }
 
 #[openapi(tag = "Certificates")]

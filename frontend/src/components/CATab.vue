@@ -92,6 +92,15 @@
       {{ $t('ca.createCa') }}
     </button>
 
+    <button
+        id="ImportCAButton"
+        v-if="authStore.isAdmin"
+        class="btn btn-outline-primary mx-1"
+        @click="showImportModal"
+    >
+      {{ $t('ca.importCa') }}
+    </button>
+
     <div v-if="loading" class="text-center mt-3">{{ $t('ca.loadingCas') }}</div>
     <div v-if="error" class="alert alert-danger mt-3">{{ error }}</div>
 
@@ -224,13 +233,85 @@
         </div>
       </div>
     </div>
+
+    <!-- Import CA Modal -->
+    <div
+        v-if="isImportModalVisible"
+        class="modal show d-block"
+        tabindex="-1"
+        style="background: rgba(0, 0, 0, 0.5)"
+    >
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">{{ $t('ca.importModal.title') }}</h5>
+            <button type="button" class="btn-close" @click="closeImportModal"></button>
+          </div>
+          <div class="modal-body">
+            <div class="mb-3">
+              <label for="importFormat" class="form-label">{{ $t('common.format') }}</label>
+              <select class="form-select" id="importFormat" v-model="importReq.format">
+                <option :value="DataFormat.PEM">PEM</option>
+                <option :value="DataFormat.DER">DER (Base64)</option>
+              </select>
+            </div>
+            <div class="mb-3">
+              <label for="importCert" class="form-label">{{ $t('ca.importModal.cert') }}</label>
+              <textarea
+                  id="importCert"
+                  v-model="importReq.cert"
+                  class="form-control"
+                  rows="3"
+                  :placeholder="importReq.format === DataFormat.PEM ? '-----BEGIN CERTIFICATE-----...' : 'Base64 encoded DER...'"
+                  required
+              ></textarea>
+            </div>
+            <div class="mb-3">
+              <label for="importKey" class="form-label">{{ $t('ca.importModal.key') }}</label>
+              <textarea
+                  id="importKey"
+                  v-model="importReq.key"
+                  class="form-control"
+                  rows="3"
+                  :placeholder="importReq.format === DataFormat.PEM ? '-----BEGIN PRIVATE KEY-----...' : 'Base64 encoded DER...'"
+                  required
+              ></textarea>
+            </div>
+            <div class="mb-3">
+              <label for="importCrl" class="form-label">{{ $t('ca.importModal.crl') }} ({{ $t('common.optional') }})</label>
+              <textarea
+                  id="importCrl"
+                  v-model="importReq.crl"
+                  class="form-control"
+                  rows="2"
+                  :placeholder="importReq.format === DataFormat.PEM ? '-----BEGIN X509 CRL-----...' : 'Base64 encoded DER...'"
+              ></textarea>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" @click="closeImportModal">
+              {{ $t('common.cancel') }}
+            </button>
+            <button
+                type="button"
+                class="btn btn-primary"
+                :disabled="loading || !importReq.cert || !importReq.key"
+                @click="doImportCA"
+            >
+              <span v-if="loading">{{ $t('common.importing') }}</span>
+              <span v-else>{{ $t('common.import') }}</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import {computed, onMounted, reactive, ref} from 'vue';
 import {useCAStore} from '@/stores/cas';
-import {type CA, type CARequirements, CAType} from '@/types/CA';
+import {type CA, type CARequirements, CAType, DataFormat, type ImportCARequest} from '@/types/CA';
 import {useAuthStore} from '@/stores/auth';
 import {ValidityUnit} from "@/types/ValidityUnit.ts";
 
@@ -246,6 +327,7 @@ const hasAnyOU = computed(() => Array.from(cas.value.values()).some(ca => ca.nam
 
 const isDeleteModalVisible = ref(false);
 const isCreateModalVisible = ref(false);
+const isImportModalVisible = ref(false);
 const caToDelete = ref<CA | null>(null);
 
 const caReq = reactive<CARequirements>({
@@ -253,6 +335,13 @@ const caReq = reactive<CARequirements>({
   ca_type: CAType.TLS,
   validity_duration: undefined,
   validity_unit: ValidityUnit.Year
+});
+
+const importReq = reactive<ImportCARequest>({
+  cert: '',
+  key: '',
+  crl: '',
+  format: DataFormat.PEM
 });
 
 const showOUField = ref(false);
@@ -273,9 +362,26 @@ const closeCreateModal = () => {
   showOUField.value = false;
 };
 
+const showImportModal = () => {
+  isImportModalVisible.value = true;
+};
+
+const closeImportModal = () => {
+  isImportModalVisible.value = false;
+  importReq.cert = '';
+  importReq.key = '';
+  importReq.crl = '';
+  importReq.format = DataFormat.PEM;
+};
+
 const createCA = async () => {
   await caStore.createCA(caReq);
   closeCreateModal();
+};
+
+const doImportCA = async () => {
+  await caStore.importCA(importReq);
+  closeImportModal();
 };
 
 const confirmDeletion = (ca: CA) => {

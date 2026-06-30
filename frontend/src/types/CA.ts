@@ -20,3 +20,15 @@ export interface CARequirements {
     validity_duration?: number;         // Validity duration
     validity_unit?: ValidityUnit;       // Validity unit (hours, days, months, years)
 }
+
+export enum DataFormat {
+    DER = 'der',
+    PEM = 'pem'
+}
+
+export interface ImportCARequest {
+    cert: string;
+    key: string;
+    crl?: string;
+    format: DataFormat;
+}

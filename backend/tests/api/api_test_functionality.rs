@@ -1,3 +1,5 @@
+use base64::Engine;
+use base64::prelude::BASE64_STANDARD;
 use std::env::temp_dir;
 use std::fs;
 use std::process::Command;
@@ -735,6 +737,7 @@ async fn test_ssh_revocation_and_krl() -> Result<()> {
 
     let mut krl_path = temp_dir();
     krl_path.push(format!("krl-{}.krl", 2));
+    fs::write(&krl_path, &krl_data)?;
 
     let mut cert_path = temp_dir();
     cert_path.push(format!("ssh-{}.pub", 1));
@@ -750,6 +753,139 @@ async fn test_ssh_revocation_and_krl() -> Result<()> {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert_eq!(output.status.code(), Some(1));
     assert!(stdout.contains("REVOKED"));
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_ca_import_with_crl_extraction() -> Result<()> {
+    let client = VaulTLSClient::new_authenticated().await;
+
+    // 1. Create a CA manually using openssl
+    let rsa = openssl::rsa::Rsa::generate(2048)?;
+    let pkey = openssl::pkey::PKey::from_rsa(rsa)?;
+    let mut name_builder = openssl::x509::X509NameBuilder::new()?;
+    name_builder.append_entry_by_text("CN", "Import Test CA")?;
+    let name = name_builder.build();
+
+    let mut builder = X509::builder()?;
+    builder.set_version(2)?;
+    builder.set_subject_name(&name)?;
+    builder.set_issuer_name(&name)?;
+    builder.set_pubkey(&pkey)?;
+    let not_before = openssl::asn1::Asn1Time::days_from_now(0)?;
+    let not_after = openssl::asn1::Asn1Time::days_from_now(365)?;
+    builder.set_not_before(&not_before)?;
+    builder.set_not_after(&not_after)?;
+    let basic_constraints = openssl::x509::extension::BasicConstraints::new().ca().build()?;
+    builder.append_extension(basic_constraints)?;
+    builder.sign(&pkey, openssl::hash::MessageDigest::sha256())?;
+    let cert = builder.build();
+
+    let cert_pem = String::from_utf8(cert.to_pem()?)?;
+    let key_pem = String::from_utf8(pkey.private_key_to_pem_pkcs8()?)?;
+
+    // Create a CRL with a specific CRL number using rcgen since openssl-rust is painful here
+    let now = OffsetDateTime::now_utc();
+    let crl_params = rcgen::CertificateRevocationListParams {
+        this_update: now,
+        next_update: now + time::Duration::days(30),
+        crl_number: rcgen::SerialNumber::from(123u64),
+        issuing_distribution_point: None,
+        revoked_certs: vec![],
+        key_identifier_method: rcgen::KeyIdMethod::Sha256,
+    };
+    
+    // We need the key and cert in rcgen format
+    let key_pair = rcgen::KeyPair::from_pem(&key_pem)?;
+    let ca_cert_der = rustls_pki_types::CertificateDer::from(cert.to_der()?);
+    let issuer = rcgen::Issuer::from_ca_cert_der(&ca_cert_der, key_pair)?;
+    
+    let crl = crl_params.signed_by(&issuer)?;
+    let crl_pem = crl.pem()?;
+
+    let payload = serde_json::json!({
+        "cert": cert_pem,
+        "key": key_pem,
+        "crl": crl_pem,
+        "format": "pem"
+    });
+
+    let response = client.post("/certificates/ca/import")
+        .body(payload.to_string())
+        .header(ContentType::JSON)
+        .dispatch().await;
+
+    assert_eq!(response.status(), Status::Ok);
+    let imported_ca_id: i64 = serde_json::from_str(&response.into_string().await.unwrap())?;
+
+    // 3. Verify CRL number in DB
+    let cas = client.get_all_ca().await?;
+    let imported_ca = cas.iter().find(|ca| ca.id == imported_ca_id).expect("Imported CA not found");
+    
+    assert_eq!(imported_ca.crl_number, 123);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_user_cert_import() -> Result<()> {
+    let client = VaulTLSClient::new_authenticated().await;
+
+    // 1. Create a PKCS#12 file manually using openssl
+    let rsa = openssl::rsa::Rsa::generate(2048)?;
+    let pkey = openssl::pkey::PKey::from_rsa(rsa)?;
+    let mut name_builder = openssl::x509::X509NameBuilder::new()?;
+    name_builder.append_entry_by_text("CN", "Imported User Cert")?;
+    let name = name_builder.build();
+
+    let mut builder = X509::builder()?;
+    builder.set_version(2)?;
+    builder.set_subject_name(&name)?;
+    builder.set_issuer_name(&name)?; // Self-signed for simplicity in test
+    builder.set_pubkey(&pkey)?;
+    let not_before = openssl::asn1::Asn1Time::days_from_now(0)?;
+    let not_after = openssl::asn1::Asn1Time::days_from_now(365)?;
+    builder.set_not_before(&not_before)?;
+    builder.set_not_after(&not_after)?;
+    builder.sign(&pkey, openssl::hash::MessageDigest::sha256())?;
+    let cert = builder.build();
+
+    let p12_password = "test-password";
+    let p12 = Pkcs12::builder()
+        .name("Imported User Cert")
+        .cert(&cert)
+        .pkey(&pkey)
+        .build2(p12_password)?;
+    let p12_der = p12.to_der()?;
+    let p12_base64 = BASE64_STANDARD.encode(&p12_der);
+
+    // 2. Import via API
+    let payload = serde_json::json!({
+        "p12": p12_base64,
+        "password": p12_password,
+        "user_id": 1,
+        "ca_id": 1,
+        "renew_method": 0, // None
+        "cert_type": 0,    // TLSClient
+        "format": "der"
+    });
+
+    let response = client.post("/certificates/import")
+        .body(payload.to_string())
+        .header(ContentType::JSON)
+        .dispatch().await;
+
+    assert_eq!(response.status(), Status::Ok);
+    let imported_cert: Certificate = serde_json::from_str(&response.into_string().await.unwrap())?;
+
+    assert_eq!(imported_cert.name.cn, "Imported User Cert");
+    assert_eq!(imported_cert.user_id, 1);
+    assert_eq!(imported_cert.ca_id, 1);
+
+    // 3. Verify it's in the list
+    let certs = client.get_certificates().await?;
+    assert!(certs.iter().any(|c| c.id == imported_cert.id));
 
     Ok(())
 }

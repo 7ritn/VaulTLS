@@ -15,6 +15,10 @@
     "username": "Username",
     "validity": "Validity",
     "creating": "Creating...",
+    "importing": "Importing...",
+    "import": "Import",
+    "optional": "optional",
+    "format": "Format",
     "hideOu": "Hide OU field",
     "addOu": "Add OU (Group)",
     "ouGroup": "OU (Group)",
@@ -63,12 +67,17 @@
     "colRenewMethod": "Renew Method",
     "revoke": "Revoke",
     "createCertificate": "Create New Certificate",
+    "importCertificate": "Import Certificate",
     "loadingCerts": "Loading certificates...",
     "revokedSection": "Revoked Certificates",
     "colCreated": "Created",
     "colValidity": "Validity",
     "colRevoked": "Revoked",
     "noRevokedCerts": "No revoked certificates found.",
+    "importModal": {
+      "title": "Import User Certificate",
+      "uploadFile": "Upload File"
+    },
     "generateModal": {
       "title": "Generate New Certificate",
       "blank": "(Blank)",
@@ -117,8 +126,16 @@
     "der_format": "DER Format",
     "pem_format": "PEM Format",
     "createCa": "Create New CA",
+    "importCa": "Import CA",
     "loadingCas": "Loading CAs...",
     "enterCaCommonName": "Enter CA Common Name",
+    "importModal": {
+      "title": "Import Certificate Authority",
+      "cert": "Certificate (PEM or Base64 DER)",
+      "key": "Private Key (PEM or Base64 DER)",
+      "crl": "CRL (PEM or Base64 DER)",
+      "uploadFile": "Upload File"
+    },
     "createModal": {
       "title": "Create New Certificate Authority",
       "caName": "CA Name (CN)",

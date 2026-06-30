@@ -171,6 +171,8 @@ pub async fn create_rocket() -> Rocket<Build> {
             openapi_get_routes![
                 version,
                 get_certificates,
+                import_ca,
+                import_user_certificate,
                 create_ca,
                 create_user_certificate,
                 get_all_ca,
@@ -261,6 +263,8 @@ pub async fn create_test_rocket() -> Rocket<Build> {
             openapi_get_routes![
                 version,
                 get_certificates,
+                import_ca,
+                import_user_certificate,
                 create_user_certificate,
                 create_ca,
                 get_all_ca,

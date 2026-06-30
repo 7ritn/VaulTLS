@@ -8,7 +8,7 @@ use rocket_okapi::okapi::schemars;
 use rocket_okapi::{okapi, JsonSchema, OpenApiError};
 use rocket_okapi::okapi::openapi3::{Responses, Response as OAResponse, MediaType, RefOr};
 use rocket_okapi::response::OpenApiResponderInner;
-use crate::data::enums::{CAType, CertificateRenewMethod, CertificateType, TimespanUnit, UserRole};
+use crate::data::enums::{CAType, CertificateRenewMethod, CertificateType, DataFormat, TimespanUnit, UserRole};
 use crate::data::objects::Name;
 
 #[derive(Serialize, Deserialize, JsonSchema)]
@@ -133,4 +133,23 @@ pub struct CreateUserRequest {
     pub user_email: String,
     pub password: Option<String>,
     pub role: UserRole
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct ImportCARequest {
+    pub cert: String, // PEM or base64 DER
+    pub key: String,  // PEM or base64 DER
+    pub crl: Option<String>, // PEM or base64 DER
+    pub format: DataFormat,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct ImportUserCertificateRequest {
+    pub p12: String, // base64 DER
+    pub password: String,
+    pub user_id: i64,
+    pub ca_id: i64,
+    pub renew_method: CertificateRenewMethod,
+    pub cert_type: CertificateType,
+    pub format: DataFormat,
 }

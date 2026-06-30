@@ -1,6 +1,6 @@
 import ApiClient from './ApiClient';
 import type {Certificate} from '@/types/Certificate';
-import type {CertificateRequirements} from "@/types/CertificateRequirements.ts";
+import type {CertificateRequirements, ImportUserCertificateRequest} from "@/types/CertificateRequirements.ts";
 
 export const fetchCertificates = async (): Promise<Certificate[]> => {
     return await ApiClient.get<Certificate[]>('/certificates');
@@ -17,6 +17,10 @@ export const downloadCertificate = async (id: number): Promise<void> => {
 export const createCertificate = async (certReq: CertificateRequirements): Promise<number> => {
     const cert = await ApiClient.post<Certificate>('/certificates', certReq);
     return cert.id;
+};
+
+export const importCertificate = async (importReq: ImportUserCertificateRequest): Promise<Certificate> => {
+    return await ApiClient.post<Certificate>('/certificates/import', importReq);
 };
 
 export const deleteCertificate = async (id: number): Promise<void> => {
