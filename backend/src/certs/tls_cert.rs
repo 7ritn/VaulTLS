@@ -612,6 +612,6 @@ pub fn extract_crl_number(crl_bytes: &[u8], format: DataFormat) -> Result<i64> {
 fn asn1_time_to_unix(time: &openssl::asn1::Asn1TimeRef) -> Result<i64> {
     // We can't directly convert to UNIX, need to compare with Epoch
     let epoch = Asn1Time::from_unix(0)?;
-    let diff = time.diff(&epoch)?;
+    let diff = epoch.diff(time)?;
     Ok((diff.days as i64 * 24 * 3600 + diff.secs as i64) * 1000)
 }
