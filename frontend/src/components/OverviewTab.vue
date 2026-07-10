@@ -542,6 +542,7 @@
             <button
                 type="button"
                 class="btn btn-primary"
+                data-testid="import-certificate-button"
                 :disabled="loading || !importImportReq.p12"
                 @click="doImportCertificate"
             >

@@ -295,6 +295,7 @@
             <button
                 type="button"
                 class="btn btn-primary"
+                data-testid="import-ca-button"
                 :disabled="loading || !importReq.cert || !importReq.key"
                 @click="doImportCA"
             >
