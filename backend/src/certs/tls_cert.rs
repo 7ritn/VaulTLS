@@ -404,12 +404,12 @@ pub(crate) fn get_tls_pem(ca: &CA) -> Result<Vec<u8>, ErrorStack> {
     cert.to_pem()
 }
 
-pub(crate) fn extract_pem_serial_number(pem: &Vec<u8>) -> Result<Vec<u8>> {
+pub(crate) fn extract_pem_serial_number(pem: &[u8]) -> Result<Vec<u8>> {
     let x509 = X509::from_pem(pem)?;
     Ok(x509.serial_number().to_bn()?.to_vec())
 }
 
-pub(crate) fn extract_pkcs12_serial_number(pkcs12: &Vec<u8>, password: &str) -> Result<Vec<u8>> {
+pub(crate) fn extract_pkcs12_serial_number(pkcs12: &[u8], password: &str) -> Result<Vec<u8>> {
     let encrypted_p12 = Pkcs12::from_der(pkcs12)?;
     let Some(inner) = encrypted_p12.parse2(password)?.cert else {
         return Err(anyhow!("No certificate found in PKCS#12"));
@@ -541,12 +541,11 @@ pub fn parse_ca(cert_bytes: &[u8], key_bytes: &[u8], data_format: DataFormat, cr
         .next()
         .ok_or_else(|| anyhow!("No CN in CA certificate"))?
         .data()
-        .as_utf8()?
-        .to_string();
+        .to_string()?;
 
     let ou = subject.entries_by_nid(Nid::ORGANIZATIONALUNITNAME)
         .next()
-        .and_then(|e| e.data().as_utf8().ok().map(|s| s.to_string()));
+        .and_then(|e| e.data().to_string().ok());
     
     let created_on_unix = asn1_time_to_unix(cert.not_before())?;
     let valid_until_unix = asn1_time_to_unix(cert.not_after())?;
@@ -573,12 +572,11 @@ pub fn parse_p12(p12_bytes: &[u8], password: &str) -> Result<(Name, i64, i64, Ve
         .next()
         .ok_or_else(|| anyhow!("No CN in certificate"))?
         .data()
-        .as_utf8()?
-        .to_string();
+        .to_string()?;
 
     let ou = subject.entries_by_nid(Nid::ORGANIZATIONALUNITNAME)
         .next()
-        .and_then(|e| e.data().as_utf8().ok().map(|s| s.to_string()));
+        .and_then(|e| e.data().to_string().ok());
 
     let created_on_unix = asn1_time_to_unix(cert.not_before())?;
     let valid_until_unix = asn1_time_to_unix(cert.not_after())?;

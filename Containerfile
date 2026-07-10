@@ -1,5 +1,5 @@
 # Stage 1: Build the Vue.js frontend
-FROM node:25 AS frontend-builder
+FROM node:26 AS frontend-builder
 
 COPY assets/logo.png /app/assets/logo.png
 
@@ -11,7 +11,7 @@ COPY frontend/ ./
 RUN npm run build
 
 # Stage 2: Build the Rust backend binary
-FROM rust:1.94 AS backend-builder
+FROM rust:1.97 AS backend-builder
 
 ARG RUN_TESTS=false
 WORKDIR /app/backend
