@@ -35,4 +35,11 @@ COPY --from=backend-builder /app/backend/backend /app/bin/backend
 
 EXPOSE 80
 
-CMD ["/bin/sh", "-c", "nginx && /app/bin/backend"]
+# Prepare init system
+RUN apt-get update
+RUN apt-get install tini
+
+COPY container/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+CMD ["/entrypoint.sh"]
