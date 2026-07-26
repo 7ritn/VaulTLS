@@ -2,6 +2,7 @@ use std::{env, fs};
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::sync::Arc;
+use anyhow::anyhow;
 use derive_deref::Deref;
 use openssl::base64;
 use parking_lot::RwLock;
@@ -229,7 +230,7 @@ impl Mail {
             let port = env::var("VAULTLS_MAIL_PORT")?;
             let encryption = env::var("VAULTLS_MAIL_ENCRYPTION").unwrap_or_default().into();
             let username = env::var("VAULTLS_MAIL_USERNAME").ok();
-            let password = get_secret("VAULTLS_OIDC_SECRET_PASSWORD").ok();
+            let password = get_secret("VAULTLS_OIDC_SECRET_PASSWORD");
             let from = env::var("VAULTLS_MAIL_FROM").unwrap_or_default();
 
             Ok(Mail{
@@ -280,7 +281,7 @@ impl OIDC {
     fn load_from_env(&mut self) {
         let get_env = || -> anyhow::Result<OIDC> {
             let id = env::var("VAULTLS_OIDC_ID")?;
-            let secret = get_secret("VAULTLS_OIDC_SECRET")?;
+            let secret = get_secret("VAULTLS_OIDC_SECRET").ok_or(anyhow!("No OIDC Secret specified"))?;
             let auth_url = env::var("VAULTLS_OIDC_AUTH_URL")?;
             let callback_url = env::var("VAULTLS_OIDC_CALLBACK_URL")?;
             Ok(OIDC{ id, secret, auth_url, callback_url })

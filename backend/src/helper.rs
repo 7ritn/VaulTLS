@@ -12,18 +12,16 @@ where
 }
 
 /// Get secret
-pub fn get_secret(name: &str) -> anyhow::Result<String> {
+pub fn get_secret(name: &str) -> Option<String> {
+    let mut path = "/run/secrets/".to_string() + name;
     if let Ok(env_var) = env::var(name) {
-        Ok(if Path::new(&env_var).exists() {
-            fs::read_to_string(env_var)
-                .unwrap_or_default()
-                .trim()
-                .to_string()
-        } else {
-            env_var
-        })
-    } else {
-        Ok(fs::read_to_string("/run/secrets/".to_string() + name)?)
+        if !Path::new(&env_var).exists() {
+            return Some(env_var)
+        }
+        path = env_var;
     }
 
+    fs::read_to_string(path)
+        .map(|secret| secret.trim().to_string())
+        .ok()
 }
