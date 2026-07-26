@@ -61,7 +61,7 @@ impl VaulTLSDB {
         let db_secret_result = get_secret("VAULTLS_DB_SECRET");
         manager = if db_encrypted {
             debug!("Using encrypted database");
-            if let Ok(ref db_secret_result) = db_secret_result {
+            if let Some(ref db_secret_result) = db_secret_result {
                 let db_secret = db_secret_result.clone();
                 manager.with_init(move |conn| {
                     conn.pragma_update(None, "key", db_secret.clone())?;

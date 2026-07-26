@@ -75,7 +75,7 @@ pub async fn create_rocket() -> Rocket<Build> {
     let db_initialized = db_path.exists();
     let mut encrypted = settings.get_db_encrypted();
 
-    if !encrypted && let Ok(db_secret) = get_secret("VAULTLS_DB_SECRET") {
+    if !encrypted && let Some(db_secret) = get_secret("VAULTLS_DB_SECRET") {
         if db_initialized {
             VaulTLSDB::migrate_to_encrypted(&db_secret).expect("Failed to migrate database to encrypted");
         }
@@ -94,7 +94,7 @@ pub async fn create_rocket() -> Rocket<Build> {
     }
     info!("Database initialized");
 
-    if let Ok(email) = env::var("VAULTLS_ACCOUNT_EMAIL") && let Ok(password) = get_secret("VAULTLS_ACCOUNT_PASSWORD") {
+    if let Ok(email) = env::var("VAULTLS_ACCOUNT_EMAIL") && let Some(password) = get_secret("VAULTLS_ACCOUNT_PASSWORD") {
         info!("Setting password for user {} and exiting", email);
         let user = db.get_user_by_email(email.clone()).await.expect("Failed to find user");
         let password_hash = Password::new_double_hash(&password).expect("Failed to hash password");
