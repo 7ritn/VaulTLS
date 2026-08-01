@@ -30,7 +30,7 @@ r2d2_sqlite = { version = "0.35.0", features = ["bundled-sqlcipher"] }
 openssl = "0.10.81"
 openssl-sys = "0.9.117"
 argon2 = "0.5.3"
-jsonwebtoken = { version = "10.4.0", features = ["rust_crypto"] }
+jsonwebtoken = { version = "11.0.0", features = ["rust_crypto"] }
 openidconnect = "4.0.1"
 anyhow = "1.0.103"
 num_enum = "0.7.6"
