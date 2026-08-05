@@ -5,6 +5,7 @@ use openidconnect::reqwest::{ClientBuilder, Url};
 use openidconnect::{reqwest, AccessTokenHash, AuthorizationCode, ClientId, ClientSecret, CsrfToken, IssuerUrl, Nonce, OAuth2TokenResponse, PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, Scope, TokenResponse};
 use crate::data::enums::UserRole;
 use crate::data::objects::User;
+use tracing::{warn};
 
 /// OIDC authentication
 #[derive(Debug)]
@@ -24,12 +25,28 @@ impl OidcAuth {
         let issuer_url = IssuerUrl::new(oidc_config.auth_url.clone())?;
         let callback_url = RedirectUrl::new(oidc_config.callback_url.clone())?;
 
-        let http_client = ClientBuilder::new()
-            .redirect(reqwest::redirect::Policy::none())
-            .build()?;
+        let mut builder = ClientBuilder::new()
+            .redirect(reqwest::redirect::Policy::none());
 
-        let provider = CoreProviderMetadata::discover_async(issuer_url, &http_client).await?;
-        
+        if let Ok(ca_path) = std::env::var("SSL_CERT_FILE") {
+            let cert_pem = std::fs::read(&ca_path)
+                .map_err(|e| anyhow::anyhow!("Failed to read OIDC CA certificate from {}: {}", ca_path, e))?;
+            let ca_cert = reqwest::Certificate::from_pem(&cert_pem)
+                .map_err(|e| anyhow::anyhow!("Failed to parse OIDC CA certificate from {}: {}", ca_path, e))?;
+            builder = builder.tls_certs_merge(ca_cert);
+
+            warn!("Loaded custom CA certificate from {}", ca_path);
+        };
+
+        let http_client = builder.build()?;
+
+        let provider = CoreProviderMetadata::discover_async(issuer_url, &http_client).await {
+            Ok(p) => p,
+            Err(e) => {
+                return Err(anyhow::anyhow!("OIDC Discovery Error: {}", e));
+            }
+        };
+
         Ok(OidcAuth{ client_id, client_secret, callback_url, provider, http_client })
     }
 
