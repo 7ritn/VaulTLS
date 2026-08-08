@@ -33,19 +33,14 @@ impl OidcAuth {
                 .map_err(|e| anyhow::anyhow!("Failed to read OIDC CA certificate from {}: {}", ca_path, e))?;
             let ca_cert = reqwest::Certificate::from_pem(&cert_pem)
                 .map_err(|e| anyhow::anyhow!("Failed to parse OIDC CA certificate from {}: {}", ca_path, e))?;
-            builder = builder.tls_certs_merge(ca_cert);
+            builder = builder.add_root_certificate(ca_cert);
 
             warn!("Loaded custom CA certificate from {}", ca_path);
         };
 
         let http_client = builder.build()?;
 
-        let provider = CoreProviderMetadata::discover_async(issuer_url, &http_client).await {
-            Ok(p) => p,
-            Err(e) => {
-                return Err(anyhow::anyhow!("OIDC Discovery Error: {}", e));
-            }
-        };
+        let provider = CoreProviderMetadata::discover_async(issuer_url, &http_client).await?;
 
         Ok(OidcAuth{ client_id, client_secret, callback_url, provider, http_client })
     }
