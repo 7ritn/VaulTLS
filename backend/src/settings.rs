@@ -332,10 +332,14 @@ impl InnerSettings {
         Ok(())
     }
 
-     fn set_settings(&mut self, settings: &InnerSettings) -> Result<(), ApiError> {
+    fn set_settings(&mut self, settings: &InnerSettings) -> Result<(), ApiError> {
         self.common = settings.common.clone();
         self.mail = settings.mail.clone();
+
+        let additional_audiences = self.oidc.additional_audiences.clone();
         self.oidc = settings.oidc.clone();
+        self.oidc.additional_audiences = additional_audiences;
+
         self.acme = settings.acme.clone();
 
         self.save_to_file(None)
