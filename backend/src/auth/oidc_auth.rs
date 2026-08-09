@@ -13,6 +13,7 @@ pub(crate) struct OidcAuth {
     client_id: ClientId,
     client_secret: Option<ClientSecret>,
     callback_url: RedirectUrl,
+    additional_audiences: Vec<String>,
     provider: CoreProviderMetadata,
     http_client: reqwest::Client,
 }
@@ -24,6 +25,7 @@ impl OidcAuth {
         let client_secret = Some(ClientSecret::new(oidc_config.secret.clone()));
         let issuer_url = IssuerUrl::new(oidc_config.auth_url.clone())?;
         let callback_url = RedirectUrl::new(oidc_config.callback_url.clone())?;
+        let additional_audiences = oidc_config.additional_audiences.clone();
 
         let mut builder = ClientBuilder::new()
             .redirect(reqwest::redirect::Policy::none());
@@ -42,7 +44,7 @@ impl OidcAuth {
 
         let provider = CoreProviderMetadata::discover_async(issuer_url, &http_client).await?;
 
-        Ok(OidcAuth{ client_id, client_secret, callback_url, provider, http_client })
+        Ok(OidcAuth{ client_id, client_secret, callback_url, provider, http_client, additional_audiences})
     }
 
     /// Generate OIDC authentication URL
@@ -89,7 +91,9 @@ impl OidcAuth {
         
         let Some(id_token) = token_response.id_token() else { return Err(anyhow!("No id token")) };
 
-        let id_token_verifier = client.id_token_verifier();
+        let id_token_verifier = client
+            .id_token_verifier()
+            .set_other_audience_verifier_fn(|aud| self.additional_audiences.contains(aud));
 
         let claims = id_token.claims(&id_token_verifier, &nonce)?;
         if let Some(expected_access_token_hash) = claims.access_token_hash() {
