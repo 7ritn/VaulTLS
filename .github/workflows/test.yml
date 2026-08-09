@@ -54,9 +54,9 @@ jobs:
         run: |
           echo "REPO_LOWER=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            echo "PR_TAG=dev-pr-${{ github.event.pull_request.number }}" >> $GITHUB_ENV
+            echo "PUSH_TAG=dev-pr-${{ github.event.pull_request.number }}" >> $GITHUB_ENV
           else
-            echo "PR_TAG=dev" >> $GITHUB_ENV
+            echo "PUSH_TAG=dev" >> $GITHUB_ENV
           fi
 
       - name: Build Docker image
@@ -65,9 +65,7 @@ jobs:
           context: .
           file: Containerfile
           push: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false }}
-          tags: |
-            ghcr.io/${{ env.REPO_LOWER }}:dev
-            ghcr.io/${{ env.REPO_LOWER }}:${{ env.PR_TAG }}
+          tags: ghcr.io/${{ env.REPO_LOWER }}:${{ env.PUSH_TAG }}
           load: true  # Needed so the image is available to docker-compose locally
           cache-from: type=gha
           cache-to: type=gha,mode=max
