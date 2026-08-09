@@ -107,6 +107,10 @@ impl OidcAuth {
             }
         }
 
+        if let Some(azp) = claims.authorized_party() && &self.client_id != azp {
+            return Err(anyhow!("OIDC: azp claim does not match client_id"))
+        }
+
         let userinfo: CoreUserInfoClaims = client
             .user_info(token_response.access_token().clone(), None)?
             .request_async(&self.http_client)
