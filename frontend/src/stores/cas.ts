@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import type {CA, CARequirements, ImportCARequest} from '@/types/CA';
-import {createCA, deleteCA, downloadCAByID, downloadCRL, fetchCAs, importCA} from "@/api/cas.ts";
+import {createCA, deleteCA, downloadCAByID, downloadAllTLSCAs, downloadCRL, fetchCAs, importCA} from "@/api/cas.ts";
 import axios from 'axios';
 
 export const useCAStore = defineStore('ca', {
@@ -50,6 +50,21 @@ export const useCAStore = defineStore('ca', {
                     this.error = 'Failed to download the CA: ' + err.response?.data?.error;
                 } else {
                     this.error = 'Failed to download the CA';
+                }
+                console.error(err);
+            }
+        },
+
+        // Trigger the download of all TLS CAs concatenated
+        async downloadAllTLSCAs(): Promise<void> {
+            try {
+                this.error = null;
+                await downloadAllTLSCAs();
+            } catch (err) {
+                if (axios.isAxiosError(err)) {
+                    this.error = 'Failed to download all CAs: ' + err.response?.data?.error;
+                } else {
+                    this.error = 'Failed to download all CAs';
                 }
                 console.error(err);
             }
