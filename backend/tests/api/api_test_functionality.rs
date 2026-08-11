@@ -414,7 +414,7 @@ async fn test_create_certificate_with_short_lived_ca() -> Result<()> {
 
     let cert_req = CreateUserCertificateRequest {
         cert_name: TEST_CLIENT_CERT_NAME.into(),
-        validity_duration: Some(2),
+        validity_duration: Some(3),
         validity_unit: Some(TimespanUnit::Year),
         user_id: 1,
         notify_user: None,

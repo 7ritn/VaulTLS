@@ -337,7 +337,7 @@ pub(crate) fn get_timestamp(duration: u64, unit: TimespanUnit) -> OffsetDateTime
         TimespanUnit::Day => 24,
         TimespanUnit::Hour => 1,
     };
-    let duration_s = cmp::min(duration * duration_per_unit_h, 1) * 60 * 60;
+    let duration_s = cmp::max(duration * duration_per_unit_h, 1) * 60 * 60;
     OffsetDateTime::now_utc() + Duration::seconds(duration_s as i64)
 }
 
