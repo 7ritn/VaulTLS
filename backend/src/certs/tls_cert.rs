@@ -1,4 +1,4 @@
-use std::{cmp, fs};
+use std::{cmp, env, fs};
 use std::borrow::Cow;
 use anyhow::anyhow;
 use anyhow::Result;
@@ -10,7 +10,7 @@ use openssl::pkey::PKey;
 use openssl::stack::Stack;
 use openssl::x509::{X509, X509Builder, X509NameBuilder, X509Req};
 use openssl::x509::extension::{BasicConstraints as OpensslBasicConstraints, ExtendedKeyUsage as OpensslExtendedKeyUsage, SubjectAlternativeName as OpensslSubjectAlternativeName};
-use rcgen::{CertificateParams, CertificateRevocationListParams, DistinguishedName, DnType, Issuer, IsCa, KeyIdMethod, KeyPair, KeyUsagePurpose, RevocationReason, RevokedCertParams, SerialNumber, SanType, BasicConstraints};
+use rcgen::{CertificateParams, CertificateRevocationListParams, DistinguishedName, DnType, Issuer, IsCa, KeyIdMethod, KeyPair, KeyUsagePurpose, RevocationReason, RevokedCertParams, SerialNumber, SanType, BasicConstraints, CrlDistributionPoint};
 use rustls_pki_types::CertificateDer;
 use time::{OffsetDateTime, Duration};
 use tracing::info;
@@ -79,19 +79,6 @@ impl TLSCertificateBuilder {
             .set_password(&old_cert.password)?
             .set_renew_method(old_cert.renew_method)?
             .set_user_id(old_cert.user_id)
-    }
-
-    pub fn try_from_ca(old_ca: &CA) -> Result<CA> {
-        if old_ca.ca_type != TLS {
-            return Err(anyhow!("CA is not of type TLS"));
-        }
-        let validity_h = ((old_ca.valid_until - old_ca.created_on) / 1000 / 60 / 60 / 24).max(14);
-
-        Self::new()?
-            .set_name(old_ca.name.clone())?
-            .set_valid_until(validity_h as u64, TimespanUnit::Day)?
-            .build_ca()
-
     }
 
     pub fn set_name(mut self, name: Name) -> Result<Self, anyhow::Error> {
@@ -192,6 +179,15 @@ impl TLSCertificateBuilder {
             KeyUsagePurpose::KeyEncipherment,
         ];
         self.params.is_ca = IsCa::ExplicitNoCa;
+
+        if let Ok(crl_uri_base) = env::var("VAULTLS_CRL_DP_URL") {
+            let crl_uri = format!("{}/crl/crl-{}.crl", crl_uri_base, ca_id);
+            self.params.crl_distribution_points = vec![
+                CrlDistributionPoint {
+                    uris: vec![ crl_uri ],
+                }
+            ];
+        }
 
         let ca_key_pair = KeyPair::try_from(ca_key_der.clone())?;
         let ca_cert_der_obj = CertificateDer::from(ca_cert_der.clone());

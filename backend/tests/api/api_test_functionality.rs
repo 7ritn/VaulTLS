@@ -7,7 +7,7 @@ use x509_parser::revocation_list::CertificateRevocationList;
 use crate::common::constants::*;
 use crate::common::helper::{extract_ssh_cert_key_bundle, get_timestamp_ms, get_timestamp_s};
 use crate::common::test_client::VaulTLSClient;
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use const_format::{concatcp, formatcp};
 use openssl::pkcs12::Pkcs12;
 use openssl::x509::X509;
@@ -30,6 +30,8 @@ use tokio_rustls::{TlsAcceptor, TlsConnector};
 use vaultls::data::enums::{CAType, CertificateRenewMethod, CertificateType, TimespanUnit, UserRole};
 use vaultls::data::objects::User;
 use x509_parser::asn1_rs::FromDer;
+use x509_parser::extensions::{DistributionPointName, ParsedExtension};
+use x509_parser::oid_registry::OID_X509_EXT_CRL_DISTRIBUTION_POINTS;
 use x509_parser::prelude::{RevokedCertificate, X509Certificate};
 use vaultls::certs::common::{Certificate, CA};
 use vaultls::constants::ARGON2;
@@ -204,6 +206,19 @@ async fn test_download_client_certificate() -> Result<()> {
 
     let xku = cert_x509.extended_key_usage()?.expect("No extended key usage");
     assert!(xku.value.client_auth);
+
+    match cert_x509.get_extension_unique(&OID_X509_EXT_CRL_DISTRIBUTION_POINTS)?.unwrap().parsed_extension() {
+        ParsedExtension::CRLDistributionPoints(ext) => {
+            let a = ext.points[0].distribution_point.clone().unwrap();
+            match a {
+                DistributionPointName::FullName(a) => {
+                    assert_eq!(a[0].to_string(), "URI(http://dummy-crl/crl/crl-1.crl)")
+                }
+                DistributionPointName::NameRelativeToCRLIssuer(_) => {}
+            }
+        },
+        _ => return Err(anyhow!("No CRL DP extension"))
+    }
 
     Ok(())
 }

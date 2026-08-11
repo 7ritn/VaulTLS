@@ -100,6 +100,8 @@ pub(crate) async fn setup(
     ca = state.db.insert_ca(ca).await?;
     save_ca(&ca)?;
 
+    create_new_crl(state, &mut ca).await?;
+
     if let Some(lang) = setup_req.default_language.clone() {
         state.settings.set_default_language(lang)?;
     }
@@ -449,10 +451,14 @@ pub(crate) async fn create_ca(
         CAType::TLS => {
             let cert_validity = payload.validity_duration.unwrap_or(5);
             let cert_validity_unit = payload.validity_unit.unwrap_or(TimespanUnit::Year);
-            TLSCertificateBuilder::new()?
+            let mut ca = TLSCertificateBuilder::new()?
                 .set_name(payload.ca_name.clone())?
                 .set_valid_until(cert_validity, cert_validity_unit)?
-                .build_ca()?
+                .build_ca()?;
+
+            create_new_crl(state, &mut ca).await?;
+
+            ca
         },
         CAType::SSH => {
             SSHCertificateBuilder::new()?
@@ -752,6 +758,14 @@ pub(crate) async fn delete_user_cert(
     Ok(())
 }
 
+async fn create_new_crl(state: &State<AppState>, ca: &mut CA) -> Result<Vec<u8>, ApiError> {
+    let (revoked_params, crl_next_update_hours) = create_crl_params(state, &ca).await?;
+    let crl_der = create_crl(ca, revoked_params, crl_next_update_hours)?;
+    state.db.increase_ca_crl_number(ca.id, ca.crl_number).await?;
+    let _ = save_crl(crl_der.clone(), ca.id); // Ignore errors
+    Ok(crl_der)
+}
+
 async fn create_crl_params(state: &State<AppState>, ca: &CA) -> Result<(Vec<(Vec<u8>, i64)>, i64), ApiError>{
     assert_eq!(ca.ca_type, CAType::TLS);
 
@@ -827,12 +841,7 @@ pub(crate) async fn download_crl(
             let crl_der = match retrieve_crl(id) {
                 Ok(crl_der) => crl_der,
                 Err(_) => {
-                    // Probably no CRLs revoked yet, need to create empty CRL
-                    let (revoked_params, crl_next_update_hours) = create_crl_params(state, &ca).await?;
-                    let crl_der = create_crl(&mut ca, revoked_params, crl_next_update_hours)?;
-                    state.db.increase_ca_crl_number(ca.id, ca.crl_number).await?;
-                    let _ = save_crl(crl_der.clone(), id); // Ignore errors
-                    crl_der
+                    create_new_crl(state, &mut ca).await?
                 }
             };
 

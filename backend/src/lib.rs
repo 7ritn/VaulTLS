@@ -236,6 +236,8 @@ pub async fn create_rocket() -> Rocket<Build> {
 }
 
 pub async fn create_test_rocket() -> Rocket<Build> {
+    unsafe { env::set_var("VAULTLS_CRL_DP_URL", "http://dummy-crl"); }
+
     let db = VaulTLSDB::new(false, true).expect("Failed opening SQLite database");
     let settings = Settings::default();
     let oidc = None;
