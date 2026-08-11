@@ -13,7 +13,7 @@ use crate::auth::password_auth::Password;
 use crate::auth::session_auth::{generate_token, invalidate_token, Authenticated, AuthenticatedPrivileged};
 use crate::certs::common::{get_password, save_ca, Certificate, CA};
 use crate::certs::ssh_cert::{create_and_save_krl, create_krl, get_ssh_pem, retrieve_krl, SSHCertificateBuilder};
-use crate::certs::tls_cert::{create_and_save_crl, create_crl, get_timestamp, get_tls_pem, parse_ca, parse_p12, retrieve_crl, save_crl, TLSCertificateBuilder};
+use crate::certs::tls_cert::{create_and_save_crl, create_crl, get_timestamp, get_tls_pem, parse_ca, parse_p12_metadata, retrieve_crl, save_crl, TLSCertificateBuilder};
 use crate::constants::VAULTLS_VERSION;
 use crate::data::api::{CallbackQuery, ChangePasswordRequest, CreateCARequest, CreateUserCertificateRequest, CreateUserRequest, DownloadResponse, ImportCARequest, ImportUserCertificateRequest, IsSetupResponse, LoginRequest, SetupRequest};
 use crate::data::enums::{CAType, CertificateType, DataFormat, PasswordRule, TimespanUnit, UserRole};
@@ -391,7 +391,7 @@ pub(crate) async fn import_user_certificate(
         DataFormat::PEM => payload.p12.as_bytes().to_vec(),
         DataFormat::DER => BASE64_STANDARD.decode(&payload.p12).map_err(|e| ApiError::BadRequest(format!("Invalid base64 in p12: {}", e)))?,
     };
-    let (name, created_on, valid_until, _cert_der) = parse_p12(&p12_bytes, &payload.password)?;
+    let (name, created_on, valid_until) = parse_p12_metadata(&p12_bytes, &payload.password)?;
 
     let cert = Certificate {
         id: -1,
@@ -538,9 +538,9 @@ async fn get_appropriate_ca(state: &State<AppState>, payload: &CreateUserCertifi
 async fn ensure_ca_validity(ca: &mut CA, payload: &CreateUserCertificateRequest) -> Result<CA, ApiError> {
     let cert_validity = payload.validity_duration.unwrap_or(1);
     let cert_validity_unit = payload.validity_unit.unwrap_or(TimespanUnit::Year);
-    let cert_validity_timestamp = get_timestamp(cert_validity, cert_validity_unit)?;
+    let cert_validity_time = get_timestamp(cert_validity, cert_validity_unit);
 
-    if ca.valid_until == -1 || cert_validity_timestamp.0 <= ca.valid_until {
+    if ca.valid_until == -1 || (cert_validity_time.unix_timestamp() * 1000) <= ca.valid_until {
         return Ok(ca.clone());
     }
 
