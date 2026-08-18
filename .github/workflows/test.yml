@@ -54,7 +54,7 @@ jobs:
         run: |
           echo "REPO_LOWER=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            echo "PUSH_TAG=dev-pr-${{ github.event.pull_request.number }}" >> $GITHUB_ENV
+            echo "PUSH_TAG=dev-pr-${{ github.event.pull_request.number }},ghcr.io/${REPO_LOWER}:dev-pr" >> $GITHUB_ENV
           else
             echo "PUSH_TAG=dev" >> $GITHUB_ENV
           fi
