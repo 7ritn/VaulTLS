@@ -671,6 +671,23 @@ pub(crate) async fn download_current_ssh_ca(
 }
 
 #[openapi(tag = "Certificates")]
+#[get("/certificates/ca/all/download")]
+/// Download all TLS CA certificates concatenated into a single PEM file.
+pub(crate) async fn download_all_tls_ca(
+    state: &State<AppState>
+) -> Result<DownloadResponse, ApiError> {
+    let all_cas = state.db.get_all_ca().await?;
+    let mut concatenated_pem = Vec::new();
+
+    for ca in all_cas.iter().filter(|ca| ca.ca_type == CAType::TLS) {
+        let pem = get_tls_pem(ca)?;
+        concatenated_pem.extend_from_slice(&pem);
+    }
+
+    Ok(DownloadResponse::new(concatenated_pem, "all_ca_certificates.pem"))
+}
+
+#[openapi(tag = "Certificates")]
 #[get("/certificates/ca/<id>/download")]
 /// Download a CA certificate identified by id.
 pub(crate) async fn download_ca(

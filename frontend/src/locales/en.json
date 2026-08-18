@@ -127,6 +127,7 @@
     "pem_format": "PEM Format",
     "createCa": "Create New CA",
     "importCa": "Import CA",
+    "downloadAllCa": "Download All TLS CAs",
     "loadingCas": "Loading CAs...",
     "enterCaCommonName": "Enter CA Common Name",
     "importModal": {

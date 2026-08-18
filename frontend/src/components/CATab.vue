@@ -101,6 +101,14 @@
       {{ $t('ca.importCa') }}
     </button>
 
+    <button
+        id="DownloadAllCAButton"
+        class="btn btn-outline-primary mx-1"
+        @click="downloadAllTLSCAs"
+    >
+      {{ $t('ca.downloadAllCa') }}
+    </button>
+
     <div v-if="loading" class="text-center mt-3">{{ $t('ca.loadingCas') }}</div>
     <div v-if="error" class="alert alert-danger mt-3">{{ error }}</div>
 
@@ -404,6 +412,10 @@ const deleteCA = async () => {
 
 const downloadCA = async (caId: number) => {
   await caStore.downloadCA(caId);
+};
+
+const downloadAllTLSCAs = async () => {
+  await caStore.downloadAllTLSCAs();
 };
 
 const downloadCRL = async (caId: number, format: string = 'der') => {
