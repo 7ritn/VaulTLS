@@ -17,7 +17,7 @@ use schemars::SchemaGenerator;
 use serde::{Deserializer, Serializer};
 use crate::data::enums::{MailEncryption, PasswordRule};
 use crate::constants::SETTINGS_FILE_PATH;
-use crate::ApiError;
+use crate::{helper, ApiError};
 use crate::helper::get_secret;
 
 /// Settings for the backend.
@@ -268,7 +268,9 @@ pub(crate) struct OIDC {
     pub(crate) id: String,
     pub(crate) secret: String,
     pub(crate) auth_url: String,
-    pub(crate) callback_url: String
+    pub(crate) callback_url: String,
+    #[serde(skip)]
+    pub(crate) additional_audiences: Vec<String>
 }
 
 impl OIDC {
@@ -284,7 +286,8 @@ impl OIDC {
             let secret = get_secret("VAULTLS_OIDC_SECRET").ok_or(anyhow!("No OIDC Secret specified"))?;
             let auth_url = env::var("VAULTLS_OIDC_AUTH_URL")?;
             let callback_url = env::var("VAULTLS_OIDC_CALLBACK_URL")?;
-            Ok(OIDC{ id, secret, auth_url, callback_url })
+            let additional_audiences = helper::env_var_vec("VAULTLS_OIDC_ADDITIONAL_AUDIENCES");
+            Ok(OIDC{ id, secret, auth_url, callback_url, additional_audiences})
         };
 
         if let Ok(oidc_env) = get_env() {
@@ -329,10 +332,14 @@ impl InnerSettings {
         Ok(())
     }
 
-     fn set_settings(&mut self, settings: &InnerSettings) -> Result<(), ApiError> {
+    fn set_settings(&mut self, settings: &InnerSettings) -> Result<(), ApiError> {
         self.common = settings.common.clone();
         self.mail = settings.mail.clone();
+
+        let additional_audiences = self.oidc.additional_audiences.clone();
         self.oidc = settings.oidc.clone();
+        self.oidc.additional_audiences = additional_audiences;
+
         self.acme = settings.acme.clone();
 
         self.save_to_file(None)
