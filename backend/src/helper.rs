@@ -25,3 +25,8 @@ pub fn get_secret(name: &str) -> Option<String> {
         .map(|secret| secret.trim().to_string())
         .ok()
 }
+
+#[inline(always)]
+pub fn env_var_vec(env_name: &str) -> Vec<String> {
+    env::var(env_name).map(|env| env.split(',').map(str::to_owned).collect()).unwrap_or_default()
+}
