@@ -50,14 +50,15 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata
-        run: |
-          echo "REPO_LOWER=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            echo "PUSH_TAG=dev-pr-${{ github.event.pull_request.number }}" >> $GITHUB_ENV
-          else
-            echo "PUSH_TAG=dev" >> $GITHUB_ENV
-          fi
+      - name: Extract metadata (tags, labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=raw,value=dev,enable=${{ github.event_name == 'push' }}
+            type=raw,value=dev-pr-${{ github.event.pull_request.number }},enable=${{ github.event_name == 'pull_request' }}
+            type=raw,value=dev-raw,enable=true
 
       - name: Build Docker image
         uses: docker/build-push-action@v5
@@ -65,7 +66,7 @@ jobs:
           context: .
           file: Containerfile
           push: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false }}
-          tags: ghcr.io/${{ env.REPO_LOWER }}:${{ env.PUSH_TAG }}
+          tags: ${{ steps.meta.outputs.tags }}
           load: true  # Needed so the image is available to docker-compose locally
           cache-from: type=gha
           cache-to: type=gha,mode=max

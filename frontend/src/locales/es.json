@@ -117,6 +117,7 @@
     "der_format": "Formato DER",
     "pem_format": "Formato PEM",
     "createCa": "Crear nueva CA",
+    "downloadAllCa": "Descargar todas las CAs TLS",
     "loadingCas": "Cargando CAs...",
     "enterCaCommonName": "Introduzca el nombre común de la CA",
     "createModal": {

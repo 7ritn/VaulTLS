@@ -74,6 +74,11 @@ For VaulTLS the required variables can be configured via environmental variables
 | `VAULTLS_OIDC_ID`           | `[client_id]`                                        |
 | `VAULTLS_OIDC_SECRET`       | `[client_secret]`                                    |
 
+Some OIDC providers such as Zitadel supply multiple elements in the `aud` claim.
+To specify additional trusted audiences, specify them in a comma-separated list in the
+`VAULTLS_OIDC_ADDITIONAL_AUDIENCES` env variable or in the settings file. Configuration
+via web UI is not possible.
+
 ### Container Secrets
 Certain environment variables can be container secrets instead of regular variables.
 VaulTLS will try to read secrets from `/run/secrets/<ENV_NAME>`, if you want to specify a different path, you can do so in the environmental variable.
