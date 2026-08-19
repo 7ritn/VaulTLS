@@ -21,24 +21,24 @@ test-mode = []
 rocket = { version = "0.5.1", features = ["json", "secrets"] }
 rocket_okapi = { version = "0.9.0", features = ["secrets", "rapidoc"] }
 schemars = { version = "0.8.22", features = ["derive"] }
-serde = "1.0.228"
-serde_json = "1.0.150"
-serde_repr = "0.1.20"
-rusqlite = { version = "0.40.1", features = ["bundled-sqlcipher"] }
+serde = "1.0.229"
+serde_json = "1.0.151"
+serde_repr = "0.1.21"
+rusqlite = { version = "0.40.2", features = ["bundled-sqlcipher"] }
 r2d2 = "0.8.10"
 r2d2_sqlite = { version = "0.35.0", features = ["bundled-sqlcipher"] }
 openssl = "0.10.81"
 openssl-sys = "0.9.117"
 argon2 = "0.5.3"
-jsonwebtoken = { version = "10.4.0", features = ["rust_crypto"] }
+jsonwebtoken = { version = "11.0.0", features = ["rust_crypto"] }
 openidconnect = "4.0.1"
-anyhow = "1.0.103"
+anyhow = "1.0.104"
 num_enum = "0.7.6"
-lettre = { version = "0.11.22", features = ["tokio1", "builder", "smtp-transport", "tokio1-native-tls"] }
+lettre = { version = "0.11.23", features = ["tokio1", "builder", "smtp-transport", "tokio1-native-tls"] }
 maud = "0.27.0"
 chrono = "0.4.45"
-tokio = { version = "1.52.3", features = ["macros", "rt-multi-thread"] }
-passwords = "3.1.17"
+tokio = { version = "1.53.1", features = ["macros", "rt-multi-thread"] }
+passwords = "3.1.18"
 include_dir = "0.7.4"
 rusqlite_migration = {  version = "2.6.0", features = ["from-directory"] }
 const_format = "0.2.36"
@@ -47,7 +47,7 @@ tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 derive_deref = "1.1.1"
 parking_lot = "0.12.5"
-uuid = { version = "1.23.4", features = ["v4"] }
+uuid = { version = "1.24.1", features = ["v4"] }
 ssh-key = { version = "0.6.7", features = ["ed25519", "alloc", "serde", "encryption"] }
 rand = "0.10.2"
 zip = "8.6.0"
@@ -55,10 +55,10 @@ x509-parser = "0.18.1"
 rand_core = "0.10.1"
 reqwest = { version = "0.13.4", default-features = false, features = ["http2", "rustls"] }
 hickory-resolver = { version = "0.26.1", features = ["tokio", "system-config", "tls-ring", "rustls-platform-verifier"] }
-rcgen = { version = "0.14.8", features = ["pem", "x509-parser", "crypto", "aws_lc_rs"] }
-rustls-pki-types = "1.15.0"
-time = "0.3.53"
-base64 = "0.22.1"
+rcgen = { version = "0.14.9", features = ["pem", "x509-parser", "crypto", "aws_lc_rs"] }
+rustls-pki-types = "1.15.1"
+time = "0.3.55"
+base64 = "0.23.1"
 
 [dev-dependencies]
 rustls = { version = "0.23.40", features = ["aws-lc-rs"] }
