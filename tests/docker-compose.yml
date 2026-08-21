@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   authelia:
     container_name: authelia
