@@ -231,7 +231,6 @@ dependencies = [
  "once_cell",
  "openidconnect",
  "openssl",
- "openssl-sys",
  "parking_lot",
  "passwords",
  "r2d2",

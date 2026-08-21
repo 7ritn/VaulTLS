@@ -28,7 +28,6 @@ rusqlite = { version = "0.40.2", features = ["bundled-sqlcipher"] }
 r2d2 = "0.8.10"
 r2d2_sqlite = { version = "0.35.0", features = ["bundled-sqlcipher"] }
 openssl = "0.10.81"
-openssl-sys = "0.9.117"
 argon2 = "0.5.3"
 jsonwebtoken = { version = "11.0.0", features = ["rust_crypto"] }
 openidconnect = "4.0.1"
