@@ -14,11 +14,11 @@ use crate::acme::admin::*;
 use crate::api::*;
 use crate::auth::oidc_auth::OidcAuth;
 use crate::auth::password_auth::Password;
-use crate::certs::tls_cert::migrate_ca_storage;
 use crate::constants::{API_PORT, DB_FILE_PATH, VAULTLS_VERSION};
 use crate::data::objects::AppState;
 use crate::db::VaulTLSDB;
 use crate::helper::get_secret;
+use crate::migrations::migrate_ca_storage;
 use crate::notification::mail::Mailer;
 use crate::notification::notifier::watch_expiry;
 use crate::settings::Settings;
@@ -33,6 +33,7 @@ pub mod constants;
 mod api;
 mod notification;
 mod acme;
+mod migrations;
 
 type ApiError = data::error::ApiError;
 

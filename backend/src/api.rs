@@ -358,7 +358,7 @@ pub(crate) async fn import_ca(
             DataFormat::DER => BASE64_STANDARD.decode(crl_str).map_err(|e| ApiError::BadRequest(format!("Invalid base64 in CRL: {}", e)))?,
         };
         debug!("Extracting CRL number from CRL");
-        match crate::certs::tls_cert::extract_crl_number(&crl_bytes, payload.format) {
+        match extract_crl_number(&crl_bytes, payload.format) {
             Ok(extracted_crl_number) => {
                 info!(extracted_crl_number, "Extracted CRL number from imported CRL");
                 crl_number = extracted_crl_number;

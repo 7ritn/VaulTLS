@@ -353,17 +353,6 @@ pub(crate) fn extract_pkcs12_serial_number(pkcs12: &[u8], password: &str) -> Res
     Ok(inner.serial_number().to_bn()?.to_vec())
 }
 
-/// Migrates the Certificate Authority (CA) storage to a separate directory.
-pub(crate) fn migrate_ca_storage() -> Result<()> {
-    if fs::exists("./ca.cert").is_ok_and(|exists| exists) {
-        info!("Migrating CA storage to separate directory");
-        fs::create_dir(CA_DIR_PATH)?;
-        fs::rename("./ca.cert", CA_TLS_FILE_PATH)?;
-        fs::copy(CA_TLS_FILE_PATH, CA_FILE_PATTERN.replace("{}", "1"))?;
-    }
-    Ok(())
-}
-
 /// Extract DNS names stored in X509 certificate
 pub(crate) fn get_dns_names(cert: &Certificate) -> Result<Vec<String>, anyhow::Error> {
     match &cert.data {
