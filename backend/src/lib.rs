@@ -15,10 +15,11 @@ use crate::api::*;
 use crate::auth::oidc_auth::OidcAuth;
 use crate::auth::password_auth::Password;
 use crate::constants::{API_PORT, DB_FILE_PATH, VAULTLS_VERSION};
+use crate::data::enums::CAType;
 use crate::data::objects::AppState;
 use crate::db::VaulTLSDB;
 use crate::helper::get_secret;
-use crate::migrations::migrate_ca_storage;
+use crate::migrations::{migrate_ca_storage, migrate_create_all_new_crl};
 use crate::notification::mail::Mailer;
 use crate::notification::notifier::watch_expiry;
 use crate::settings::Settings;
@@ -139,6 +140,11 @@ pub async fn create_rocket() -> Rocket<Build> {
 
     // Migrate certs
     migrate_ca_storage().expect("Failed migrating CA storage paths");
+
+    // Create any missing CRLs
+    let all_ca = db.get_all_ca().await.expect("Failed to retrieve all CAs");
+    let all_tls_cas = all_ca.into_iter().filter(|ca| ca.ca_type == CAType::TLS).collect();
+    migrate_create_all_new_crl(all_tls_cas, &db, &settings).await.unwrap();
 
     let rocket_secret = get_secret("VAULTLS_API_SECRET").expect("Failed to get VAULTLS_API_SECRET");
     trace!("Rocket secret: {}", rocket_secret);

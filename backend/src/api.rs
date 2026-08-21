@@ -101,7 +101,7 @@ pub(crate) async fn setup(
     ca = state.db.insert_ca(ca).await?;
     save_ca(&ca)?;
 
-    create_new_crl(state, &mut ca).await?;
+    create_new_crl(&state.db, &state.settings, &mut ca).await?;
 
     if let Some(lang) = setup_req.default_language.clone() {
         state.settings.set_default_language(lang)?;
@@ -466,7 +466,7 @@ pub(crate) async fn create_ca(
 
     ca = state.db.insert_ca(ca).await?;
     if ca.ca_type == CAType::TLS {
-        create_new_crl(state, &mut ca).await?;
+        create_new_crl(&state.db, &state.settings, &mut ca).await?;
     }
     save_ca(&ca)?;
     Ok(Json(ca.id))
@@ -804,7 +804,7 @@ pub(crate) async fn revoke_certificate(
     let mut ca = state.db.get_ca_by_id(cert.ca_id).await.map_err(|_| ApiError::NotFound(None))?;
     match ca.ca_type {
         CAType::TLS => {
-            let (revoked_params, crl_next_update_hours) = create_crl_params(state, &ca).await?;
+            let (revoked_params, crl_next_update_hours) = create_crl_params(&state.db, &state.settings, &ca).await?;
             create_and_save_crl(&mut ca, revoked_params, crl_next_update_hours)?;
             state.db.increase_ca_crl_number(ca.id, ca.crl_number).await?;
         }
@@ -832,7 +832,7 @@ pub(crate) async fn download_crl(
             let crl_der = match retrieve_crl(id) {
                 Ok(crl_der) => crl_der,
                 Err(_) => {
-                    create_new_crl(state, &mut ca).await?
+                    create_new_crl(&state.db, &state.settings, &mut ca).await?
                 }
             };
 

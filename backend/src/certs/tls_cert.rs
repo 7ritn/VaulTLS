@@ -1,4 +1,4 @@
-use std::{cmp, env, fs};
+use std::{cmp, env};
 use anyhow::anyhow;
 use anyhow::Result;
 use openssl::asn1::{Asn1Integer, Asn1Time};
@@ -14,12 +14,10 @@ use rustls_pki_types::CertificateDer;
 use time::{OffsetDateTime, Duration};
 use openssl::nid::Nid;
 use rcgen::string::Ia5String;
-use tracing::info;
 use x509_parser::prelude::{parse_x509_pem, FromDer, X509Certificate};
 use crate::data::enums::{CertData, CertificateRenewMethod, CertificateType, DataFormat, TimespanUnit};
 use crate::data::enums::CertificateType::{TLSClient, TLSServer};
 use crate::certs::common::{Certificate, CA};
-use crate::constants::{CA_DIR_PATH, CA_FILE_PATTERN, CA_TLS_FILE_PATH};
 use crate::data::enums::CAType::TLS;
 use crate::data::objects::Name;
 

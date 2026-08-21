@@ -1,9 +1,9 @@
 use std::borrow::Cow;
+#[cfg(feature = "test-mode")]
 use std::env::temp_dir;
 use std::fs;
 use anyhow::anyhow;
 use rcgen::{CertificateRevocationListParams, Issuer, KeyIdMethod, KeyPair, RevocationReason, RevokedCertParams, SerialNumber};
-use rocket::State;
 use time::{Duration, OffsetDateTime};
 use x509_parser::certificate::X509Certificate;
 use x509_parser::extensions::ParsedExtension;
@@ -12,20 +12,21 @@ use x509_parser::prelude::{CertificateRevocationList, FromDer};
 use crate::certs::common::CA;
 use crate::data::enums::{CAType, DataFormat};
 use crate::data::error::ApiError;
-use crate::data::objects::AppState;
+use crate::db::VaulTLSDB;
+use crate::settings::Settings;
 
-pub(crate) async fn create_new_crl(state: &State<AppState>, ca: &mut CA) -> Result<Vec<u8>, ApiError> {
-    let (revoked_params, crl_next_update_hours) = create_crl_params(state, ca).await?;
+pub(crate) async fn create_new_crl(db: &VaulTLSDB, settings: &Settings, ca: &mut CA) -> Result<Vec<u8>, ApiError> {
+    let (revoked_params, crl_next_update_hours) = create_crl_params(db, settings, ca).await?;
     let crl_der = create_crl(ca, revoked_params, crl_next_update_hours)?;
-    state.db.increase_ca_crl_number(ca.id, ca.crl_number).await?;
+    db.increase_ca_crl_number(ca.id, ca.crl_number).await?;
     let _ = save_crl(crl_der.clone(), ca.id); // Ignore errors
     Ok(crl_der)
 }
 
-pub(crate) async fn create_crl_params(state: &State<AppState>, ca: &CA) -> Result<(Vec<(Vec<u8>, i64)>, i64), ApiError>{
+pub(crate) async fn create_crl_params(db: &VaulTLSDB, settings: &Settings, ca: &CA) -> Result<(Vec<(Vec<u8>, i64)>, i64), ApiError>{
     assert_eq!(ca.ca_type, CAType::TLS);
 
-    let revoked_certs = state.db.get_user_certs(None, Some(ca.id), Some(true)).await.map_err(|e| ApiError::Other(e.to_string()))?;
+    let revoked_certs = db.get_user_certs(None, Some(ca.id), Some(true)).await.map_err(|e| ApiError::Other(e.to_string()))?;
 
     let mut revoked_params = Vec::new();
     for cert in revoked_certs {
@@ -35,7 +36,7 @@ pub(crate) async fn create_crl_params(state: &State<AppState>, ca: &CA) -> Resul
         revoked_params.push((serial, cert.revoked_at.unwrap_or(0)));
     }
 
-    let crl_next_update_hours = state.settings.get_crl_next_update_hours();
+    let crl_next_update_hours = settings.get_crl_next_update_hours();
 
     Ok((revoked_params, crl_next_update_hours))
 }
