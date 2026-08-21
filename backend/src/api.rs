@@ -451,14 +451,10 @@ pub(crate) async fn create_ca(
         CAType::TLS => {
             let cert_validity = payload.validity_duration.unwrap_or(5);
             let cert_validity_unit = payload.validity_unit.unwrap_or(TimespanUnit::Year);
-            let mut ca = TLSCertificateBuilder::new()?
+            TLSCertificateBuilder::new()?
                 .set_name(payload.ca_name.clone())?
                 .set_valid_until(cert_validity, cert_validity_unit)?
-                .build_ca()?;
-
-            create_new_crl(state, &mut ca).await?;
-
-            ca
+                .build_ca()?
         },
         CAType::SSH => {
             SSHCertificateBuilder::new()?
@@ -468,6 +464,9 @@ pub(crate) async fn create_ca(
     };
 
     ca = state.db.insert_ca(ca).await?;
+    if ca.ca_type == CAType::TLS {
+        create_new_crl(state, &mut ca).await?;
+    }
     save_ca(&ca)?;
     Ok(Json(ca.id))
 }
@@ -776,7 +775,7 @@ pub(crate) async fn delete_user_cert(
 }
 
 async fn create_new_crl(state: &State<AppState>, ca: &mut CA) -> Result<Vec<u8>, ApiError> {
-    let (revoked_params, crl_next_update_hours) = create_crl_params(state, &ca).await?;
+    let (revoked_params, crl_next_update_hours) = create_crl_params(state, ca).await?;
     let crl_der = create_crl(ca, revoked_params, crl_next_update_hours)?;
     state.db.increase_ca_crl_number(ca.id, ca.crl_number).await?;
     let _ = save_crl(crl_der.clone(), ca.id); // Ignore errors
