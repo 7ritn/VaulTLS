@@ -12,15 +12,16 @@ use crate::auth::oidc_auth::OidcAuth;
 use crate::auth::password_auth::Password;
 use crate::auth::session_auth::{generate_token, invalidate_token, Authenticated, AuthenticatedPrivileged};
 use crate::certs::common::{get_password, save_ca, Certificate, CA};
+use crate::certs::crl::{create_new_crl, create_crl_params, save_crl, create_and_save_crl, retrieve_crl, extract_crl_number};
 use crate::certs::ssh_cert::{create_and_save_krl, create_krl, get_ssh_pem, retrieve_krl, SSHCertificateBuilder};
-use crate::certs::tls_cert::{create_and_save_crl, create_crl, get_timestamp, get_tls_pem, parse_ca, parse_p12_metadata, retrieve_crl, save_crl, TLSCertificateBuilder};
+use crate::certs::tls_cert::{get_timestamp, get_tls_pem, parse_ca, parse_p12_metadata, TLSCertificateBuilder};
 use crate::constants::VAULTLS_VERSION;
 use crate::data::api::{CallbackQuery, ChangePasswordRequest, CreateCARequest, CreateUserCertificateRequest, CreateUserRequest, DownloadResponse, ImportCARequest, ImportUserCertificateRequest, IsSetupResponse, LoginRequest, SetupRequest};
 use crate::data::enums::{CAType, CertificateType, DataFormat, PasswordRule, TimespanUnit, UserRole};
 use crate::data::error::ApiError;
 use crate::data::objects::{AppState, Name, User};
 use crate::notification::mail::{MailMessage, Mailer};
-    use crate::settings::{FrontendSettings, InnerSettings};
+use crate::settings::{FrontendSettings, InnerSettings};
 
 #[openapi(tag = "Setup")]
 #[get("/server/version")]
@@ -772,32 +773,6 @@ pub(crate) async fn delete_user_cert(
 ) -> Result<(), ApiError> {
     state.db.delete_user_cert(id).await?;
     Ok(())
-}
-
-async fn create_new_crl(state: &State<AppState>, ca: &mut CA) -> Result<Vec<u8>, ApiError> {
-    let (revoked_params, crl_next_update_hours) = create_crl_params(state, ca).await?;
-    let crl_der = create_crl(ca, revoked_params, crl_next_update_hours)?;
-    state.db.increase_ca_crl_number(ca.id, ca.crl_number).await?;
-    let _ = save_crl(crl_der.clone(), ca.id); // Ignore errors
-    Ok(crl_der)
-}
-
-async fn create_crl_params(state: &State<AppState>, ca: &CA) -> Result<(Vec<(Vec<u8>, i64)>, i64), ApiError>{
-    assert_eq!(ca.ca_type, CAType::TLS);
-
-    let revoked_certs = state.db.get_user_certs(None, Some(ca.id), Some(true)).await.map_err(|e| ApiError::Other(e.to_string()))?;
-
-    let mut revoked_params = Vec::new();
-    for cert in revoked_certs {
-        let serial = cert.get_serial()
-            .map_err(|_| ApiError::Other("Could not retrieve serial number from certificate to create CRL".to_string()))?;
-
-        revoked_params.push((serial, cert.revoked_at.unwrap_or(0)));
-    }
-
-    let crl_next_update_hours = state.settings.get_crl_next_update_hours();
-
-    Ok((revoked_params, crl_next_update_hours))
 }
 
 async fn create_krl_params(state: &State<AppState>, ca: &CA) -> Result<Vec<Vec<u8>>, ApiError> {
