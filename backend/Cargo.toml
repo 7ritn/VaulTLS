@@ -61,5 +61,5 @@ time = "0.3.55"
 base64 = "0.23.1"
 
 [dev-dependencies]
-rustls = { version = "0.23.40", features = ["aws-lc-rs"] }
+rustls = { version = "0.23.43", features = ["aws-lc-rs"] }
 tokio-rustls = "0.26.4"
