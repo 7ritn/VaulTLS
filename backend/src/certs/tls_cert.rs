@@ -1,5 +1,4 @@
-use std::{cmp, fs};
-use std::borrow::Cow;
+use std::{cmp, env};
 use anyhow::anyhow;
 use anyhow::Result;
 use openssl::asn1::{Asn1Integer, Asn1Time};
@@ -10,20 +9,12 @@ use openssl::pkey::PKey;
 use openssl::stack::Stack;
 use openssl::x509::{X509, X509Builder, X509NameBuilder, X509Req};
 use openssl::x509::extension::{BasicConstraints as OpensslBasicConstraints, ExtendedKeyUsage as OpensslExtendedKeyUsage, SubjectAlternativeName as OpensslSubjectAlternativeName};
-use rcgen::{CertificateParams, CertificateRevocationListParams, DistinguishedName, DnType, Issuer, IsCa, KeyIdMethod, KeyPair, KeyUsagePurpose, RevocationReason, RevokedCertParams, SerialNumber, SanType, BasicConstraints};
+use rcgen::{CertificateParams, DistinguishedName, DnType, Issuer, IsCa, KeyPair, KeyUsagePurpose, SerialNumber, SanType, BasicConstraints, CrlDistributionPoint};
 use rustls_pki_types::CertificateDer;
 use time::{OffsetDateTime, Duration};
-use tracing::info;
-use crate::ApiError;
-#[cfg(not(feature = "test-mode"))]
-use crate::constants::{CA_DIR_PATH, CA_FILE_PATTERN, CA_TLS_FILE_PATH, CRL_DIR_PATH, CRL_FILE_PATTERN};
-#[cfg(feature = "test-mode")]
-use crate::constants::{CA_DIR_PATH, CA_FILE_PATTERN, CA_TLS_FILE_PATH};
-#[cfg(feature = "test-mode")]
-use std::env::temp_dir;
 use openssl::nid::Nid;
 use rcgen::string::Ia5String;
-use x509_parser::prelude::{parse_x509_pem, CertificateRevocationList, FromDer, ParsedExtension, X509Certificate};
+use x509_parser::prelude::{parse_x509_pem, FromDer, X509Certificate};
 use crate::data::enums::{CertData, CertificateRenewMethod, CertificateType, DataFormat, TimespanUnit};
 use crate::data::enums::CertificateType::{TLSClient, TLSServer};
 use crate::certs::common::{Certificate, CA};
@@ -79,19 +70,6 @@ impl TLSCertificateBuilder {
             .set_password(&old_cert.password)?
             .set_renew_method(old_cert.renew_method)?
             .set_user_id(old_cert.user_id)
-    }
-
-    pub fn try_from_ca(old_ca: &CA) -> Result<CA> {
-        if old_ca.ca_type != TLS {
-            return Err(anyhow!("CA is not of type TLS"));
-        }
-        let validity_h = ((old_ca.valid_until - old_ca.created_on) / 1000 / 60 / 60 / 24).max(14);
-
-        Self::new()?
-            .set_name(old_ca.name.clone())?
-            .set_valid_until(validity_h as u64, TimespanUnit::Day)?
-            .build_ca()
-
     }
 
     pub fn set_name(mut self, name: Name) -> Result<Self, anyhow::Error> {
@@ -192,6 +170,15 @@ impl TLSCertificateBuilder {
             KeyUsagePurpose::KeyEncipherment,
         ];
         self.params.is_ca = IsCa::ExplicitNoCa;
+
+        if let Ok(crl_uri_base) = env::var("VAULTLS_CRL_DP_URL") {
+            let crl_uri = format!("{}/crl/crl-{}.crl", crl_uri_base, ca_id);
+            self.params.crl_distribution_points = vec![
+                CrlDistributionPoint {
+                    uris: vec![ crl_uri ],
+                }
+            ];
+        }
 
         let ca_key_pair = KeyPair::try_from(ca_key_der.clone())?;
         let ca_cert_der_obj = CertificateDer::from(ca_cert_der.clone());
@@ -364,96 +351,6 @@ pub(crate) fn extract_pkcs12_serial_number(pkcs12: &[u8], password: &str) -> Res
     Ok(inner.serial_number().to_bn()?.to_vec())
 }
 
-#[cfg(not(feature = "test-mode"))]
-pub(crate) fn retrieve_crl(ca_id: i64) -> Result<Vec<u8>> {
-    let ca_id_file_path = CRL_FILE_PATTERN.replace("{}", &ca_id.to_string());
-    Ok(fs::read(ca_id_file_path)?)
-}
-
-#[cfg(feature = "test-mode")]
-pub(crate) fn retrieve_crl(ca_id: i64) -> Result<Vec<u8>> {
-    let mut path = temp_dir();
-    path.push(format!("crl-{}.crl", ca_id));
-    Ok(fs::read(path)?)
-}
-
-pub(crate) fn create_and_save_crl(ca: &mut CA, revoked_certs: Vec<(Vec<u8>, i64)>, crl_next_update_hours: i64) -> Result<()> {
-    let crl_der = create_crl(ca, revoked_certs, crl_next_update_hours)?;
-    save_crl(crl_der, ca.id)
-}
-
-fn extract_ski(cert: &X509Certificate) -> Result<Vec<u8>> {
-    cert.extensions()
-        .iter()
-        .find_map(|ext| match ext.parsed_extension() {
-            ParsedExtension::SubjectKeyIdentifier(ski) => Some(ski.0.to_vec()),
-            _ => None,
-        })
-        .ok_or_else(|| anyhow!("No SKI extension found"))
-}
-
-pub fn create_crl(ca: &mut CA, revoked_certs: Vec<(Vec<u8>, i64)>, crl_next_update_hours: i64) -> Result<Vec<u8>> {
-    let ca_key_pair = KeyPair::try_from(ca.key.clone())?;
-    let issuer = Issuer::from_ca_cert_der(&ca.cert.clone().into(), ca_key_pair)?;
-
-    let now = OffsetDateTime::now_utc();
-    let next_update = now + Duration::hours(crl_next_update_hours);
-    ca.crl_number += 1;
-    let crl_number = ca.crl_number;
-
-    let (_, cert) = X509Certificate::from_der(&ca.cert)
-        .map_err(|e| anyhow!("Failed to parse certificate for SKI: {}", e))?;
-    let ski = extract_ski(&cert)?;
-
-    let revoked_params = revoked_certs.into_iter().map(|(serial, revoked_at)| {
-        RevokedCertParams {
-            serial_number: SerialNumber::from(serial),
-            revocation_time: OffsetDateTime::from_unix_timestamp(revoked_at).unwrap_or(now),
-            reason_code: Some(RevocationReason::Unspecified),
-            invalidity_date: None,
-        }
-    }).collect();
-
-    let crl_params = CertificateRevocationListParams {
-        this_update: now,
-        next_update,
-        crl_number: SerialNumber::from(crl_number.unsigned_abs()),
-        issuing_distribution_point: None,
-        revoked_certs: revoked_params,
-        key_identifier_method: KeyIdMethod::PreSpecified(ski),
-    };
-
-    let crl = crl_params.signed_by(&issuer)?;
-    Ok(crl.der().to_vec())
-}
-
-#[cfg(not(feature = "test-mode"))]
-pub(crate) fn save_crl(crl_der: Vec<u8>, ca_id: i64) -> Result<()> {
-    let ca_id_file_path = CRL_FILE_PATTERN.replace("{}", &ca_id.to_string());
-    fs::create_dir_all(CRL_DIR_PATH)?;
-    fs::write(ca_id_file_path, crl_der).map_err(|e| ApiError::Other(e.to_string()))?;
-    Ok(())
-}
-
-#[cfg(feature = "test-mode")]
-pub(crate) fn save_crl(crl_der: Vec<u8>, ca_id: i64) -> Result<()> {
-    let mut path = temp_dir();
-    path.push(format!("crl-{}.crl", ca_id));
-    fs::write(path, crl_der).map_err(|e| ApiError::Other(e.to_string()))?;
-    Ok(())
-}
-
-/// Migrates the Certificate Authority (CA) storage to a separate directory.
-pub(crate) fn migrate_ca_storage() -> Result<()> {
-    if fs::exists("./ca.cert").is_ok_and(|exists| exists) {
-        info!("Migrating CA storage to separate directory");
-        fs::create_dir(CA_DIR_PATH)?;
-        fs::rename("./ca.cert", CA_TLS_FILE_PATH)?;
-        fs::copy(CA_TLS_FILE_PATH, CA_FILE_PATTERN.replace("{}", "1"))?;
-    }
-    Ok(())
-}
-
 /// Extract DNS names stored in X509 certificate
 pub(crate) fn get_dns_names(cert: &Certificate) -> Result<Vec<String>, anyhow::Error> {
     match &cert.data {
@@ -537,30 +434,6 @@ pub fn parse_p12_metadata(p12_bytes: &[u8], password: &str) -> Result<(Name, i64
     let valid_until_unix = asn1_time_to_unix(cert.not_after())?;
 
     Ok((Name { cn, ou }, created_on_unix, valid_until_unix))
-}
-
-pub fn extract_crl_number(crl_bytes: &[u8], format: DataFormat) -> Result<i64> {
-    let crl_der = match format {
-        DataFormat::DER => Cow::Borrowed(crl_bytes),
-        DataFormat::PEM => {
-            let (_, pem) = parse_x509_pem(crl_bytes)
-                .map_err(|e| anyhow!("Failed to parse CRL PEM: {e}"))?;
-            Cow::Owned(pem.contents)
-        }
-    };
-
-    let (_, crl) = CertificateRevocationList::from_der(&crl_der)
-        .map_err(|e| anyhow!("Failed to parse CRL with x509-parser: {}", e))?;
-
-    Ok(crl.extensions()
-        .iter()
-        .find_map(|ext| match ext.parsed_extension() {
-            ParsedExtension::CRLNumber(num) => Some(num),
-            _ => None,
-        })
-        .ok_or_else(|| anyhow!("No CRL number extension found in CRL"))?
-        .to_string()
-        .parse::<i64>()?)
 }
 
 fn asn1_time_to_unix(time: &openssl::asn1::Asn1TimeRef) -> Result<i64> {
