@@ -352,7 +352,7 @@ pub(crate) async fn import_ca(
     let mut crl_number = 0;
     let mut crl_bytes = Vec::new();
 
-    if let Some(crl_str) = &payload.crl {
+    if let Some(crl_str) = &payload.crl && !crl_str.is_empty() {
         crl_bytes = match payload.format {
             DataFormat::PEM => crl_str.as_bytes().to_vec(),
             DataFormat::DER => BASE64_STANDARD.decode(crl_str).map_err(|e| ApiError::BadRequest(format!("Invalid base64 in CRL: {}", e)))?,
