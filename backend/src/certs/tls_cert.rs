@@ -375,12 +375,16 @@ pub(crate) fn get_dns_names(cert: &Certificate) -> Result<Vec<String>, anyhow::E
 
 pub fn parse_ca(cert_bytes: &[u8], key_bytes: &[u8], data_format: DataFormat, crl_number: i64) -> Result<CA> {
     use x509_parser::prelude::FromDer;
-    let cert_der = match data_format {
-        DataFormat::DER => cert_bytes.to_vec(),
+    let (cert_der, key_der) = match data_format {
+        DataFormat::DER => (cert_bytes.to_vec(), key_bytes.to_vec()),
         DataFormat::PEM => {
-            let pem = parse_x509_pem(cert_bytes)
-                .map_err(|e| anyhow!("Failed to parse CA PEM: {}", e))?;
-            pem.1.contents
+            let cert_pem = parse_x509_pem(cert_bytes)
+                .map_err(|e| anyhow!("Failed to parse CA Cert PEM: {}", e))?;
+
+            let key_pem = parse_x509_pem(key_bytes)
+                .map_err(|e| anyhow!("Failed to parse CA Private Key PEM: {}", e))?;
+
+            (cert_pem.1.contents, key_pem.1.contents)
         }
     };
 
@@ -409,7 +413,7 @@ pub fn parse_ca(cert_bytes: &[u8], key_bytes: &[u8], data_format: DataFormat, cr
         valid_until: valid_until_unix,
         ca_type: TLS,
         cert: cert_der,
-        key: key_bytes.to_vec(),
+        key: key_der,
         crl_number,
     })
 }
