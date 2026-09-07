@@ -16,7 +16,7 @@
     "bootstrap": "^5.3.8",
     "hash-wasm": "^4.12.0",
     "pinia": "^4.0.3",
-    "vue": "^3.5.41",
+    "vue": "^3.5.42",
     "vue-boring-avatars": "^1.4.0",
     "vue-i18n": "^11.4.8",
     "vue-router": "^5.2.0"
