@@ -33,7 +33,7 @@ def context():
 def page(context):
     context.clear_cookies()
     page = context.new_page()
-    page.goto("http://127.0.0.1/login")
+    page.goto("http://127.0.0.1:8080/login")
     page.wait_for_url("**/login")
 
     page.fill("#email", "test@example.com")

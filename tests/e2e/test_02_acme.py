@@ -59,7 +59,7 @@ def compute_jwk_thumbprint(jwk: dict) -> str:
 def admin_login() -> requests.Session:
     session = requests.Session()
     r = session.post(
-        "http://127.0.0.1/api/auth/login",
+        "http://127.0.0.1:8080/api/auth/login",
         json={"email": "test@example.com", "password": "password"},
     )
     r.raise_for_status()
@@ -67,7 +67,7 @@ def admin_login() -> requests.Session:
 
 
 def acme_get_nonce() -> str:
-    r = requests.head("http://127.0.0.1/api/acme/new-nonce")
+    r = requests.head("http://127.0.0.1:8080/api/acme/new-nonce")
     return r.headers["Replay-Nonce"]
 
 
@@ -142,18 +142,18 @@ def make_jws(
 
 
 def get_settings(session: requests.Session) -> dict:
-    r = session.get("http://127.0.0.1/api/settings")
+    r = session.get("http://127.0.0.1:8080/api/settings")
     r.raise_for_status()
     return r.json()
 
 
 def put_settings(session: requests.Session, settings: dict) -> None:
-    r = session.put("http://127.0.0.1/api/settings", json=settings)
+    r = session.put("http://127.0.0.1:8080/api/settings", json=settings)
     r.raise_for_status()
 
 
 def get_first_ca_id(session: requests.Session) -> int:
-    r = session.get("http://127.0.0.1/api/certificates/ca")
+    r = session.get("http://127.0.0.1:8080/api/certificates/ca")
     r.raise_for_status()
     cas = r.json()
     assert cas, "No CAs available"
@@ -173,7 +173,7 @@ def register_account(
     if ca_id is None:
         ca_id = get_first_ca_id(admin_session)
     r = admin_session.post(
-        "http://127.0.0.1/api/acme/accounts",
+        "http://127.0.0.1:8080/api/acme/accounts",
         json={"name": name, "allowed_domains": allowed_domains, "auto_validate": auto_validate, "ca_id": ca_id},
     )
     r.raise_for_status()
@@ -185,7 +185,7 @@ def register_account(
     client_key = generate_private_key(SECP256R1())
     jwk = ec_key_to_jwk(client_key)
 
-    directory = requests.get("http://127.0.0.1/api/acme/directory").json()
+    directory = requests.get("http://127.0.0.1:8080/api/acme/directory").json()
     nonce = acme_get_nonce()
     eab_jws = make_eab_jws(eab_kid, eab_key, jwk, directory["newAccount"])
     reg_resp = acme_post(
@@ -217,7 +217,7 @@ def run_acme_flow(
     try:
         jwk = ec_key_to_jwk(client_key)
         thumbprint = compute_jwk_thumbprint(jwk)
-        directory = requests.get("http://127.0.0.1/api/acme/directory").json()
+        directory = requests.get("http://127.0.0.1:8080/api/acme/directory").json()
         nonce = acme_get_nonce()
 
         # Submit a new order identifying the domain we want a certificate for.
@@ -309,7 +309,7 @@ def run_acme_flow(
 
     finally:
         # Always clean up the VaulTLS ACME account regardless of test outcome.
-        admin_session.delete(f"http://127.0.0.1/api/acme/accounts/{acct_id}")
+        admin_session.delete(f"http://127.0.0.1:8080/api/acme/accounts/{acct_id}")
 
 
 class _ChallengeResolver(BaseResolver):
@@ -346,7 +346,7 @@ def dns_resolver():
 
 
 def test_acme_create_account(page):
-    page.goto("http://127.0.0.1/acme")
+    page.goto("http://127.0.0.1:8080/acme")
     page.wait_for_url("**/acme")
     assert "ACME Accounts" in page.locator("h1").first.inner_text()
 
@@ -367,7 +367,7 @@ def test_acme_create_account(page):
 
 
 def test_acme_edit_account(page):
-    page.goto("http://127.0.0.1/acme")
+    page.goto("http://127.0.0.1:8080/acme")
     page.wait_for_url("**/acme")
     assert "ACME Accounts" in page.locator("h1").first.inner_text()
     
@@ -385,7 +385,7 @@ def test_acme_edit_account(page):
 
 
 def test_acme_deactivate_account(page):
-    page.goto("http://127.0.0.1/acme")
+    page.goto("http://127.0.0.1:8080/acme")
     page.wait_for_url("**/acme")
 
     page.click("#CreateAcmeAccountButton")
@@ -469,12 +469,12 @@ def test_acme_enabled_guard():
     put_settings(session, disabled)
     try:
         endpoints = [
-            ("GET",  "http://127.0.0.1/api/acme/directory"),
-            ("HEAD", "http://127.0.0.1/api/acme/new-nonce"),
-            ("GET",  "http://127.0.0.1/api/acme/new-nonce"),
-            ("POST", "http://127.0.0.1/api/acme/new-account"),
-            ("POST", "http://127.0.0.1/api/acme/new-order"),
-            ("POST", "http://127.0.0.1/api/acme/revoke-cert"),
+            ("GET",  "http://127.0.0.1:8080/api/acme/directory"),
+            ("HEAD", "http://127.0.0.1:8080/api/acme/new-nonce"),
+            ("GET",  "http://127.0.0.1:8080/api/acme/new-nonce"),
+            ("POST", "http://127.0.0.1:8080/api/acme/new-account"),
+            ("POST", "http://127.0.0.1:8080/api/acme/new-order"),
+            ("POST", "http://127.0.0.1:8080/api/acme/revoke-cert"),
         ]
         for method, url in endpoints:
             resp = requests.request(
@@ -492,10 +492,10 @@ def test_acme_enabled_guard():
 def test_authenticated_jws_guard_bad_nonce():
     """AuthenticatedJws guard: request with an invalid nonce returns 400 badNonce."""
     client_key = generate_private_key(SECP256R1())
-    url = "http://127.0.0.1/api/acme/new-order"
+    url = "http://127.0.0.1:8080/api/acme/new-order"
     resp = acme_post(
         client_key, url, {"identifiers": []}, "not-a-valid-nonce",
-        kid="http://127.0.0.1/api/acme/account/1",
+        kid="http://127.0.0.1:8080/api/acme/account/1",
     )
     assert resp.status_code == 400
     assert "badNonce" in resp.json().get("type", "")
@@ -505,11 +505,11 @@ def test_authenticated_jws_guard_url_mismatch():
     """AuthenticatedJws guard: JWS signed for a different URL returns 403 unauthorized."""
     client_key = generate_private_key(SECP256R1())
     nonce = acme_get_nonce()
-    post_url = "http://127.0.0.1/api/acme/new-order"
-    wrong_url = "http://127.0.0.1/api/acme/not-this-endpoint"
+    post_url = "http://127.0.0.1:8080/api/acme/new-order"
+    wrong_url = "http://127.0.0.1:8080/api/acme/not-this-endpoint"
     jws = make_jws(
         client_key, wrong_url, {"identifiers": []}, nonce,
-        kid="http://127.0.0.1/api/acme/account/1",
+        kid="http://127.0.0.1:8080/api/acme/account/1",
     )
     resp = requests.post(post_url, json=jws, headers={"Content-Type": "application/jose+json"})
     assert resp.status_code == 403
@@ -520,10 +520,10 @@ def test_authenticated_jws_guard_unknown_account():
     """AuthenticatedJws guard: kid for a nonexistent account returns 400 accountDoesNotExist."""
     client_key = generate_private_key(SECP256R1())
     nonce = acme_get_nonce()
-    url = requests.get("http://127.0.0.1/api/acme/directory").json()["newOrder"]
+    url = requests.get("http://127.0.0.1:8080/api/acme/directory").json()["newOrder"]
     resp = acme_post(
         client_key, url, {"identifiers": []}, nonce,
-        kid="http://localhost/api/acme/account/999999",
+        kid="http://localhost:8080/api/acme/account/999999",
     )
     assert resp.status_code == 400
     assert "accountDoesNotExist" in resp.json().get("type", "")
@@ -536,19 +536,19 @@ def test_authenticated_jws_guard_invalid_signature():
     try:
         wrong_key = generate_private_key(SECP256R1())
         nonce = acme_get_nonce()
-        url = requests.get("http://127.0.0.1/api/acme/directory").json()["newOrder"]
+        url = requests.get("http://127.0.0.1:8080/api/acme/directory").json()["newOrder"]
         resp = acme_post(wrong_key, url, {"identifiers": []}, nonce, kid=kid)
         assert resp.status_code == 400
         assert "malformed" in resp.json().get("type", "")
     finally:
-        session.delete(f"http://127.0.0.1/api/acme/accounts/{acct_id}")
+        session.delete(f"http://127.0.0.1:8080/api/acme/accounts/{acct_id}")
 
 
 def test_jose_body_too_large():
     """JoseBody guard: request body exceeding 1 MiB returns 413."""
     oversized = "x" * (1024 * 1024 + 1)
     resp = requests.post(
-        "http://127.0.0.1/api/acme/new-account",
+        "http://127.0.0.1:8080/api/acme/new-account",
         data=oversized,
         headers={"Content-Type": "application/jose+json"},
     )

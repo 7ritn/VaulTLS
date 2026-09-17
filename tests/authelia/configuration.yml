@@ -54,7 +54,7 @@ identity_providers:
         authorization_policy: "one_factor"
         pkce_challenge_method: "S256"
         redirect_uris:
-          - "http://127.0.0.1:80/api/auth/oidc/callback"
+          - "http://127.0.0.1:8080/api/auth/oidc/callback"
         scopes:
           - "openid"
           - "profile"

@@ -33,7 +33,7 @@ If you want to access VaulTLS using non-HTTPS you need to add the following envi
 ```bash
 podman run -d \
   --name vaultls \
-  -p 5173:80 \
+  -p 5173:8080 \
   -v vaultls-data:/app/data \
   -e VAULTLS_API_SECRET="[VAULTLS_API_SECRET]" \
   -e VAULTLS_URL="https://vaultls.example.com/" \

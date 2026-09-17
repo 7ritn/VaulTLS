@@ -25,21 +25,26 @@ RUN cargo build --release --locked \
          echo "Skipping tests"; \
        fi
 
-# Stage 3 Final container with Nginx and backend binary
-FROM nginx:stable
+# Stage 3: Final container with Nginx unprivileged and backend binary
+FROM nginxinc/nginx-unprivileged:stable
+
+USER root
 
 WORKDIR /app/data
 COPY --from=frontend-builder /app/frontend/dist/ /usr/share/nginx/html/
 COPY container/nginx.conf /etc/nginx/nginx.conf
 COPY --from=backend-builder /app/backend/backend /app/bin/backend
 
-EXPOSE 80
+RUN chown -R nginx:nginx /app/data
+
+EXPOSE 8080
 
 # Prepare init system
-RUN apt-get update
-RUN apt-get install tini
+RUN apt-get update && apt-get install -y tini
 
 COPY container/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
+
+USER nginx
 
 CMD ["/entrypoint.sh"]
