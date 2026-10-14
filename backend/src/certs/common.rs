@@ -73,6 +73,7 @@ pub struct CA {
     #[serde(skip)]
     pub key: Vec<u8>,
     pub crl_number: i64,
+    pub parent_id: Option<i64>,
 }
 
 /// Saves the CA certificate to a file for filesystem access.

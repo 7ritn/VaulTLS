@@ -1,0 +1,1 @@
+ALTER TABLE ca_certificates ADD COLUMN parent_id INTEGER REFERENCES ca_certificates(id) ON DELETE RESTRICT;

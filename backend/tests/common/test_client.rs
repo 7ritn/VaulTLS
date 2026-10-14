@@ -311,6 +311,7 @@ impl VaulTLSClient {
             ca_type: CAType::TLS,
             validity_duration: Some(15),
             validity_unit: Some(TimespanUnit::Year),
+            parent_id: None,
         };
 
         let request = self
@@ -329,6 +330,7 @@ impl VaulTLSClient {
             ca_type: CAType::SSH,
             validity_duration: None,
             validity_unit: None,
+            parent_id: None,
         };
 
         let request = self
