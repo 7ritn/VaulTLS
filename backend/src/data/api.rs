@@ -54,6 +54,7 @@ pub struct CreateCARequest {
     pub ca_type: CAType,
     pub validity_duration: Option<u64>,
     pub validity_unit: Option<TimespanUnit>,
+    pub parent_id: Option<i64>,
 }
 
 #[derive(Serialize, Deserialize, JsonSchema, Debug)]
@@ -141,6 +142,7 @@ pub struct ImportCARequest {
     pub key: String,  // PEM or base64 DER
     pub crl: Option<String>, // PEM or base64 DER
     pub format: DataFormat,
+    pub parent_id: Option<i64>,
 }
 
 #[derive(Serialize, Deserialize, JsonSchema)]

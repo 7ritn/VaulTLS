@@ -113,6 +113,7 @@ impl SSHCertificateBuilder {
             cert: Vec::new(),
             key,
             crl_number: 0,
+            parent_id: None,
         })
     }
 

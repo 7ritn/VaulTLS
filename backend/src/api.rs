@@ -334,6 +334,7 @@ pub(crate) async fn get_current_user(
 /// `crl` (optional) can also be PEM or base64 DER.
 /// The `format` field specifies whether the input is `PEM` or `DER`.
 /// If `format` is `DER`, the binary data must be base64-encoded.
+/// `parent_id` (optional) identifies the root TLS CA that issued this intermediate CA.
 pub(crate) async fn import_ca(
     state: &State<AppState>,
     payload: Json<ImportCARequest>,
@@ -370,6 +371,30 @@ pub(crate) async fn import_ca(
     }
 
     let mut ca = parse_ca(&cert_bytes, &key_bytes, payload.format, crl_number)?;
+    if let Some(parent_id) = payload.parent_id {
+        let parent = state.db.get_ca_by_id(parent_id).await?;
+        if parent.ca_type != CAType::TLS {
+            return Err(ApiError::BadRequest(format!("The Parent CA {} is not a TLS CA", parent.id)));
+        }
+        if parent.parent_id.is_some() {
+            return Err(ApiError::BadRequest(format!("The Parent CA {} is not a root CA", parent.id)));
+        }
+        if ca.valid_until > parent.valid_until {
+            return Err(ApiError::BadRequest("The imported CA would expire after its parent CA".to_string()));
+        }
+
+        let imported_cert = openssl::x509::X509::from_der(&ca.cert)
+            .map_err(|e| ApiError::BadRequest(format!("Invalid imported CA certificate: {}", e)))?;
+        let parent_cert = openssl::x509::X509::from_der(&parent.cert)
+            .map_err(|e| ApiError::Other(format!("Invalid parent CA certificate: {}", e)))?;
+        let parent_public_key = parent_cert.public_key()?;
+        if imported_cert.issuer_name().to_der()? != parent_cert.subject_name().to_der()?
+            || !imported_cert.verify(&parent_public_key)?
+        {
+            return Err(ApiError::BadRequest("The imported CA was not issued by the selected parent CA".to_string()));
+        }
+        ca.parent_id = Some(parent_id);
+    }
     ca = state.db.insert_ca(ca).await?;
     save_ca(&ca)?;
 
@@ -452,10 +477,26 @@ pub(crate) async fn create_ca(
         CAType::TLS => {
             let cert_validity = payload.validity_duration.unwrap_or(5);
             let cert_validity_unit = payload.validity_unit.unwrap_or(TimespanUnit::Year);
-            TLSCertificateBuilder::new()?
+            let mut builder = TLSCertificateBuilder::new()?
                 .set_name(payload.ca_name.clone())?
-                .set_valid_until(cert_validity, cert_validity_unit)?
-                .build_ca()?
+                .set_valid_until(cert_validity, cert_validity_unit)?;
+
+            if let Some(parent_id) = payload.parent_id {
+                let parent = state.db.get_ca_by_id(parent_id).await?;
+                if parent.ca_type != CAType::TLS {
+                    return Err(ApiError::BadRequest(format!("The Parent CA {} is not a TLS CA", parent.id)));
+                }
+                if parent.parent_id.is_some() {
+                    return Err(ApiError::BadRequest(format!("The Parent CA {} is not a root CA", parent.id)));
+                }
+                let child_valid_until = get_timestamp(cert_validity, cert_validity_unit).unix_timestamp() * 1000;
+                if parent.valid_until != -1 && child_valid_until > parent.valid_until {
+                    return Err(ApiError::BadRequest("The child CA would expire after its parent CA".to_string()));
+                }
+                builder = builder.set_parent_ca(parent);
+            }
+
+            builder.build_ca()?
         },
         CAType::SSH => {
             SSHCertificateBuilder::new()?

@@ -4,8 +4,8 @@ use anyhow::Result;
 use const_format::concatcp;
 use rocket::http::{ContentType, Cookie, Status};
 use serde_json::Value;
-use vaultls::data::api::{CreateUserRequest, LoginRequest};
-use vaultls::data::enums::UserRole;
+use vaultls::data::api::{CreateCARequest, CreateUserRequest, LoginRequest};
+use vaultls::data::enums::{CAType, TimespanUnit, UserRole};
 
 #[tokio::test]
 async fn test_invalid_authentication() -> Result<()> {
@@ -109,6 +109,53 @@ async fn test_protect_server_settings() -> Result<()> {
         .body(settings);
     let response = request.dispatch().await;
     assert_eq!(response.status(), Status::Forbidden);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_create_ca_cannot_outlive_parent() -> Result<()> {
+    let client = VaulTLSClient::new_authenticated().await;
+    let request_data = CreateCARequest {
+        ca_name: "Long-lived child CA".into(),
+        ca_type: CAType::TLS,
+        validity_duration: Some(6),
+        validity_unit: Some(TimespanUnit::Year),
+        parent_id: Some(1),
+    };
+
+    let response = client
+        .post("/certificates/ca")
+        .header(ContentType::JSON)
+        .body(serde_json::to_string(&request_data)?)
+        .dispatch()
+        .await;
+
+    assert_eq!(response.status(), Status::BadRequest);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_create_tls_ca_rejects_ssh_parent() -> Result<()> {
+    let client = VaulTLSClient::new_authenticated().await;
+    client.create_ssh_ca().await?;
+    let request_data = CreateCARequest {
+        ca_name: "TLS child CA".into(),
+        ca_type: CAType::TLS,
+        validity_duration: Some(1),
+        validity_unit: Some(TimespanUnit::Year),
+        parent_id: Some(2),
+    };
+
+    let response = client
+        .post("/certificates/ca")
+        .header(ContentType::JSON)
+        .body(serde_json::to_string(&request_data)?)
+        .dispatch()
+        .await;
+
+    assert_eq!(response.status(), Status::BadRequest);
 
     Ok(())
 }

@@ -30,7 +30,8 @@ pub struct TLSCertificateBuilder {
     pkcs12_password: String,
     ca: Option<(i64, Vec<u8>, Vec<u8>)>,
     user_id: Option<i64>,
-    renew_method: CertificateRenewMethod
+    renew_method: CertificateRenewMethod,
+    parent_ca: Option<CA>,
 }
 impl TLSCertificateBuilder {
     pub fn new() -> Result<Self> {
@@ -50,7 +51,8 @@ impl TLSCertificateBuilder {
             pkcs12_password: String::new(),
             ca: None,
             user_id: None,
-            renew_method: Default::default()
+            renew_method: Default::default(),
+            parent_ca: None,
         })
     }
 
@@ -125,6 +127,11 @@ impl TLSCertificateBuilder {
         Ok(self)
     }
 
+    pub fn set_parent_ca(mut self, parent: CA) -> Self {
+        self.parent_ca = parent.into();
+        self
+    }
+
     pub fn build_ca(mut self) -> Result<CA, anyhow::Error> {
         let name = self.name.ok_or(anyhow!("X509: name not set"))?;
         let valid_until = self.valid_until.ok_or(anyhow!("X509: valid_until not set"))?;
@@ -135,7 +142,18 @@ impl TLSCertificateBuilder {
             KeyUsagePurpose::CrlSign,
         ];
 
-        let cert = self.params.self_signed(&self.key_pair)?;
+        let parent_ca_id = self.parent_ca.as_ref().map(|p| p.id.into());
+        let cert = if let Some(parent) = self.parent_ca {
+            let parent_key_der = parent.key;
+            let parent_cert_der = parent.cert;
+            let parent_key_pair = KeyPair::try_from(parent_key_der)?;
+            let parent_cert_der_obj = CertificateDer::from(parent_cert_der);
+            let issuer = Issuer::from_ca_cert_der(&parent_cert_der_obj, parent_key_pair)?;
+
+            self.params.signed_by(&self.key_pair, &issuer)?
+        } else {
+            self.params.self_signed(&self.key_pair)?
+        };
 
         Ok(CA{
             id: -1,
@@ -146,6 +164,7 @@ impl TLSCertificateBuilder {
             cert: cert.der().to_vec(),
             key: self.key_pair.serialize_der(),
             crl_number: 0,
+            parent_id: parent_ca_id
         })
     }
 
@@ -415,6 +434,7 @@ pub fn parse_ca(cert_bytes: &[u8], key_bytes: &[u8], data_format: DataFormat, cr
         cert: cert_der,
         key: key_der,
         crl_number,
+        parent_id: None
     })
 }
 
