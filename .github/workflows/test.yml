@@ -67,13 +67,11 @@ jobs:
           file: Containerfile
           push: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false }}
           tags: ${{ steps.meta.outputs.tags }}
-          load: true  # Needed so the image is available to docker-compose locally
+          load: true  # Needed so the image is available to docker compose locally
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Set up Docker Compose
-        run: sudo apt-get update && sudo apt-get install -y docker-compose
 
       - name: Run Docker Compose for E2E tests
         working-directory: ./tests
-        run: docker-compose up --abort-on-container-exit --exit-code-from test
+        run: docker compose up --abort-on-container-exit --exit-code-from test
