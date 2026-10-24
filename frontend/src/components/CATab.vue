@@ -9,6 +9,7 @@
           <th>{{ $t('common.colCaId') }}</th>
           <th>{{ $t('common.colName') }}</th>
           <th v-if="hasAnyOU">{{ $t('common.colGroup') }}</th>
+          <th v-if="hasAnyParent">{{ $t('ca.colParent') }}</th>
           <th>{{ $t('common.colType') }}</th>
           <th class="d-none d-lg-table-cell">{{ $t('common.colCreatedOn') }}</th>
           <th>{{ $t('common.colValidUntil') }}</th>
@@ -20,6 +21,9 @@
           <td :id="'CaId-' + ca.id">{{ ca.id }}</td>
           <td :id="'CAName-' + ca.id">{{ ca.name.cn }}</td>
           <td :id="'CAGroup-' + ca.id" v-if="hasAnyOU">{{ ca.name.ou ?? '' }}</td>
+          <td :id="'CAParent-' + ca.id" v-if="hasAnyParent">
+            {{ ca.parent_id == null ? '' : (cas.get(ca.parent_id)?.name.cn ?? ca.parent_id) }}
+          </td>
           <td :id="'CAType-' + ca.id">{{ CAType[ca.ca_type] }}</td>
           <td :id="'CreatedOn-' + ca.id" class="d-none d-lg-table-cell">{{ new Date(ca.created_on).toLocaleDateString() }}</td>
           <td :id="'ValidUntil-' + ca.id">
@@ -169,6 +173,15 @@
                 <option :value="CAType.SSH">SSH</option>
               </select>
             </div>
+            <div class="mb-3">
+              <label for="caParent" class="form-label">{{ $t('ca.createModal.parent') }}</label>
+              <select id="caParent" v-model="caReq.parent_id" class="form-select">
+                <option :value="undefined">{{ $t('ca.createModal.noParent') }}</option>
+                <option v-for="parent in parentCandidates" :key="parent.id" :value="parent.id">
+                  {{ parent.name.cn }} ({{ parent.id }})
+                </option>
+              </select>
+            </div>
             <div class="mb-3" v-if="caReq.ca_type === CAType.TLS">
               <label for="validity" class="form-label">{{ $t('common.validity') }}</label>
               <div class="input-group">
@@ -193,6 +206,9 @@
                 </select>
               </div>
             </div>
+            <div v-if="caWouldOutliveParent" class="alert alert-warning">
+              {{ $t('ca.createModal.parentValidityWarning', { date: selectedParentValidUntil }) }}
+            </div>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" @click="closeCreateModal">
@@ -201,7 +217,7 @@
             <button
                 type="button"
                 class="btn btn-primary"
-                :disabled="loading || !caReq.ca_name.cn || (!caReq.validity_duration && caReq.ca_type == CAType.TLS)"
+                :disabled="loading || !caReq.ca_name.cn || (!caReq.validity_duration && caReq.ca_type == CAType.TLS) || caWouldOutliveParent"
                 @click="createCA"
             >
               <span v-if="loading">{{ $t('common.creating') }}</span>
@@ -229,12 +245,15 @@
             <p>
               {{ $t('ca.deleteModal.confirm', { name: caToDelete?.name.cn }) }}
             </p>
+            <div v-if="caToDeleteHasChildren" class="alert alert-warning">
+              {{ $t('ca.deleteModal.hasChildren') }}
+            </div>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" @click="closeDeleteModal">
               {{ $t('common.cancel') }}
             </button>
-            <button type="button" class="btn btn-danger" @click="deleteCA">
+            <button type="button" class="btn btn-danger" :disabled="caToDeleteHasChildren" @click="deleteCA">
               {{ $t('common.delete') }}
             </button>
           </div>
@@ -256,6 +275,17 @@
             <button type="button" class="btn-close" @click="closeImportModal"></button>
           </div>
           <div class="modal-body">
+            <div class="mb-3">
+              <label for="importParent" class="form-label" :title="$t('ca.importModal.parentHelp')">
+                {{ $t('ca.importModal.parent') }}
+              </label>
+              <select id="importParent" v-model="importReq.parent_id" class="form-select">
+                <option :value="undefined">{{ $t('ca.importModal.noParent') }}</option>
+                <option v-for="parent in parentCandidates" :key="parent.id" :value="parent.id">
+                  {{ parent.name.cn }} ({{ parent.id }})
+                </option>
+              </select>
+            </div>
             <div class="mb-3">
               <label for="importFormat" class="form-label">{{ $t('common.format') }}</label>
               <select class="form-select" id="importFormat" v-model="importReq.format">
@@ -332,12 +362,6 @@ const authStore = useAuthStore();
 const cas = computed(() => caStore.cas);
 const loading = computed(() => caStore.loading);
 const error = computed(() => caStore.error);
-const hasAnyOU = computed(() => Array.from(cas.value.values()).some(ca => ca.name.ou));
-
-const isDeleteModalVisible = ref(false);
-const isCreateModalVisible = ref(false);
-const isImportModalVisible = ref(false);
-const caToDelete = ref<CA | null>(null);
 
 const caReq = reactive<CARequirements>({
   ca_name: { cn: '', ou: undefined },
@@ -352,6 +376,38 @@ const importReq = reactive<ImportCARequest>({
   crl: '',
   format: DataFormat.PEM
 });
+
+const hasAnyOU = computed(() => Array.from(cas.value.values()).some(ca => ca.name.ou));
+const hasAnyParent = computed(() => Array.from(cas.value.values()).some(ca => ca.parent_id != null));
+const parentCandidates = computed(() => Array.from(cas.value.values()).filter(ca => ca.ca_type === CAType.TLS && ca.parent_id == null));
+const caWouldOutliveParent = computed(() => {
+  const parent = caReq.parent_id == null ? undefined : cas.value.get(caReq.parent_id);
+  const duration = caReq.validity_duration;
+  if (!parent || parent.valid_until === -1 || caReq.ca_type !== CAType.TLS ||
+      duration == null || !Number.isFinite(duration) || duration <= 0) {
+    return false;
+  }
+
+  const durationHours = duration * ({
+    [ValidityUnit.Year]: 365 * 24,
+    [ValidityUnit.Month]: 30 * 24,
+    [ValidityUnit.Day]: 24,
+    [ValidityUnit.Hour]: 1
+  }[caReq.validity_unit ?? ValidityUnit.Year]);
+  const childValidUntil = Date.now() + durationHours * 60 * 60 * 1000;
+  return childValidUntil > parent.valid_until;
+});
+const selectedParentValidUntil = computed(() => {
+  const parent = caReq.parent_id == null ? undefined : cas.value.get(caReq.parent_id);
+  return parent && parent.valid_until !== -1 ? new Date(parent.valid_until).toLocaleDateString() : '';
+});
+
+const isDeleteModalVisible = ref(false);
+const isCreateModalVisible = ref(false);
+const isImportModalVisible = ref(false);
+const caToDelete = ref<CA | null>(null);
+const caToDeleteHasChildren = computed(() => caToDelete.value !== null &&
+    Array.from(cas.value.values()).some(ca => ca.parent_id === caToDelete.value?.id));
 
 const showOUField = ref(false);
 
@@ -368,6 +424,7 @@ const closeCreateModal = () => {
   caReq.ca_name = { cn: '', ou: undefined };
   caReq.validity_duration = 10;
   caReq.validity_unit = ValidityUnit.Year;
+  caReq.parent_id = undefined;
   showOUField.value = false;
 };
 
@@ -381,6 +438,7 @@ const closeImportModal = () => {
   importReq.key = '';
   importReq.crl = '';
   importReq.format = DataFormat.PEM;
+  importReq.parent_id = undefined;
 };
 
 const createCA = async () => {
@@ -404,7 +462,7 @@ const closeDeleteModal = () => {
 };
 
 const deleteCA = async () => {
-  if (caToDelete.value) {
+  if (caToDelete.value && !caToDeleteHasChildren.value) {
     await caStore.deleteCA(caToDelete.value.id);
     closeDeleteModal();
   }

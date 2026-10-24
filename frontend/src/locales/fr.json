@@ -1,1 +1,40 @@
-{}
+{
+  "ca": {
+    "title": "Autorités de certification",
+    "crl": "CRL",
+    "krl": "KRL",
+    "toggle_dropdown": "Afficher le menu",
+    "der_format": "Format DER",
+    "pem_format": "Format PEM",
+    "createCa": "Créer une AC",
+    "importCa": "Importer une AC",
+    "downloadAllCa": "Télécharger toutes les AC TLS",
+    "colParent": "AC parente",
+    "loadingCas": "Chargement des AC...",
+    "enterCaCommonName": "Saisissez le nom commun de l’AC",
+    "importModal": {
+      "title": "Importer une autorité de certification",
+      "cert": "Certificat (PEM ou DER en Base64)",
+      "key": "Clé privée (PEM ou DER en Base64)",
+      "crl": "CRL (PEM ou DER en Base64)",
+      "uploadFile": "Importer un fichier",
+      "parent": "AC parente",
+      "noParent": "Aucune AC parente (AC racine)",
+      "parentHelp": "L’AC parente sélectionnée doit avoir signé l’AC importée."
+    },
+    "createModal": {
+      "title": "Créer une autorité de certification",
+      "caName": "Nom de l’AC (CN)",
+      "caType": "Type d’AC",
+      "parent": "AC parente",
+      "noParent": "Aucune AC parente (AC racine)",
+      "parentValidityWarning": "La durée de validité de l’AC ne peut pas dépasser celle de son AC parente, valable jusqu’au {date}.",
+      "create": "Créer l’AC"
+    },
+    "deleteModal": {
+      "title": "Supprimer l’autorité de certification",
+      "confirm": "Voulez-vous vraiment supprimer l’AC {name} ?",
+      "hasChildren": "Cette AC ne peut pas être supprimée tant qu’elle possède des AC enfants. Supprimez d’abord ses AC enfants."
+    }
+  }
+}
