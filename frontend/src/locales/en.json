@@ -128,6 +128,7 @@
     "createCa": "Create New CA",
     "importCa": "Import CA",
     "downloadAllCa": "Download All TLS CAs",
+    "colParent": "Parent CA",
     "loadingCas": "Loading CAs...",
     "enterCaCommonName": "Enter CA Common Name",
     "importModal": {
@@ -135,17 +136,24 @@
       "cert": "Certificate (PEM or Base64 DER)",
       "key": "Private Key (PEM or Base64 DER)",
       "crl": "CRL (PEM or Base64 DER)",
-      "uploadFile": "Upload File"
+      "uploadFile": "Upload File",
+      "parent": "Parent CA",
+      "noParent": "No parent (root CA)",
+      "parentHelp": "The selected parent CA must have signed the CA being imported."
     },
     "createModal": {
       "title": "Create New Certificate Authority",
       "caName": "CA Name (CN)",
       "caType": "CA Type",
+      "parent": "Parent CA",
+      "noParent": "No parent (root CA)",
+      "parentValidityWarning": "The CA cannot outlive its selected parent, which is valid until {date}.",
       "create": "Create CA"
     },
     "deleteModal": {
       "title": "Delete Certificate",
-      "confirm": "Are you sure you want to delete the CA {name}?"
+      "confirm": "Are you sure you want to delete the CA {name}?",
+      "hasChildren": "This CA cannot be deleted while it has child CAs. Delete its child CAs first."
     }
   },
   "users": {

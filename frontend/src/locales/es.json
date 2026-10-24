@@ -117,18 +117,34 @@
     "der_format": "Formato DER",
     "pem_format": "Formato PEM",
     "createCa": "Crear nueva CA",
+    "importCa": "Importar CA",
     "downloadAllCa": "Descargar todas las CAs TLS",
+    "colParent": "CA principal",
     "loadingCas": "Cargando CAs...",
     "enterCaCommonName": "Introduzca el nombre común de la CA",
+    "importModal": {
+      "title": "Importar autoridad de certificación",
+      "cert": "Certificado (PEM o DER en Base64)",
+      "key": "Clave privada (PEM o DER en Base64)",
+      "crl": "CRL (PEM o DER en Base64)",
+      "uploadFile": "Subir archivo",
+      "parent": "CA principal",
+      "noParent": "Sin CA principal (CA raíz)",
+      "parentHelp": "La CA principal seleccionada debe haber firmado la CA que se va a importar."
+    },
     "createModal": {
       "title": "Crear nueva autoridad de certificación",
       "caName": "Nombre de CA (CN)",
       "caType": "Tipo de CA",
+      "parent": "CA principal",
+      "noParent": "Sin CA principal (CA raíz)",
+      "parentValidityWarning": "La CA no puede tener una validez superior a la de su CA principal, que es válida hasta {date}.",
       "create": "Crear CA"
     },
     "deleteModal": {
       "title": "Eliminar certificado",
-      "confirm": "¿Está seguro de que desea eliminar la CA {name}?"
+      "confirm": "¿Está seguro de que desea eliminar la CA {name}?",
+      "hasChildren": "No se puede eliminar esta CA mientras tenga CAs secundarias. Elimine primero sus CAs secundarias."
     }
   },
   "users": {
