@@ -18,7 +18,6 @@ use rustls::server::WebPkiClientVerifier;
 use rustls::{ClientConfig, ServerConfig};
 use std::sync::Arc;
 use std::time::Duration;
-use argon2::password_hash::SaltString;
 use argon2::PasswordHasher;
 use serde_json::Value;
 use ssh_key::certificate::CertType;
@@ -110,8 +109,7 @@ async fn test_setup_hash() -> Result<()> {
     let client = VaulTLSClient::new().await;
 
     let salt_str = "VaulTLSVaulTLSVaulTLSVaulTLS".to_owned();
-    let salt = SaltString::encode_b64(salt_str.as_bytes()).unwrap();
-    let password_hash = ARGON2.hash_password(TEST_PASSWORD.as_bytes(), &salt).expect("hash_password");
+    let password_hash = ARGON2.hash_password_with_salt(TEST_PASSWORD.as_bytes(), salt_str.as_bytes()).expect("hash_password");
 
     let setup_data = SetupRequest{
         name: TEST_USER_NAME.to_string(),
@@ -143,8 +141,7 @@ async fn test_login_hash() -> Result<()> {
     client.logout().await?;
 
     let salt_str = "VaulTLSVaulTLSVaulTLSVaulTLS".to_owned();
-    let salt = SaltString::encode_b64(salt_str.as_bytes()).unwrap();
-    let password_hash = ARGON2.hash_password(TEST_PASSWORD.as_bytes(), &salt).expect("hash_password");
+    let password_hash = ARGON2.hash_password_with_salt(TEST_PASSWORD.as_bytes(), salt_str.as_bytes()).expect("hash_password");
 
     client.login(TEST_USER_EMAIL, &password_hash.to_string()).await
 }
