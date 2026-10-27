@@ -493,7 +493,7 @@ pub(crate) async fn create_ca(
                 if parent.valid_until != -1 && child_valid_until > parent.valid_until {
                     return Err(ApiError::BadRequest("The child CA would expire after its parent CA".to_string()));
                 }
-                builder = builder.set_parent_ca(parent);
+                builder = builder.set_ca(parent)?;
             }
 
             builder.build_ca()?
@@ -531,7 +531,7 @@ pub(crate) async fn create_user_certificate(
 
     let cert_validity = payload.validity_duration.unwrap_or(1);
     let cert_validity_unit = payload.validity_unit.unwrap_or(TimespanUnit::Year);
-    let mut cert = build_certificate(&payload, &ca, &cert_password, cert_validity, cert_validity_unit, state).await?;
+    let mut cert = build_certificate(&payload, ca, &cert_password, cert_validity, cert_validity_unit, state).await?;
     
     cert = state.db.insert_user_cert(cert).await?;
     
@@ -596,7 +596,7 @@ async fn ensure_ca_validity(ca: &mut CA, payload: &CreateUserCertificateRequest)
 
 async fn build_certificate(
     payload: &CreateUserCertificateRequest,
-    ca: &CA,
+    ca: CA,
     cert_password: &str,
     validity_duration: u64,
     validity_unit: TimespanUnit,
@@ -616,7 +616,7 @@ async fn build_certificate(
 
 fn build_ssh_cert(
     payload: &CreateUserCertificateRequest,
-    ca: &CA,
+    ca: CA,
     cert_password: &str,
     validity_duration: u64,
     validity_unit: TimespanUnit,
@@ -646,7 +646,7 @@ fn build_ssh_cert(
 
 async fn build_tls_cert(
     payload: &CreateUserCertificateRequest,
-    ca: &CA,
+    ca: CA,
     pkcs12_password: &str,
     validity_duration: u64,
     validity_unit: TimespanUnit,
