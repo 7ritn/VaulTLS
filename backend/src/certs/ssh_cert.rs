@@ -113,6 +113,7 @@ impl SSHCertificateBuilder {
             key,
             crl_number: 0,
             parent_id: None,
+            revoked_at: None,
         })
     }
 

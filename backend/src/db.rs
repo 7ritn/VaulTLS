@@ -23,6 +23,8 @@ static MIGRATIONS_DIR: Dir = include_dir!("$CARGO_MANIFEST_DIR/migrations");
 /// Migration that creates the revocations table, backfilled by [`backfill_revocations`].
 const REVOCATIONS_MIGRATION: &str = "12-revocations";
 
+const CA_COLUMNS: &str = "id, name, created_on, valid_until, type, certificate, key, crl_number, parent_id, \
+    (SELECT r.revoked_at FROM revocations r WHERE r.revoked_ca_id = ca_certificates.id)";
 const USER_CERT_COLUMNS: &str = "uc.id, uc.name, uc.created_on, uc.valid_until, uc.data, uc.password, uc.user_id, uc.type, uc.renew_method, uc.ca_id, \
     (SELECT r.revoked_at FROM revocations r WHERE r.revoked_user_cert_id = uc.id)";
 
@@ -189,6 +191,17 @@ impl VaulTLSDB {
         })
     }
 
+    /// Record the revocation of an intermediate CA on the CRL of its parent.
+    pub(crate) async fn revoke_ca(&self, id: i64, parent_id: i64, serial: Vec<u8>, revoked_at: i64) -> Result<()> {
+        db_do!(self.pool, |conn: &Connection| {
+            conn.execute(
+                "INSERT INTO revocations (ca_id, serial, revoked_at, revoked_ca_id) VALUES (?1, ?2, ?3, ?4)",
+                params![parent_id, serial, revoked_at, id],
+            )?;
+            Ok(())
+        })
+    }
+
     /// Delete a CA from the database
     pub(crate) async fn delete_ca(&self, id: i64) -> Result<()> {
         db_do!(self.pool, |conn: &Connection| {
@@ -200,17 +213,17 @@ impl VaulTLSDB {
     }
 
     pub(crate) async fn get_latest_tls_ca(&self) -> Result<CA> {
-        let query = formatcp!("SELECT id, name, created_on, valid_until, type, certificate, key, crl_number, parent_id FROM ca_certificates WHERE type = {} ORDER BY id DESC LIMIT 1", CAType::TLS as u8);
+        let query = formatcp!("SELECT {CA_COLUMNS} FROM ca_certificates WHERE type = {} AND NOT EXISTS (SELECT 1 FROM revocations r WHERE r.revoked_ca_id = ca_certificates.id) ORDER BY id DESC LIMIT 1", CAType::TLS as u8);
         self.get_ca_by_query(query.to_string(), None).await
     }
 
     pub(crate) async fn get_latest_ssh_ca(&self) -> Result<CA> {
-        let query = formatcp!("SELECT id, name, created_on, valid_until, type, certificate, key, crl_number, parent_id FROM ca_certificates WHERE type = {} ORDER BY id DESC LIMIT 1", CAType::SSH as u8);
+        let query = formatcp!("SELECT {CA_COLUMNS} FROM ca_certificates WHERE type = {} ORDER BY id DESC LIMIT 1", CAType::SSH as u8);
         self.get_ca_by_query(query.to_string(), None).await
     }
 
     pub(crate) async fn get_ca_by_id(&self, ca_id: i64) -> Result<CA> {
-        let query = "SELECT id, name, created_on, valid_until, type, certificate, key, crl_number, parent_id FROM ca_certificates WHERE id = ?1";
+        let query = formatcp!("SELECT {CA_COLUMNS} FROM ca_certificates WHERE id = ?1");
         self.get_ca_by_query(query.to_string(), Some(ca_id)).await
     }
 
@@ -234,6 +247,7 @@ impl VaulTLSDB {
                 key: row.get(6)?,
                 crl_number: row.get(7)?,
                 parent_id: row.get(8)?,
+                revoked_at: row.get(9)?,
             })
         })
     }
@@ -241,7 +255,7 @@ impl VaulTLSDB {
     /// Retrieve all CA certificates from the database
     pub(crate) async fn get_all_ca(&self) -> Result<Vec<CA>> {
         db_do!(self.pool, |conn: &Connection| {
-            let mut stmt = conn.prepare("SELECT id, name, created_on, valid_until, type, certificate, key, crl_number, parent_id FROM ca_certificates ORDER BY id ASC")?;
+            let mut stmt = conn.prepare(formatcp!("SELECT {CA_COLUMNS} FROM ca_certificates ORDER BY id ASC"))?;
             let query = stmt.query([])?;
             Ok(query.map(|row| {
                 Ok(CA{
@@ -254,6 +268,7 @@ impl VaulTLSDB {
                     key: row.get(6)?,
                     crl_number: row.get(7)?,
                     parent_id: row.get(8)?,
+                    revoked_at: row.get(9)?,
                 })
             })
             .collect()?)
@@ -386,7 +401,7 @@ impl VaulTLSDB {
         })
     }
 
-    /// Entries outlive the deletion of the revoked certificate.
+    /// Entries outlive the deletion of the revoked certificate or CA.
     pub(crate) async fn get_revocations(&self, ca_id: i64) -> Result<Vec<(Vec<u8>, i64)>> {
         db_do!(self.pool, |conn: &Connection| {
             let mut stmt = conn.prepare("SELECT serial, MIN(revoked_at) FROM revocations WHERE ca_id = ?1 GROUP BY serial ORDER BY MIN(revoked_at), serial")?;

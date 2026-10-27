@@ -157,7 +157,8 @@ impl TLSCertificateBuilder {
             cert: cert.der().to_vec(),
             key: self.key_pair.serialize_der(),
             crl_number: 0,
-            parent_id: parent_ca_id
+            parent_id: parent_ca_id,
+            revoked_at: None,
         })
     }
 
@@ -433,7 +434,8 @@ pub fn parse_ca(cert_bytes: &[u8], key_bytes: &[u8], data_format: DataFormat, cr
         cert: cert_der,
         key: key_der,
         crl_number,
-        parent_id: None
+        parent_id: None,
+        revoked_at: None,
     })
 }
 

@@ -603,6 +603,14 @@ pub(crate) async fn finalize_order(
         None => state.db.get_latest_tls_ca().await,
     }.map_err(|_| AcmeError::server_internal("No TLS CA available"))?;
 
+    if ca.revoked_at.is_some() {
+        error!("Refusing to issue certificate for order {id}: CA {} has been revoked", ca.id);
+        let _ = state.db.update_acme_order_status(
+            id, "invalid".to_string(), None, Some("The CA bound to this account has been revoked".to_string())
+        ).await;
+        return Err(AcmeError::server_internal("CA has been revoked"));
+    }
+
     let validity_days = ((order.not_after - now_ms) / 86_400_000).max(1) as u64;
 
     let cert_name = dns_names.first().map(|s| s.as_str()).unwrap_or("acme");

@@ -12,7 +12,7 @@ use crate::auth::oidc_auth::OidcAuth;
 use crate::auth::password_auth::Password;
 use crate::auth::session_auth::{generate_token, invalidate_token, Authenticated, AuthenticatedPrivileged};
 use crate::certs::common::{get_password, save_ca, Certificate, CA};
-use crate::certs::crl::{create_new_crl, create_crl_params, save_crl, create_and_save_crl, retrieve_crl, extract_crl_number};
+use crate::certs::crl::{ca_serial, create_new_crl, create_crl_params, save_crl, create_and_save_crl, retrieve_crl, extract_crl_number};
 use crate::certs::ssh_cert::{create_and_save_krl, create_krl, get_ssh_pem, retrieve_krl, SSHCertificateBuilder};
 use crate::certs::tls_cert::{get_timestamp, get_tls_pem, parse_ca, parse_p12_metadata, TLSCertificateBuilder};
 use crate::constants::VAULTLS_VERSION;
@@ -328,6 +328,13 @@ pub(crate) async fn get_current_user(
     Ok(Json(user))
 }
 
+fn ensure_ca_not_revoked(ca: &CA) -> Result<(), ApiError> {
+    if ca.revoked_at.is_some() {
+        return Err(ApiError::BadRequest(format!("The CA {} has been revoked", ca.id)));
+    }
+    Ok(())
+}
+
 fn validate_parent_ca(ca_valid_until: i64, parent: &CA) -> Result<(), ApiError> {
     if parent.ca_type != CAType::TLS {
         return Err(ApiError::BadRequest(format!("The Parent CA {} is not a TLS CA", parent.id)));
@@ -581,6 +588,8 @@ async fn get_appropriate_ca(state: &State<AppState>, payload: &CreateUserCertifi
 }
 
 async fn ensure_ca_validity(ca: &mut CA, payload: &CreateUserCertificateRequest) -> Result<CA, ApiError> {
+    ensure_ca_not_revoked(ca)?;
+
     let cert_validity = payload.validity_duration.unwrap_or(1);
     let cert_validity_unit = payload.validity_unit.unwrap_or(TimespanUnit::Year);
     let cert_validity_time = get_timestamp(cert_validity, cert_validity_unit);
@@ -801,6 +810,35 @@ pub(crate) async fn delete_ca(
         return Err(ApiError::BadRequest("The CA still has user certificates attached to it.".to_string()));
     }
     state.db.delete_ca(id).await?;
+    Ok(())
+}
+
+#[openapi(tag = "Certificates")]
+#[post("/certificates/ca/<id>/revoke")]
+/// Revoke an intermediate TLS CA. Requires admin role.
+pub(crate) async fn revoke_ca(
+    state: &State<AppState>,
+    id: i64,
+    _authentication: AuthenticatedPrivileged
+) -> Result<(), ApiError> {
+    let ca = state.db.get_ca_by_id(id).await.map_err(|_| ApiError::NotFound(None))?;
+    let (CAType::TLS, Some(parent_id)) = (ca.ca_type, ca.parent_id) else {
+        return Err(ApiError::BadRequest("Only intermediate TLS CAs can be revoked".to_string()));
+    };
+    ensure_ca_not_revoked(&ca)?;
+
+    let mut parent = state.db.get_ca_by_id(parent_id).await.map_err(|_| ApiError::NotFound(None))?;
+
+    // Publish the parent CRL first, so a failure leaves the CA unrevoked and the request can be retried
+    let revoked_at = chrono::Utc::now().timestamp();
+    let serial = ca_serial(&ca)?;
+    let (mut revoked_params, crl_next_update_hours) = create_crl_params(&state.db, &state.settings, &parent).await?;
+    revoked_params.push((serial.clone(), revoked_at));
+    create_and_save_crl(&mut parent, revoked_params, crl_next_update_hours)?;
+    state.db.revoke_ca(id, parent_id, serial, revoked_at).await?;
+    state.db.increase_ca_crl_number(parent.id, parent.crl_number).await?;
+
+    info!(ca_id = id, parent_ca_id = parent_id, "Intermediate CA revoked");
     Ok(())
 }
 
