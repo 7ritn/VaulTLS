@@ -327,6 +327,19 @@ pub(crate) async fn get_current_user(
     Ok(Json(user))
 }
 
+fn validate_parent_ca(ca_valid_until: i64, parent: &CA) -> Result<(), ApiError> {
+    if parent.ca_type != CAType::TLS {
+        return Err(ApiError::BadRequest(format!("The Parent CA {} is not a TLS CA", parent.id)));
+    }
+    if parent.parent_id.is_some() {
+        return Err(ApiError::BadRequest(format!("The Parent CA {} is not a root CA", parent.id)));
+    }
+    if ca_valid_until > parent.valid_until {
+        return Err(ApiError::BadRequest("The imported CA would expire after its parent CA".to_string()));
+    }
+    Ok(())
+}
+
 #[openapi(tag = "CA")]
 #[post("/certificates/ca/import", format = "json", data = "<payload>")]
 /// Import an existing CA.
@@ -373,15 +386,7 @@ pub(crate) async fn import_ca(
     let mut ca = parse_ca(&cert_bytes, &key_bytes, payload.format, crl_number)?;
     if let Some(parent_id) = payload.parent_id {
         let parent = state.db.get_ca_by_id(parent_id).await?;
-        if parent.ca_type != CAType::TLS {
-            return Err(ApiError::BadRequest(format!("The Parent CA {} is not a TLS CA", parent.id)));
-        }
-        if parent.parent_id.is_some() {
-            return Err(ApiError::BadRequest(format!("The Parent CA {} is not a root CA", parent.id)));
-        }
-        if ca.valid_until > parent.valid_until {
-            return Err(ApiError::BadRequest("The imported CA would expire after its parent CA".to_string()));
-        }
+        validate_parent_ca(ca.valid_until, &parent)?;
 
         let imported_cert = openssl::x509::X509::from_der(&ca.cert)
             .map_err(|e| ApiError::BadRequest(format!("Invalid imported CA certificate: {}", e)))?;
@@ -482,17 +487,9 @@ pub(crate) async fn create_ca(
                 .set_valid_until(cert_validity, cert_validity_unit)?;
 
             if let Some(parent_id) = payload.parent_id {
+                let ca_valid_until = get_timestamp(cert_validity, cert_validity_unit).unix_timestamp() * 1000;
                 let parent = state.db.get_ca_by_id(parent_id).await?;
-                if parent.ca_type != CAType::TLS {
-                    return Err(ApiError::BadRequest(format!("The Parent CA {} is not a TLS CA", parent.id)));
-                }
-                if parent.parent_id.is_some() {
-                    return Err(ApiError::BadRequest(format!("The Parent CA {} is not a root CA", parent.id)));
-                }
-                let child_valid_until = get_timestamp(cert_validity, cert_validity_unit).unix_timestamp() * 1000;
-                if parent.valid_until != -1 && child_valid_until > parent.valid_until {
-                    return Err(ApiError::BadRequest("The child CA would expire after its parent CA".to_string()));
-                }
+                validate_parent_ca(ca_valid_until, &parent)?;
                 builder = builder.set_ca(parent)?;
             }
 
