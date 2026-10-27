@@ -23,7 +23,7 @@ pub struct SSHCertificateBuilder {
     created_on: i64,
     valid_until: Option<i64>,
     name: Option<String>,
-    ca: Option<(i64, PrivateKey)>,
+    ca: Option<CA>,
     user_id: Option<i64>,
     renew_method: CertificateRenewMethod,
     principals: Vec<String>,
@@ -74,12 +74,11 @@ impl SSHCertificateBuilder {
         Ok(self)
     }
 
-    pub fn set_ca(mut self, ca: &CA) -> Result<Self> {
+    pub fn set_ca(mut self, ca: CA) -> Result<Self> {
         if ca.ca_type != SSH {
             return Err(anyhow!("CA is not of type SSH"));
         }
-        let ca_key = PrivateKey::from_bytes(ca.key.as_slice())?;
-        self.ca = Some((ca.id, ca_key));
+        self.ca = Some(ca);
         Ok(self)
     }
 
@@ -121,7 +120,8 @@ impl SSHCertificateBuilder {
         let name = self.name.ok_or(anyhow!("SSH: name not set"))?;
         let valid_until = self.valid_until.ok_or(anyhow!("SSH: valid_until not set"))?;
         let user_id = self.user_id.ok_or(anyhow!("SSH: user_id not set"))?;
-        let (ca_id, ca_key) = self.ca.ok_or(anyhow!("SSH: CA not set"))?;
+        let ca = self.ca.ok_or(anyhow!("SSH: CA not set"))?;
+        let ca_key = PrivateKey::from_bytes(ca.key.as_slice())?;
 
         let mut user_private_key= PrivateKey::random(&mut OsRng, Algorithm::Ed25519)?;
         if let Some(password) = self.password.clone() {
@@ -167,7 +167,7 @@ impl SSHCertificateBuilder {
             certificate_type: CertificateType::SSHClient,
             user_id,
             renew_method: self.renew_method,
-            ca_id,
+            ca_id: ca.id,
             data,
             password: self.password.unwrap_or_default(),
             revoked_at: None
@@ -177,7 +177,8 @@ impl SSHCertificateBuilder {
     pub fn build_host(self) -> Result<Certificate> {
         let name = self.name.ok_or(anyhow!("SSH: name not set"))?;
         let valid_until = self.valid_until.ok_or(anyhow!("SSH: valid_until not set"))?;
-        let (ca_id, ca_key) = self.ca.ok_or(anyhow!("SSH: CA not set"))?;
+        let ca = self.ca.ok_or(anyhow!("SSH: CA not set"))?;
+        let ca_key = PrivateKey::from_bytes(ca.key.as_slice())?;
         let user_id = self.user_id.ok_or(anyhow!("SSH: user_id not set"))?;
 
         let host_private_key = PrivateKey::random(&mut OsRng, Algorithm::Ed25519)?;
@@ -211,7 +212,7 @@ impl SSHCertificateBuilder {
             certificate_type: CertificateType::SSHServer,
             user_id,
             renew_method: self.renew_method,
-            ca_id,
+            ca_id: ca.id,
             data,
             password: self.password.unwrap_or_default(),
             revoked_at: None
