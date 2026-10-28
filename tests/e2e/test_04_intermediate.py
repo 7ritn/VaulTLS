@@ -1,4 +1,5 @@
 from playwright.sync_api import expect
+from conftest import TEST_URL
 
 
 def ca_id_by_name(page, name):
@@ -11,7 +12,7 @@ def ca_id_by_name(page, name):
 
 
 def create_ca(page, name, years, parent_id=None):
-    page.goto("http://127.0.0.1/ca")
+    page.goto(f"{TEST_URL}/ca")
     page.wait_for_url("**/ca")
     page.click("#CreateCAButton")
     page.fill("#caName", name)
@@ -25,7 +26,7 @@ def create_ca(page, name, years, parent_id=None):
 
 
 def issue_cert(page, name, ca_id):
-    page.goto("http://127.0.0.1/overview")
+    page.goto(f"{TEST_URL}/overview")
     page.wait_for_url("**/overview")
     page.click("button:has-text('Create New Certificate')")
     page.fill("#certName", name)

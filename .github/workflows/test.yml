@@ -12,6 +12,17 @@ on:
 jobs:
   e2e:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - target: privileged
+            port: 80
+          - target: unprivileged
+            port: 8080
+    env:
+      VAULTLS_IMAGE_TARGET: ${{ matrix.target }}
+      VAULTLS_IMAGE_TAG: dev-raw-${{ matrix.target }}
+      VAULTLS_PORT: ${{ matrix.port }}
 
     permissions:
       contents: read
@@ -56,15 +67,17 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
-            type=raw,value=dev,enable=${{ github.event_name == 'push' }}
-            type=raw,value=dev-pr-${{ github.event.pull_request.number }},enable=${{ github.event_name == 'pull_request' }}
-            type=raw,value=dev-raw,enable=true
+            type=raw,value=dev-${{ matrix.target }},enable=${{ github.event_name == 'push' }}
+            type=raw,value=dev-pr-${{ github.event.pull_request.number }}-${{ matrix.target }},enable=${{ github.event_name == 'pull_request' }}
+            type=raw,value=dev-raw-${{ matrix.target }},enable=true
 
       - name: Build Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
           file: Containerfile
+          target: ${{ matrix.target }}
+          build-args: RUN_TESTS=true
           push: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false }}
           tags: ${{ steps.meta.outputs.tags }}
           load: true  # Needed so the image is available to docker compose locally

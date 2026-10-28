@@ -25,21 +25,49 @@ RUN cargo build --release --locked \
          echo "Skipping tests"; \
        fi
 
-# Stage 3 Final container with Nginx and backend binary
-FROM nginx:stable
+# Stage 3a: Root-compatible runtime image
+FROM nginx:stable AS privileged
+
+USER root
 
 WORKDIR /app/data
 COPY --from=frontend-builder /app/frontend/dist/ /usr/share/nginx/html/
-COPY container/nginx.conf /etc/nginx/nginx.conf
+COPY container/nginx.privileged.conf /etc/nginx/nginx.conf
 COPY --from=backend-builder /app/backend/backend /app/bin/backend
 
 EXPOSE 80
 
 # Prepare init system
-RUN apt-get update
-RUN apt-get install tini
+RUN apt-get update && apt-get install -y tini
 
 COPY container/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 CMD ["/entrypoint.sh"]
+
+# Stage 3b: Non-root runtime image
+FROM nginxinc/nginx-unprivileged:stable AS unprivileged
+
+USER root
+
+WORKDIR /app/data
+COPY --from=frontend-builder /app/frontend/dist/ /usr/share/nginx/html/
+COPY container/nginx.unprivileged.conf /etc/nginx/nginx.conf
+COPY --from=backend-builder /app/backend/backend /app/bin/backend
+
+RUN chown -R nginx:nginx /app/data
+
+EXPOSE 8080
+
+# Prepare init system
+RUN apt-get update && apt-get install -y tini
+
+COPY container/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+USER nginx
+
+CMD ["/entrypoint.sh"]
+
+# Keep an unqualified local build compatible with the privileged release image.
+FROM privileged AS default
