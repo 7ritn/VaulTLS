@@ -100,6 +100,11 @@ and as download via the API endpoint `/api/certificates/ca/download`.
 
 Further API documentation is available at the endpoint `/api`
 
+### Intermediate TLS CAs
+You can create an intermediate TLS CA from the CA tab by selecting its parent CA. Leave the parent empty to create a root CA. The intermediate CA's validity period cannot extend beyond its parent's validity period.
+
+When importing an intermediate CA, select the CA that signed it as the parent. A CA with child CAs cannot be deleted; delete its children first.
+
 ### TLS Certificate Passwords
 Certificates downloaded come in the PKCS#12 file format. They are a bundle consisting of the public certificate and private key. By default, PKCS#12 passwords are optional and certificates will be generated with no password. On the settings page, the PKCS#12 password requirements can be set with the following options:
 

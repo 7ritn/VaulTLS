@@ -23,7 +23,7 @@ pub fn extract_ssh_cert_key_bundle(zip_data: &[u8]) -> Result<(Certificate, Priv
 
     for i in 0..archive.len() {
         let mut file = archive.by_index(i)?;
-        let file_name = file.name().to_string();
+        let file_name = file.name()?.to_string();
 
         if file_name.ends_with(".pub") {
             file.read_to_end(&mut cert_bytes)?;

@@ -1,15 +1,14 @@
 use crate::constants::ARGON2;
 use crate::ApiError;
-use argon2::password_hash::rand_core::OsRng;
-use argon2::password_hash::{PasswordHashString, SaltString};
+use argon2::password_hash::phc::PasswordHash;
 use argon2::{password_hash, PasswordHasher, PasswordVerifier};
 use std::fmt::Display;
 use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ValueRef};
 
 #[derive(Clone, Debug)]
 pub enum Password {
-    V1(PasswordHashString),
-    V2(PasswordHashString)
+    V1(String),
+    V2(String)
 }
 
 impl Display for Password {
@@ -26,11 +25,14 @@ impl TryFrom<&str> for Password {
 
     fn try_from(s: &str) -> Result<Self, Self::Error> {
         if let Some(extract) = s.strip_prefix("v1") {
-            Ok(Password::V1(PasswordHashString::new(extract)?))
+            PasswordHash::new(extract)?;
+            Ok(Password::V1(extract.to_string()))
         } else if let Some(extract) = s.strip_prefix("v2") {
-            Ok(Password::V2(PasswordHashString::new(extract)?))
+            PasswordHash::new(extract)?;
+            Ok(Password::V2(extract.to_string()))
         } else {
-            Ok(Password::V1(PasswordHashString::new(s)?))
+            PasswordHash::new(s)?;
+            Ok(Password::V1(s.to_string()))
         }
     }
 }
@@ -50,16 +52,21 @@ impl FromSql for Password {
 impl Password {
     /// Verify password hash with corresponding password
     pub(crate) fn verify(&self, other: &str) -> bool {
-        let mut password_to_verify = Some(other.to_string());
-        let password_hash = match self {
-            Password::V1(inner) => inner.password_hash(),
+        let (password_hash, password_to_verify) = match self {
+            Password::V1(inner) => (inner, Some(other.to_string())),
             Password::V2(inner) => {
-                if !other.starts_with("$argon2id") {
+                let password_to_verify = if !other.starts_with("$argon2id") {
                     // Plaintext password needs to be double hashed
-                    password_to_verify = Self::client_hash(other).ok()
-                }
-                inner.password_hash()
+                    Self::client_hash(other).ok()
+                } else {
+                    Some(other.to_string())
+                };
+                (inner, password_to_verify)
             },
+        };
+        let password_hash = match PasswordHash::new(password_hash) {
+            Ok(password_hash) => password_hash,
+            Err(_) => return false,
         };
         if let Some(password_to_verify) = password_to_verify {
             ARGON2.verify_password(password_to_verify.as_bytes(), &password_hash).is_ok()
@@ -71,21 +78,18 @@ impl Password {
     /// Hashes a password using Argon2 client-side
     fn client_hash(password: &str) -> Result<String, ApiError> {
         let salt_str = "VaulTLSVaulTLSVaulTLSVaulTLS";
-        let salt = SaltString::encode_b64(salt_str.as_bytes())?;
 
-        let password_hash_string = ARGON2.hash_password(password.as_bytes(), &salt)
+        let password_hash_string = ARGON2.hash_password_with_salt(password.as_bytes(), salt_str.as_bytes())
             .map_err(|_| ApiError::Other("Failed to hash password".to_string()))?
-            .serialize();
+            .to_string();
         Ok(password_hash_string.to_string())
     }
     
     /// Hashes a password using Argon2 server-side
     pub(crate) fn new_server_hash(password: &str) -> Result<Password, ApiError> {
-        let salt = SaltString::generate(&mut OsRng);
-
-        let password_hash_string = ARGON2.hash_password(password.as_bytes(), &salt)
+        let password_hash_string = ARGON2.hash_password(password.as_bytes())
             .map_err(|_| ApiError::Other("Failed to hash password".to_string()))?
-            .serialize();
+            .to_string();
 
         if password.starts_with("$argon2id") {
             Ok(Password::V2(password_hash_string))

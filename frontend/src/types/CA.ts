@@ -12,6 +12,7 @@ export interface CA {
     created_on: number;                   // Date when the CA was created (UNIX timestamp in ms)
     valid_until: number;                  // Expiration date of the CA (UNIX timestamp in ms)
     ca_type: CAType;                      // CA type
+    parent_id?: number | null;            // Parent CA identifier, when this is an intermediate CA
 }
 
 export interface CARequirements {
@@ -19,6 +20,7 @@ export interface CARequirements {
     ca_type: CAType;                    // CA type
     validity_duration?: number;         // Validity duration
     validity_unit?: ValidityUnit;       // Validity unit (hours, days, months, years)
+    parent_id?: number;                 // Parent CA identifier, when creating an intermediate CA
 }
 
 export enum DataFormat {
@@ -31,4 +33,5 @@ export interface ImportCARequest {
     key: string;
     crl?: string;
     format: DataFormat;
+    parent_id?: number;                 // Parent CA identifier, when importing an intermediate CA
 }

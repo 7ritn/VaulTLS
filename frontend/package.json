@@ -11,26 +11,26 @@
     "type-check": "vue-tsc --build"
   },
   "dependencies": {
-    "@playwright/test": "^1.62.1",
-    "axios": "^1.19.0",
+    "@playwright/test": "^1.64.1",
+    "axios": "^1.20.0",
     "bootstrap": "^5.3.8",
     "hash-wasm": "^4.12.0",
-    "pinia": "^4.0.3",
-    "vue": "^3.5.41",
+    "pinia": "^4.1.0",
+    "vue": "^3.5.44",
     "vue-boring-avatars": "^1.4.0",
-    "vue-i18n": "^11.4.8",
-    "vue-router": "^5.2.0"
+    "vue-i18n": "^11.4.16",
+    "vue-router": "^5.4.0"
   },
   "devDependencies": {
     "@tsconfig/node22": "^22.0.6",
-    "@types/node": "^26.2.0",
-    "@vitejs/plugin-vue": "^6.0.8",
+    "@types/node": "^26.6.5",
+    "@vitejs/plugin-vue": "^6.0.10",
     "@vitejs/plugin-vue-jsx": "^5.1.6",
     "@vue/tsconfig": "^0.9.1",
-    "npm-run-all2": "^9.0.3",
+    "npm-run-all2": "^9.0.4",
     "typescript": "~6.0.3",
-    "vite": "^8.2.1",
+    "vite": "^8.3.5",
     "vite-plugin-vue-devtools": "^8.2.1",
-    "vue-tsc": "^3.3.10"
+    "vue-tsc": "^3.3.13"
   }
 }

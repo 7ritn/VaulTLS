@@ -18,7 +18,6 @@ use rustls::server::WebPkiClientVerifier;
 use rustls::{ClientConfig, ServerConfig};
 use std::sync::Arc;
 use std::time::Duration;
-use argon2::password_hash::SaltString;
 use argon2::PasswordHasher;
 use serde_json::Value;
 use ssh_key::certificate::CertType;
@@ -35,7 +34,7 @@ use x509_parser::oid_registry::OID_X509_EXT_CRL_DISTRIBUTION_POINTS;
 use x509_parser::prelude::{RevokedCertificate, X509Certificate};
 use vaultls::certs::common::{Certificate, CA};
 use vaultls::constants::ARGON2;
-use vaultls::data::api::{CreateUserCertificateRequest, IsSetupResponse, SetupRequest};
+use vaultls::data::api::{CreateCARequest, CreateUserCertificateRequest, IsSetupResponse, SetupRequest};
 
 #[tokio::test]
 async fn test_version() -> Result<()>{
@@ -110,8 +109,7 @@ async fn test_setup_hash() -> Result<()> {
     let client = VaulTLSClient::new().await;
 
     let salt_str = "VaulTLSVaulTLSVaulTLSVaulTLS".to_owned();
-    let salt = SaltString::encode_b64(salt_str.as_bytes()).unwrap();
-    let password_hash = ARGON2.hash_password(TEST_PASSWORD.as_bytes(), &salt).expect("hash_password");
+    let password_hash = ARGON2.hash_password_with_salt(TEST_PASSWORD.as_bytes(), salt_str.as_bytes()).expect("hash_password");
 
     let setup_data = SetupRequest{
         name: TEST_USER_NAME.to_string(),
@@ -143,8 +141,7 @@ async fn test_login_hash() -> Result<()> {
     client.logout().await?;
 
     let salt_str = "VaulTLSVaulTLSVaulTLSVaulTLS".to_owned();
-    let salt = SaltString::encode_b64(salt_str.as_bytes()).unwrap();
-    let password_hash = ARGON2.hash_password(TEST_PASSWORD.as_bytes(), &salt).expect("hash_password");
+    let password_hash = ARGON2.hash_password_with_salt(TEST_PASSWORD.as_bytes(), salt_str.as_bytes()).expect("hash_password");
 
     client.login(TEST_USER_EMAIL, &password_hash.to_string()).await
 }
@@ -406,6 +403,53 @@ async fn test_create_new_ca() -> Result<()> {
     let old_ca = client.download_tls_ca_by_id(1).await?;
     let old_ca_x509 = old_ca.parse_x509()?;
     assert_eq!(old_ca_x509.subject.to_string(), concatcp!("CN=", TEST_CA_NAME).to_string());
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_intermediate_ca_issues_and_downloads_certificate() -> Result<()> {
+    let client = VaulTLSClient::new_authenticated().await;
+    let ca_request = CreateCARequest {
+        ca_name: "Intermediate CA".into(),
+        ca_type: CAType::TLS,
+        validity_duration: Some(1),
+        validity_unit: Some(TimespanUnit::Year),
+        parent_id: Some(1),
+    };
+    let response = client
+        .post("/certificates/ca")
+        .header(ContentType::JSON)
+        .body(serde_json::to_string(&ca_request)?)
+        .dispatch()
+        .await;
+    assert_eq!(response.status(), Status::Ok);
+    let intermediate_ca_id: i64 = serde_json::from_str(&response.into_string().await.unwrap())?;
+
+    let cas = client.get_all_ca().await?;
+    let intermediate_ca = cas.iter().find(|ca| ca.id == intermediate_ca_id).unwrap();
+    assert_eq!(intermediate_ca.parent_id, Some(1));
+
+    let certificate = client.create_client_cert(None, Some(TEST_PASSWORD.to_string()), Some(intermediate_ca_id)).await?;
+    assert_eq!(certificate.ca_id, intermediate_ca_id);
+
+    let downloaded_p12 = client.download_cert(&certificate.id.to_string()).await?;
+    let parsed_p12 = Pkcs12::from_der(&downloaded_p12)?.parse2(TEST_PASSWORD)?;
+    let leaf_certificate = parsed_p12.cert.expect("No user certificate in PKCS#12");
+    let chain = parsed_p12.ca.expect("No issuer chain in PKCS#12");
+    assert_eq!(chain.len(), 1);
+    let intermediate_certificate = chain.get(0).expect("No intermediate CA in PKCS#12");
+
+    let intermediate_pem = client.download_cert(&format!("ca/{intermediate_ca_id}")).await?;
+    let downloaded_intermediate = X509::from_pem(&intermediate_pem)?;
+    assert_eq!(intermediate_certificate.to_der()?, downloaded_intermediate.to_der()?);
+    let root_pem = client.download_cert("ca/1").await?;
+    let root_certificate = X509::from_pem(&root_pem)?;
+
+    let root_public_key = root_certificate.public_key()?;
+    let intermediate_public_key = intermediate_certificate.public_key()?;
+    assert!(downloaded_intermediate.verify(&root_public_key)?);
+    assert!(leaf_certificate.verify(&intermediate_public_key)?);
 
     Ok(())
 }
@@ -768,6 +812,78 @@ async fn test_ssh_revocation_and_krl() -> Result<()> {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert_eq!(output.status.code(), Some(1));
     assert!(stdout.contains("REVOKED"));
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_import_intermediate_ca_with_parent_id() -> Result<()> {
+    let client = VaulTLSClient::new_authenticated().await;
+
+    let root_key = openssl::pkey::PKey::from_rsa(openssl::rsa::Rsa::generate(2048)?)?;
+    let mut root_name_builder = openssl::x509::X509NameBuilder::new()?;
+    root_name_builder.append_entry_by_text("CN", "Imported Test Root")?;
+    let root_name = root_name_builder.build();
+    let mut root_builder = X509::builder()?;
+    root_builder.set_version(2)?;
+    root_builder.set_subject_name(&root_name)?;
+    root_builder.set_issuer_name(&root_name)?;
+    root_builder.set_pubkey(&root_key)?;
+    let root_not_before = openssl::asn1::Asn1Time::days_from_now(0)?;
+    let root_not_after = openssl::asn1::Asn1Time::days_from_now(365)?;
+    root_builder.set_not_before(&root_not_before)?;
+    root_builder.set_not_after(&root_not_after)?;
+    root_builder.append_extension(openssl::x509::extension::BasicConstraints::new().critical().ca().build()?)?;
+    root_builder.append_extension(openssl::x509::extension::KeyUsage::new().critical().key_cert_sign().crl_sign().build()?)?;
+    root_builder.sign(&root_key, openssl::hash::MessageDigest::sha256())?;
+    let root_cert = root_builder.build();
+
+    let root_response = client.post("/certificates/ca/import")
+        .header(ContentType::JSON)
+        .body(serde_json::json!({
+            "cert": String::from_utf8(root_cert.to_pem()?)?,
+            "key": String::from_utf8(root_key.private_key_to_pem_pkcs8()?)?,
+            "format": "pem"
+        }).to_string())
+        .dispatch().await;
+    assert_eq!(root_response.status(), Status::Ok);
+    let root_ca_id: i64 = serde_json::from_str(&root_response.into_string().await.unwrap())?;
+
+    let intermediate_key = openssl::pkey::PKey::from_rsa(openssl::rsa::Rsa::generate(2048)?)?;
+    let mut intermediate_name_builder = openssl::x509::X509NameBuilder::new()?;
+    intermediate_name_builder.append_entry_by_text("CN", "Imported Test Intermediate")?;
+    let intermediate_name = intermediate_name_builder.build();
+    let mut intermediate_builder = X509::builder()?;
+    intermediate_builder.set_version(2)?;
+    intermediate_builder.set_subject_name(&intermediate_name)?;
+    intermediate_builder.set_issuer_name(root_cert.subject_name())?;
+    intermediate_builder.set_pubkey(&intermediate_key)?;
+    let intermediate_not_before = openssl::asn1::Asn1Time::days_from_now(0)?;
+    let intermediate_not_after = openssl::asn1::Asn1Time::days_from_now(180)?;
+    intermediate_builder.set_not_before(&intermediate_not_before)?;
+    intermediate_builder.set_not_after(&intermediate_not_after)?;
+    intermediate_builder.append_extension(openssl::x509::extension::BasicConstraints::new().critical().ca().build()?)?;
+    intermediate_builder.append_extension(openssl::x509::extension::KeyUsage::new().critical().key_cert_sign().crl_sign().build()?)?;
+    intermediate_builder.sign(&root_key, openssl::hash::MessageDigest::sha256())?;
+    let intermediate_cert = intermediate_builder.build();
+
+    let intermediate_response = client.post("/certificates/ca/import")
+        .header(ContentType::JSON)
+        .body(serde_json::json!({
+            "cert": String::from_utf8(intermediate_cert.to_pem()?)?,
+            "key": String::from_utf8(intermediate_key.private_key_to_pem_pkcs8()?)?,
+            "format": "pem",
+            "parent_id": root_ca_id
+        }).to_string())
+        .dispatch().await;
+    assert_eq!(intermediate_response.status(), Status::Ok);
+    let intermediate_ca_id: i64 = serde_json::from_str(&intermediate_response.into_string().await.unwrap())?;
+
+    let cas = client.get_all_ca().await?;
+    let intermediate_ca = cas.iter().find(|ca| ca.id == intermediate_ca_id).expect("Imported intermediate CA not found");
+    assert_eq!(intermediate_ca.parent_id, Some(root_ca_id));
+    let root_public_key = root_cert.public_key()?;
+    assert!(intermediate_cert.verify(&root_public_key)?);
 
     Ok(())
 }

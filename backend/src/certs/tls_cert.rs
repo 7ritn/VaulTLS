@@ -28,9 +28,9 @@ pub struct TLSCertificateBuilder {
     valid_until: Option<i64>,
     name: Option<Name>,
     pkcs12_password: String,
-    ca: Option<(i64, Vec<u8>, Vec<u8>)>,
+    ca: Option<CA>,
     user_id: Option<i64>,
-    renew_method: CertificateRenewMethod
+    renew_method: CertificateRenewMethod,
 }
 impl TLSCertificateBuilder {
     pub fn new() -> Result<Self> {
@@ -50,7 +50,7 @@ impl TLSCertificateBuilder {
             pkcs12_password: String::new(),
             ca: None,
             user_id: None,
-            renew_method: Default::default()
+            renew_method: Default::default(),
         })
     }
 
@@ -107,11 +107,11 @@ impl TLSCertificateBuilder {
         Ok(self)
     }
 
-    pub fn set_ca(mut self, ca: &CA) -> Result<Self, anyhow::Error> {
+    pub fn set_ca(mut self, ca: CA) -> Result<Self, anyhow::Error> {
         if ca.ca_type != TLS {
             return Err(anyhow!("CA is not of type SSH"));
         }
-        self.ca = Some((ca.id, ca.cert.clone(), ca.key.clone()));
+        self.ca = Some(ca);
         Ok(self)
     }
 
@@ -135,7 +135,18 @@ impl TLSCertificateBuilder {
             KeyUsagePurpose::CrlSign,
         ];
 
-        let cert = self.params.self_signed(&self.key_pair)?;
+        let parent_ca_id = self.ca.as_ref().map(|p| p.id.into());
+        let cert = if let Some(parent) = self.ca {
+            let parent_key_der = parent.key;
+            let parent_cert_der = parent.cert;
+            let parent_key_pair = KeyPair::try_from(parent_key_der)?;
+            let parent_cert_der_obj = CertificateDer::from(parent_cert_der);
+            let issuer = Issuer::from_ca_cert_der(&parent_cert_der_obj, parent_key_pair)?;
+
+            self.params.signed_by(&self.key_pair, &issuer)?
+        } else {
+            self.params.self_signed(&self.key_pair)?
+        };
 
         Ok(CA{
             id: -1,
@@ -146,6 +157,7 @@ impl TLSCertificateBuilder {
             cert: cert.der().to_vec(),
             key: self.key_pair.serialize_der(),
             crl_number: 0,
+            parent_id: parent_ca_id
         })
     }
 
@@ -163,7 +175,7 @@ impl TLSCertificateBuilder {
         let name = self.name.ok_or(anyhow!("X509: name not set"))?;
         let valid_until = self.valid_until.ok_or(anyhow!("X509: valid_until not set"))?;
         let user_id = self.user_id.ok_or(anyhow!("X509: user_id not set"))?;
-        let (ca_id, ca_cert_der, ca_key_der) = self.ca.ok_or(anyhow!("X509: CA not set"))?;
+        let ca = self.ca.ok_or(anyhow!("X509: CA not set"))?;
 
         self.params.key_usages = vec![
             KeyUsagePurpose::DigitalSignature,
@@ -172,7 +184,7 @@ impl TLSCertificateBuilder {
         self.params.is_ca = IsCa::ExplicitNoCa;
 
         if let Ok(crl_uri_base) = env::var("VAULTLS_CRL_DP_URL") {
-            let crl_uri = format!("{}/crl/crl-{}.crl", crl_uri_base, ca_id);
+            let crl_uri = format!("{}/crl/crl-{}.crl", crl_uri_base, ca.id);
             self.params.crl_distribution_points = vec![
                 CrlDistributionPoint {
                     uris: vec![ crl_uri ],
@@ -180,8 +192,8 @@ impl TLSCertificateBuilder {
             ];
         }
 
-        let ca_key_pair = KeyPair::try_from(ca_key_der.clone())?;
-        let ca_cert_der_obj = CertificateDer::from(ca_cert_der.clone());
+        let ca_key_pair = KeyPair::try_from(ca.key.clone())?;
+        let ca_cert_der_obj = CertificateDer::from(ca.cert.clone());
         let issuer = Issuer::from_ca_cert_der(&ca_cert_der_obj, ca_key_pair)?;
 
         let cert = self.params.signed_by(&self.key_pair, &issuer)?;
@@ -189,7 +201,7 @@ impl TLSCertificateBuilder {
 
         // PKCS#12 creation using openssl (as rcgen doesn't support it)
         let openssl_cert = X509::from_der(&cert_der)?;
-        let openssl_ca_cert = X509::from_der(&ca_cert_der)?;
+        let openssl_ca_cert = X509::from_der(&ca.cert)?;
         let openssl_pkey = PKey::private_key_from_der(&self.key_pair.serialize_der())?;
 
         let mut ca_stack = Stack::new()?;
@@ -210,7 +222,7 @@ impl TLSCertificateBuilder {
             certificate_type,
             data: CertData::Pkcs12(pkcs12.to_der()?),
             password: self.pkcs12_password,
-            ca_id,
+            ca_id: ca.id,
             user_id,
             renew_method: self.renew_method,
             revoked_at: None
@@ -415,6 +427,7 @@ pub fn parse_ca(cert_bytes: &[u8], key_bytes: &[u8], data_format: DataFormat, cr
         cert: cert_der,
         key: key_der,
         crl_number,
+        parent_id: None
     })
 }
 

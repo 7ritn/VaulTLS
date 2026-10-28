@@ -81,7 +81,7 @@ async fn handle_expiry(cert: &Certificate, db: &VaulTLSDB, mailer_mutex: Arc<Mut
                 TLSClient | TLSServer => {
                     let ca = db.get_latest_tls_ca().await?;
                     let cert_builder = TLSCertificateBuilder::try_from(cert)?
-                        .set_ca(&ca)?;
+                        .set_ca(ca)?;
 
                     if cert.certificate_type == TLSClient {
                         cert_builder

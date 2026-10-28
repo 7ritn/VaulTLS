@@ -71,7 +71,7 @@ onMounted(async () => {
 
 @media (min-width: 992px) {
   .container-fluid {
-    max-width: 70%;
+    max-width: 85%;
   }
 }
 
