@@ -1,7 +1,7 @@
 import time
 
 import requests
-from conftest import BASE_URL
+from conftest import TEST_URL
 
 MAILHOG_API_URL = "http://mailhog:8025"
 
@@ -33,7 +33,7 @@ def count_table_data_rows(page, table_selector=".active-certs"):
 def test_certificates(page):
     delete_all_emails()
 
-    page.goto(f"{BASE_URL}/overview")
+    page.goto(f"{TEST_URL}/overview")
     page.wait_for_url("**/overview")
     assert "Certificates" in page.locator("h1").inner_text()
     page.click("button:has-text('Create New Certificate')")
@@ -53,7 +53,7 @@ def test_certificates(page):
 def test_renewal_remind(page):
     delete_all_emails()
 
-    page.goto(f"{BASE_URL}/overview")
+    page.goto(f"{TEST_URL}/overview")
     page.wait_for_url("**/overview")
     page.click("button:has-text('Create New Certificate')")
     page.fill("#certName", "test_cert_remind")
@@ -72,7 +72,7 @@ def test_renewal_remind(page):
 def test_renewal_renew_notify(page):
     delete_all_emails()
 
-    page.goto(f"{BASE_URL}/overview")
+    page.goto(f"{TEST_URL}/overview")
     page.wait_for_url("**/overview")
     page.click("button:has-text('Create New Certificate')")
     page.fill("#certName", "test_cert_renew")
@@ -92,7 +92,7 @@ def test_renewal_renew_notify(page):
 
 
 def test_users(page):
-    page.goto(f"{BASE_URL}/users")
+    page.goto(f"{TEST_URL}/users")
     page.wait_for_url("**/users")
     assert "Users" in page.locator("h1").inner_text()
     page.click("button:has-text('Create New User')")
@@ -107,7 +107,7 @@ def test_oidc(context):
     context.clear_cookies()
     page = context.new_page()
 
-    page.goto(f"{BASE_URL}/api/auth/oidc/login")
+    page.goto(f"{TEST_URL}/api/auth/oidc/login")
     page.fill("#username-textfield", "test")
     page.fill("#password-textfield", "password")
     page.click("#sign-in-button")
@@ -119,7 +119,7 @@ def test_oidc(context):
 
 def test_create_ca_and_certificate_with_ca_verification(page):
     """Test that creates a new CA, then a certificate using that CA, and verifies the correct CA was used"""
-    page.goto(f"{BASE_URL}/ca")
+    page.goto(f"{TEST_URL}/ca")
     page.wait_for_url("**/ca")
     assert "Certificate Authorities" in page.locator("h1").inner_text()
 
@@ -137,7 +137,7 @@ def test_create_ca_and_certificate_with_ca_verification(page):
     new_ca_id_element = page.locator("tbody tr").last.locator("td[id^='CaId-']")
     new_ca_id = new_ca_id_element.inner_text()
 
-    page.goto(f"{BASE_URL}/overview")
+    page.goto(f"{TEST_URL}/overview")
     page.wait_for_url("**/overview")
 
     initial_cert_count = count_table_data_rows(page)

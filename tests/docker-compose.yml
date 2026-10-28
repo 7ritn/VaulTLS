@@ -83,7 +83,8 @@ services:
         condition: service_healthy
     network_mode: "service:authelia"
     environment:
-      - "VAULTLS_URL=http://127.0.0.1:${VAULTLS_PORT:-8080}/"
+      - "BASE_URL=http://localhost:${VAULTLS_PORT:-8080}/"
+      - "TEST_URL=http://127.0.0.1:${VAULTLS_PORT:-8080}/"
     volumes:
       - http_challenge_vol:/challenges
     entrypoint: ["pytest", "/app/"]
