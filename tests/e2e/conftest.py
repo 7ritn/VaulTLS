@@ -3,16 +3,17 @@ import os
 import pytest
 from playwright.sync_api import sync_playwright
 
+BASE_URL = os.getenv("VAULTLS_URL", "http://localhost:5173").rstrip("/")
+
 
 @pytest.fixture(scope="session")
 def context():
-    url = os.getenv("VAULTLS_URL", "http://localhost:5173")
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         context = browser.new_context()
         page = context.new_page()
 
-        page.goto(url)
+        page.goto(BASE_URL)
         page.wait_for_url("**/first-setup")
 
         page.fill("#username", "test")
@@ -33,7 +34,7 @@ def context():
 def page(context):
     context.clear_cookies()
     page = context.new_page()
-    page.goto("http://127.0.0.1:8080/login")
+    page.goto(f"{BASE_URL}/login")
     page.wait_for_url("**/login")
 
     page.fill("#email", "test@example.com")

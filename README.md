@@ -30,6 +30,20 @@ Installation is managed through a Container. The app should be behind a reverse 
 If you want to access VaulTLS using non-HTTPS you need to add the following environmental variable:
 `VAULTLS_INSECURE=true`.
 
+The default image is root-compatible and listens on port `80`:
+
+```bash
+podman run -d \
+  --name vaultls \
+  -p 5173:80 \
+  -v vaultls-data:/app/data \
+  -e VAULTLS_API_SECRET="[VAULTLS_API_SECRET]" \
+  -e VAULTLS_URL="https://vaultls.example.com/" \
+  ghcr.io/7ritn/vaultls:latest
+```
+
+Use `ghcr.io/7ritn/vaultls:latest-unprivileged` to run the container as the `nginx` user. It listens on port `8080`:
+
 ```bash
 podman run -d \
   --name vaultls \
@@ -37,8 +51,18 @@ podman run -d \
   -v vaultls-data:/app/data \
   -e VAULTLS_API_SECRET="[VAULTLS_API_SECRET]" \
   -e VAULTLS_URL="https://vaultls.example.com/" \
-  ghcr.io/7ritn/vaultls:latest
+  ghcr.io/7ritn/vaultls:latest-unprivileged
 ```
+
+Versioned releases are available as `:<version>` and `:<version>-unprivileged`. If an existing data volume was created by the root-compatible image, migrate its ownership before using the unprivileged image:
+
+```bash
+podman run --rm --user 0 -v vaultls-data:/app/data \
+  nginxinc/nginx-unprivileged:stable \
+  chown -R nginx:nginx /app/data
+```
+
+For bind mounts, change the directory ownership on the host to the `nginx` user from the unprivileged image.
 
 ### Encrypting the Database
 By specifying the `VAULTLS_DB_SECRET` environmental variable, the database is encrypted. Data is retained. It is not possible to go back.
