@@ -230,7 +230,7 @@ impl Mail {
             let port = env::var("VAULTLS_MAIL_PORT")?;
             let encryption = env::var("VAULTLS_MAIL_ENCRYPTION").unwrap_or_default().into();
             let username = env::var("VAULTLS_MAIL_USERNAME").ok();
-            let password = get_secret("VAULTLS_OIDC_SECRET_PASSWORD");
+            let password = get_secret("VAULTLS_MAIL_PASSWORD");
             let from = env::var("VAULTLS_MAIL_FROM").unwrap_or_default();
 
             Ok(Mail{
