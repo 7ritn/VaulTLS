@@ -177,7 +177,9 @@
       "crlHours": "Hour(s)",
       "crlDays": "Day(s)",
       "crlWeeks": "Week(s)",
-      "defaultLanguage": "Default Language"
+      "defaultLanguage": "Default Language",
+      "includeEmailInClientSan": "Include owner's email address in client certificates (SAN)",
+      "includeEmailInClientSanHelp": "Client certificates are not encrypted in TLS 1.2, so anyone observing the traffic can read the email address. Disable this if you do not rely on the email SAN. Applies to newly issued and renewed certificates."
     },
     "mail": {
       "heading": "Mail",

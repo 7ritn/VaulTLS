@@ -151,6 +151,7 @@ pub async fn create_rocket() -> Rocket<Build> {
     
     let mailer = Arc::new(Mutex::new(mailer));
 
+    let watcher_settings = settings.clone();
     let app_state = AppState {
         db: db.clone(),
         settings,
@@ -159,7 +160,7 @@ pub async fn create_rocket() -> Rocket<Build> {
     };
 
     tokio::spawn(async move {
-        watch_expiry(db.clone(), mailer.clone()).await;
+        watch_expiry(db.clone(), watcher_settings, mailer.clone()).await;
     });
 
     trace!("App State: {:?}", app_state);

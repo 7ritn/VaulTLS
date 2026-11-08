@@ -147,6 +147,10 @@ pub(crate) struct Common {
     crl_next_update_hours: i64,
     #[serde(default = "default_language_value")]
     default_language: String,
+    /// Whether the owner's email address is embedded as an rfc822Name SAN in TLS client certificates.
+    /// Client certificates are visible to network observers (e.g. TLS 1.2), so this can leak the email.
+    #[serde(default = "default_true")]
+    include_email_in_client_san: bool,
 }
 
 fn default_crl_hours() -> i64 { 7 * 24 }
@@ -174,6 +178,7 @@ impl Default for Common {
             password_rule: Default::default(),
             crl_next_update_hours: 7 * 24,
             default_language: "en".to_string(),
+            include_email_in_client_san: true,
         }
     }
 }
@@ -355,6 +360,7 @@ impl InnerSettings {
     fn get_crl_next_update_hours(&self) -> i64 { self.common.crl_next_update_hours }
     fn get_db_encrypted(&self) -> bool { self.logic.db_encrypted }
     fn get_default_language(&self) -> &str { &self.common.default_language }
+    fn get_include_email_in_client_san(&self) -> bool { self.common.include_email_in_client_san }
 
     fn set_default_language(&mut self, lang: String) -> Result<(), ApiError> {
         if lang.len() != 2 || !lang.chars().all(|c| c.is_ascii_alphabetic()) {
@@ -450,7 +456,11 @@ impl Settings {
         let settings = self.0.read();
         settings.get_db_encrypted()
     }
-    
+    pub(crate) fn get_include_email_in_client_san(&self) -> bool {
+        let settings = self.0.read();
+        settings.get_include_email_in_client_san()
+    }
+
     pub(crate) fn set_password_enabled(&self, password_enabled: bool) -> Result<(), ApiError>{
         let mut settings = self.0.write();
         settings.set_password_enabled(password_enabled)

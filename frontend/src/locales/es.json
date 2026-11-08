@@ -160,7 +160,9 @@
       "crlHours": "Hora(s)",
       "crlDays": "Día(s)",
       "crlWeeks": "Semana(s)",
-      "defaultLanguage": "Idioma predeterminado"
+      "defaultLanguage": "Idioma predeterminado",
+      "includeEmailInClientSan": "Incluir el correo del propietario en los certificados de cliente (SAN)",
+      "includeEmailInClientSanHelp": "Los certificados de cliente no están cifrados en TLS 1.2, por lo que cualquiera que observe el tráfico puede leer el correo. Desactívalo si no dependes del SAN de correo. Se aplica a los certificados nuevos y renovados."
     },
     "mail": {
       "heading": "Correo",

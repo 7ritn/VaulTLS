@@ -3,6 +3,7 @@ use crate::data::enums::{CertificateRenewMethod, UserRole};
 use crate::data::enums::CertificateType::*;
 use crate::db::VaulTLSDB;
 use crate::notification::mail::{MailMessage, Mailer};
+use crate::settings::Settings;
 use std::sync::Arc;
 use std::time::Duration;
 use anyhow::anyhow;
@@ -25,7 +26,7 @@ pub(crate) async fn notify_admins_acme_issued(db: &VaulTLSDB, mailer_mutex: Arc<
     }
 }
 
-pub(crate) async fn watch_expiry(db: VaulTLSDB, mailer_mutex: Arc<Mutex<Option<Mailer>>>) {
+pub(crate) async fn watch_expiry(db: VaulTLSDB, settings: Settings, mailer_mutex: Arc<Mutex<Option<Mailer>>>) {
     info!("Starting certificate expiry watcher.");
     let interval_secs = std::env::var("VAULTLS_CHECK_EXPIRY_INTERVAL")
         .ok()
@@ -43,7 +44,7 @@ pub(crate) async fn watch_expiry(db: VaulTLSDB, mailer_mutex: Arc<Mutex<Option<M
         if let Ok(certs) = db.get_user_certs(None, None, Some(false)).await {
             let in_a_week = chrono::Utc::now().timestamp_millis() + 1000 * 60 * 60 * 24 * 7;
             for cert in certs.iter().filter(|a| a.renew_method != CertificateRenewMethod::None && a.valid_until < in_a_week) {
-                if handle_expiry(cert, &db, mailer_mutex.clone()).await.is_ok() {
+                if handle_expiry(cert, &db, &settings, mailer_mutex.clone()).await.is_ok() {
                     let _ = db.update_cert_renew_method(cert.id, CertificateRenewMethod::None).await;
                 }
             }
@@ -55,7 +56,7 @@ pub(crate) async fn watch_expiry(db: VaulTLSDB, mailer_mutex: Arc<Mutex<Option<M
     }
 }
 
-async fn handle_expiry(cert: &Certificate, db: &VaulTLSDB, mailer_mutex: Arc<Mutex<Option<Mailer>>>) -> Result<(), anyhow::Error> {
+async fn handle_expiry(cert: &Certificate, db: &VaulTLSDB, settings: &Settings, mailer_mutex: Arc<Mutex<Option<Mailer>>>) -> Result<(), anyhow::Error> {
     let user = db.get_user(cert.user_id).await?;
     info!("Certificate {} owned by user {} is about to expire.", cert.name, user.name);
 
@@ -84,9 +85,13 @@ async fn handle_expiry(cert: &Certificate, db: &VaulTLSDB, mailer_mutex: Arc<Mut
                         .set_ca(&ca)?;
 
                     if cert.certificate_type == TLSClient {
-                        cert_builder
-                            .set_email_san(&user.email)?
-                            .build_client()?
+                        if settings.get_include_email_in_client_san() {
+                            cert_builder
+                                .set_email_san(&user.email)?
+                                .build_client()?
+                        } else {
+                            cert_builder.build_client()?
+                        }
                     } else {
                         let dns = get_dns_names(cert)?;
                         cert_builder

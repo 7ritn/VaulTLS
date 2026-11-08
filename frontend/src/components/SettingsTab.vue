@@ -74,6 +74,20 @@
               </option>
             </select>
           </div>
+          <div class="mb-3">
+            <div class="form-check">
+              <input
+                  id="common-include-email-san"
+                  v-model="settings.common.include_email_in_client_san"
+                  type="checkbox"
+                  class="form-check-input"
+              />
+              <label for="common-include-email-san" class="form-check-label">
+                {{ $t('settings.common.includeEmailInClientSan') }}
+              </label>
+            </div>
+            <div class="form-text">{{ $t('settings.common.includeEmailInClientSanHelp') }}</div>
+          </div>
         </div>
       </div>
 

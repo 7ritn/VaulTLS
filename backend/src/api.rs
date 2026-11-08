@@ -621,8 +621,10 @@ async fn build_tls_cert(
         .set_user_id(payload.user_id)?;
 
     if is_client {
-        let user = state.db.get_user(payload.user_id).await?;
-        cert_builder = cert_builder.set_email_san(&user.email)?;
+        if state.settings.get_include_email_in_client_san() {
+            let user = state.db.get_user(payload.user_id).await?;
+            cert_builder = cert_builder.set_email_san(&user.email)?;
+        }
         cert_builder.build_client().map_err(ApiError::from)
     } else {
         let dns_names = payload.usage_limit.clone().unwrap_or_default();
