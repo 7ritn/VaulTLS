@@ -1,7 +1,7 @@
 <template>
   <div class="container d-flex justify-content-center align-items-center vh-100">
     <div class="card p-4 shadow" style="max-width: 400px; width: 100%;">
-      <img src="/app/assets/logo.png" alt="Logo" class="w-50 d-block mx-auto mb-4">
+      <img src="../../../assets/logo.png" alt="Logo" class="w-50 d-block mx-auto mb-4">
       <form v-if="setupStore.passwordAuthEnabled" @submit.prevent="submitLogin">
         <div class="mb-3">
           <label for="email" class="form-label">{{ $t('common.email') }}</label>
