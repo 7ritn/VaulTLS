@@ -62,9 +62,12 @@ pub async fn create_rocket() -> Rocket<Build> {
         }
     } else { filter.add_directive("vaultls=info".parse().unwrap()) };
 
-    tracing_subscriber::fmt()
-        .with_env_filter(filter)
-        .init();
+    let fmt = tracing_subscriber::fmt().with_env_filter(filter);
+    if env::var("VAULTLS_LOG_FORMAT").as_deref() == Ok("json") {
+        fmt.json().flatten_event(true).init();
+    } else {
+        fmt.init();
+    }
 
     info!("Starting mTLS Certificates API");
     info!("Version {VAULTLS_VERSION}");
