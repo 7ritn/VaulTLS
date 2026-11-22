@@ -25,6 +25,21 @@ pub(crate) async fn notify_admins_acme_issued(db: &VaulTLSDB, mailer_mutex: Arc<
     }
 }
 
+pub(crate) async fn notify_issuer_revoked(db: &VaulTLSDB, mailer_mutex: Arc<Mutex<Option<Mailer>>>, ca_id: i64) {
+    let Ok(certs) = db.get_user_certs(None, Some(ca_id), Some(false)).await else { return };
+    let mailer_guard = mailer_mutex.lock().await;
+    let Some(mailer) = &*mailer_guard else { return };
+    for cert in certs.iter().filter(|cert| matches!(cert.renew_method, CertificateRenewMethod::Notify | CertificateRenewMethod::RenewAndNotify)) {
+        let Ok(user) = db.get_user(cert.user_id).await else { continue };
+        info!("Notifying user {} that the CA of certificate {} was revoked.", user.name, cert.name);
+        let _ = mailer.notify_issuer_revoked(MailMessage {
+            to: format!("{} <{}>", user.name, user.email),
+            username: user.name,
+            certificate: cert.clone(),
+        }).await;
+    }
+}
+
 pub(crate) async fn watch_expiry(db: VaulTLSDB, mailer_mutex: Arc<Mutex<Option<Mailer>>>) {
     info!("Starting certificate expiry watcher.");
     let interval_secs = std::env::var("VAULTLS_CHECK_EXPIRY_INTERVAL")
@@ -38,20 +53,37 @@ pub(crate) async fn watch_expiry(db: VaulTLSDB, mailer_mutex: Arc<Mutex<Option<M
 
 
     loop {
-        trace!("Checking for active certificates that are about to expire.");
-
-        if let Ok(certs) = db.get_user_certs(None, None, Some(false)).await {
-            let in_a_week = chrono::Utc::now().timestamp_millis() + 1000 * 60 * 60 * 24 * 7;
-            for cert in certs.iter().filter(|a| a.renew_method != CertificateRenewMethod::None && a.valid_until < in_a_week) {
-                if handle_expiry(cert, &db, mailer_mutex.clone()).await.is_ok() {
-                    let _ = db.update_cert_renew_method(cert.id, CertificateRenewMethod::None).await;
-                }
-            }
-        } else {
-            info!("Failed to get certificates from database.");
-        }
+        check_expiring_certs(&db, mailer_mutex.clone()).await;
 
         ticker.tick().await;
+    }
+}
+
+async fn check_expiring_certs(db: &VaulTLSDB, mailer_mutex: Arc<Mutex<Option<Mailer>>>) {
+    trace!("Checking for active certificates that are about to expire.");
+
+    let Ok(certs) = db.get_user_certs(None, None, Some(false)).await else {
+        info!("Failed to get certificates from database.");
+        return;
+    };
+    let Ok(cas) = db.get_all_ca().await else {
+        info!("Failed to get CAs from database.");
+        return;
+    };
+    let revoked_ca_ids: Vec<i64> = cas.iter().filter(|ca| ca.revoked_at.is_some()).map(|ca| ca.id).collect();
+    let in_a_week = chrono::Utc::now().timestamp_millis() + 1000 * 60 * 60 * 24 * 7;
+
+    for cert in &certs {
+        let has_renew_method = cert.renew_method != CertificateRenewMethod::None;
+        let issuer_revoked = revoked_ca_ids.contains(&cert.ca_id);
+        let expires_soon = cert.valid_until < in_a_week;
+        if !has_renew_method || issuer_revoked || !expires_soon {
+            continue;
+        }
+
+        if handle_expiry(cert, db, mailer_mutex.clone()).await.is_ok() {
+            let _ = db.update_cert_renew_method(cert.id, CertificateRenewMethod::None).await;
+        }
     }
 }
 

@@ -21,6 +21,7 @@ use crate::data::enums::{CAType, CertificateType, DataFormat, PasswordRule, Time
 use crate::data::error::ApiError;
 use crate::data::objects::{AppState, Name, User};
 use crate::notification::mail::{MailMessage, Mailer};
+use crate::notification::notifier::notify_issuer_revoked;
 use crate::settings::{FrontendSettings, InnerSettings, Settings};
 use crate::db::VaulTLSDB;
 
@@ -839,6 +840,12 @@ pub(crate) async fn revoke_ca(
     state.db.increase_ca_crl_number(parent.id, parent.crl_number).await?;
 
     info!(ca_id = id, parent_ca_id = parent_id, "Intermediate CA revoked");
+
+    let db = state.db.clone();
+    let mailer = state.mailer.clone();
+    tokio::spawn(async move {
+        notify_issuer_revoked(&db, mailer, id).await;
+    });
     Ok(())
 }
 
