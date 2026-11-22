@@ -865,6 +865,7 @@ async fn create_krl_params(db: &VaulTLSDB, ca: &CA) -> Result<Vec<Vec<u8>>, ApiE
 /// so a failed publish can be retried. Returns false in that case.
 pub(crate) async fn revoke_and_publish(db: &VaulTLSDB, settings: &Settings, cert: &Certificate) -> Result<bool, ApiError> {
     let mut ca = db.get_ca_by_id(cert.ca_id).await.map_err(|_| ApiError::NotFound(None))?;
+    ensure_ca_not_revoked(&ca)?;
     let newly_revoked = db.revoke_user_cert(cert.id, ca.id, cert.get_serial()?).await?;
 
     match ca.ca_type {
@@ -909,6 +910,7 @@ pub(crate) async fn download_crl(
         CAType::TLS => {
             let crl_der = match retrieve_crl(id) {
                 Ok(crl_der) => crl_der,
+                Err(_) if ca.revoked_at.is_some() => return Err(ApiError::NotFound(None)),
                 Err(_) => {
                     create_new_crl(&state.db, &state.settings, &mut ca).await?
                 }

@@ -1199,3 +1199,23 @@ async fn test_deleted_revoked_intermediate_ca_stays_on_parent_crl() -> Result<()
 
     Ok(())
 }
+
+#[tokio::test]
+async fn test_revoke_certificate_of_revoked_ca_fails() -> Result<()> {
+    let client = VaulTLSClient::new_authenticated().await;
+    let intermediate_ca_id = create_intermediate_ca(&client, "Intermediate CA with frozen CRL").await?;
+    let leaf = client.create_client_cert(None, None, Some(intermediate_ca_id)).await?;
+
+    let response = client.post(format!("/certificates/ca/{intermediate_ca_id}/revoke")).dispatch().await;
+    assert_eq!(response.status(), Status::Ok);
+    let crl_number_before = client.get_all_ca().await?.iter().find(|ca| ca.id == intermediate_ca_id).unwrap().crl_number;
+
+    let response = client.post(format!("/certificates/{}/revoke", leaf.id)).dispatch().await;
+    assert_eq!(response.status(), Status::BadRequest);
+
+    let certs = client.get_certificates().await?;
+    assert!(certs.iter().find(|c| c.id == leaf.id).unwrap().revoked_at.is_none());
+    assert_eq!(client.get_all_ca().await?.iter().find(|ca| ca.id == intermediate_ca_id).unwrap().crl_number, crl_number_before);
+
+    Ok(())
+}

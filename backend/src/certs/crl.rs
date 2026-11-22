@@ -75,6 +75,9 @@ fn extract_ski(cert: &X509Certificate) -> anyhow::Result<Vec<u8>> {
 }
 
 pub fn create_crl(ca: &mut CA, revoked_certs: Vec<(Vec<u8>, i64)>, crl_next_update_hours: i64) -> anyhow::Result<Vec<u8>> {
+    if ca.revoked_at.is_some() {
+        return Err(anyhow!("CA {} is revoked; its CRL is frozen", ca.id));
+    }
     let ca_key_pair = KeyPair::try_from(ca.key.clone())?;
     let issuer = Issuer::from_ca_cert_der(&ca.cert.clone().into(), ca_key_pair)?;
 
