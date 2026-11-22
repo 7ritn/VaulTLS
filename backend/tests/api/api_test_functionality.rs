@@ -470,6 +470,20 @@ async fn test_intermediate_ca_issues_and_downloads_certificate() -> Result<()> {
     assert!(downloaded_intermediate.verify(&root_public_key)?);
     assert!(leaf_certificate.verify(&intermediate_public_key)?);
 
+    let intermediate_der = downloaded_intermediate.to_der()?;
+    let (_, intermediate_x509) = X509Certificate::from_der(&intermediate_der)?;
+    match intermediate_x509.get_extension_unique(&OID_X509_EXT_CRL_DISTRIBUTION_POINTS)?.unwrap().parsed_extension() {
+        ParsedExtension::CRLDistributionPoints(ext) => {
+            match ext.points[0].distribution_point.clone().unwrap() {
+                DistributionPointName::FullName(a) => {
+                    assert_eq!(a[0].to_string(), "URI(http://dummy-crl/crl/crl-1.crl)")
+                }
+                DistributionPointName::NameRelativeToCRLIssuer(_) => {}
+            }
+        },
+        _ => return Err(anyhow!("No CRL DP extension"))
+    }
+
     Ok(())
 }
 

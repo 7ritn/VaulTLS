@@ -137,6 +137,7 @@ impl TLSCertificateBuilder {
 
         let parent_ca_id = self.ca.as_ref().map(|p| p.id.into());
         let cert = if let Some(parent) = self.ca {
+            self.params.crl_distribution_points = crl_distribution_points(parent.id);
             let parent_key_der = parent.key;
             let parent_cert_der = parent.cert;
             let parent_key_pair = KeyPair::try_from(parent_key_der)?;
@@ -184,14 +185,7 @@ impl TLSCertificateBuilder {
         ];
         self.params.is_ca = IsCa::ExplicitNoCa;
 
-        if let Ok(crl_uri_base) = env::var("VAULTLS_CRL_DP_URL") {
-            let crl_uri = format!("{}/crl/crl-{}.crl", crl_uri_base, ca.id);
-            self.params.crl_distribution_points = vec![
-                CrlDistributionPoint {
-                    uris: vec![ crl_uri ],
-                }
-            ];
-        }
+        self.params.crl_distribution_points = crl_distribution_points(ca.id);
 
         let ca_key_pair = KeyPair::try_from(ca.key.clone())?;
         let ca_cert_der_obj = CertificateDer::from(ca.cert.clone());
@@ -390,6 +384,15 @@ fn get_san_entries(cert: &Certificate) -> Result<Vec<openssl::x509::GeneralName>
     };
     let Some(san) = x509.subject_alt_names() else { return Ok(vec![]) };
     Ok(san.into_iter().collect())
+}
+
+fn crl_distribution_points(issuer_id: i64) -> Vec<CrlDistributionPoint> {
+    match env::var("VAULTLS_CRL_DP_URL") {
+        Ok(crl_uri_base) => vec![CrlDistributionPoint {
+            uris: vec![format!("{}/crl/crl-{}.crl", crl_uri_base, issuer_id)],
+        }],
+        Err(_) => Vec::new(),
+    }
 }
 
 pub fn parse_ca(cert_bytes: &[u8], key_bytes: &[u8], data_format: DataFormat, crl_number: i64) -> Result<CA> {
