@@ -72,6 +72,9 @@ The default log level is moderate. If a different one is desired, please specify
 For bug reports, a trace or debug log report is desirable. Be aware logs can contain secrets. Please censor them before posting.
 Available options are: `error`, `warn`, `info`, `debug` and `trace`.
 
+### JSON logs
+Set `VAULTLS_LOG_FORMAT=json` to emit logs as JSON. Default is plain text.
+
 ### Setting up OIDC
 To set up OIDC you need to create a new client in your authentication provider. For Authelia a configuration could look like this
 ```yaml
