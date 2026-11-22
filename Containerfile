@@ -11,10 +11,22 @@ COPY frontend/ ./
 RUN npm run build
 
 # Stage 2: Build the Rust backend binary
-FROM rust:1.97 AS backend-builder
+FROM rust:1.97 AS chef
+RUN cargo install cargo-chef --version 0.1.78 --locked
+WORKDIR /app/backend
+
+# Derive a dependency-only recipe so the dependency layer below
+# is only rebuilt when Cargo.toml or Cargo.lock change
+FROM chef AS planner
+COPY backend/ ./
+RUN cargo chef prepare --recipe-path recipe.json
+
+FROM chef AS backend-builder
+
+COPY --from=planner /app/backend/recipe.json recipe.json
+RUN cargo chef cook --release --locked --recipe-path recipe.json
 
 ARG RUN_TESTS=false
-WORKDIR /app/backend
 COPY backend/ ./
 
 RUN cargo build --release --locked \
