@@ -107,7 +107,8 @@
       "title": "Eliminar certificado",
       "confirm": "¿Está seguro de que desea eliminar el certificado {name}?",
       "disclaimer": "Aviso: Eliminar el certificado no lo revoca, por lo que sigue siendo válido hasta su vencimiento. Revóquelo primero si ya no debe ser de confianza. Un certificado revocado permanece en la CRL/KRL después de eliminarlo."
-    }
+    },
+    "issuerRevoked": "Emisor revocado"
   },
   "ca": {
     "title": "Autoridades de Certificación",
@@ -145,6 +146,14 @@
       "title": "Eliminar certificado",
       "confirm": "¿Está seguro de que desea eliminar la CA {name}?",
       "hasChildren": "No se puede eliminar esta CA mientras tenga CAs secundarias. Elimine primero sus CAs secundarias."
+    },
+    "revoke": "Revocar",
+    "revoked": "Revocada",
+    "revokeModal": {
+      "title": "Revocar autoridad de certificación",
+      "confirm": "¿Seguro que quieres revocar la CA {name}?",
+      "warning": "Los certificados emitidos por esta CA dejarán de ser de confianza. Esta acción no se puede deshacer.",
+      "revoke": "Revocar"
     }
   },
   "users": {
