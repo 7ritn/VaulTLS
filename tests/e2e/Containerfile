@@ -6,6 +6,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 # Install OS dependencies for Playwright (build stage only)
 RUN apt-get update && apt-get install -y \
     curl wget unzip gnupg \
+    libatomic1 \
     libglib2.0-0 libnss3 libgconf-2-4 \
     libfontconfig1 libxss1 libasound2 \
     libxtst6 libgtk-3-0 \
