@@ -1,4 +1,4 @@
-use crate::certs::tls_cert::{get_dns_names, TLSCertificateBuilder};
+use crate::certs::tls_cert::{get_dns_names, has_email_san, TLSCertificateBuilder};
 use crate::data::enums::{CertificateRenewMethod, UserRole};
 use crate::data::enums::CertificateType::*;
 use crate::db::VaulTLSDB;
@@ -80,13 +80,15 @@ async fn handle_expiry(cert: &Certificate, db: &VaulTLSDB, mailer_mutex: Arc<Mut
             let mut new_cert = match cert.certificate_type {
                 TLSClient | TLSServer => {
                     let ca = db.get_latest_tls_ca().await?;
-                    let cert_builder = TLSCertificateBuilder::try_from(cert)?
+                    let mut cert_builder = TLSCertificateBuilder::try_from(cert)?
                         .set_ca(ca)?;
 
                     if cert.certificate_type == TLSClient {
-                        cert_builder
-                            .set_email_san(&user.email)?
-                            .build_client()?
+                        // Keep the old certificate's choice, but use the user's current email.
+                        if has_email_san(cert)? {
+                            cert_builder = cert_builder.set_email_san(&user.email)?;
+                        }
+                        cert_builder.build_client()?
                     } else {
                         let dns = get_dns_names(cert)?;
                         cert_builder

@@ -74,6 +74,19 @@
               </option>
             </select>
           </div>
+          <div class="mb-3 form-check form-switch">
+            <input
+                type="checkbox"
+                class="form-check-input"
+                id="common-client-email-san"
+                v-model="settings.common.client_email_san"
+                role="switch"
+            />
+            <label class="form-check-label" for="common-client-email-san">
+              {{ $t('settings.common.clientEmailSan') }}
+            </label>
+            <div class="form-text">{{ $t('settings.common.clientEmailSanHelp') }}</div>
+          </div>
         </div>
       </div>
 

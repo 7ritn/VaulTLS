@@ -365,24 +365,30 @@ pub(crate) fn extract_pkcs12_serial_number(pkcs12: &[u8], password: &str) -> Res
 
 /// Extract DNS names stored in X509 certificate
 pub(crate) fn get_dns_names(cert: &Certificate) -> Result<Vec<String>, anyhow::Error> {
-    match &cert.data {
-        CertData::Pem(bytes) => {
-            let x509 = X509::from_pem(bytes)?;
-            let Some(san) = x509.subject_alt_names() else { return Ok(vec![]) };
-            Ok(san.iter().filter_map(|name| name.dnsname().map(|s| s.to_string())).collect())
-        }
+    Ok(get_san_entries(cert)?
+        .iter()
+        .filter_map(|name| name.dnsname().map(|s| s.to_string()))
+        .collect())
+}
+
+/// Returns whether the certificate has at least one email (RFC 822) SAN entry.
+pub(crate) fn has_email_san(cert: &Certificate) -> Result<bool, anyhow::Error> {
+    Ok(get_san_entries(cert)?.iter().any(|name| name.email().is_some()))
+}
+
+/// Returns the SAN entries of a TLS certificate, or an empty list if it has none.
+fn get_san_entries(cert: &Certificate) -> Result<Vec<openssl::x509::GeneralName>, anyhow::Error> {
+    let x509 = match &cert.data {
+        CertData::Pem(bytes) => X509::from_pem(bytes)?,
         CertData::Pkcs12(bytes) => {
             let encrypted_p12 = Pkcs12::from_der(bytes)?;
-            let Some(inner) = encrypted_p12.parse2(&cert.password)?.cert else {
-                return Err(anyhow!("No certificate found in PKCS#12"));
-            };
-            let Some(san) = inner.subject_alt_names() else {
-                return Err(anyhow!("No SAN found in PKCS#12 certificate"));
-            };
-            Ok(san.iter().filter_map(|name| name.dnsname().map(|s| s.to_string())).collect())
+            encrypted_p12.parse2(&cert.password)?.cert
+                .ok_or(anyhow!("No certificate found in PKCS#12"))?
         }
-        CertData::SshBundle(_) => Ok(vec![]),
-    }
+        CertData::SshBundle(_) => return Ok(vec![]),
+    };
+    let Some(san) = x509.subject_alt_names() else { return Ok(vec![]) };
+    Ok(san.into_iter().collect())
 }
 
 pub fn parse_ca(cert_bytes: &[u8], key_bytes: &[u8], data_format: DataFormat, crl_number: i64) -> Result<CA> {

@@ -15,6 +15,7 @@ export interface Settings {
         vaultls_url: string;
         crl_next_update_hours: number;
         default_language: string;
+        client_email_san: boolean;
     },
     mail: {
         smtp_host: string,

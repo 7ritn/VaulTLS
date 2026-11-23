@@ -376,6 +376,25 @@ async fn test_create_cert_for_second_user() -> Result<()> {
 }
 
 #[tokio::test]
+async fn test_create_client_cert_without_email_san() -> Result<()> {
+    let client = VaulTLSClient::new_authenticated().await;
+    let mut settings = client.get_settings().await?;
+    assert_eq!(settings["common"]["client_email_san"], true);
+
+    settings["common"]["client_email_san"] = Value::Bool(false);
+    client.put_settings(settings).await?;
+
+    client.create_client_cert(None, Some(TEST_PASSWORD.to_string()), None).await?;
+    let cert_der = client.download_cert_as_p12("1").await?;
+    let (_, cert_x509) = X509Certificate::from_der(&cert_der)?;
+
+    assert_eq!(cert_x509.subject.to_string(), concatcp!("CN=", TEST_CLIENT_CERT_NAME).to_string());
+    assert!(cert_x509.subject_alternative_name()?.is_none());
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn test_create_new_ca() -> Result<()> {
     let client = VaulTLSClient::new_authenticated().await;
     client.create_second_ca().await?;
