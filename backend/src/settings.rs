@@ -147,6 +147,8 @@ pub(crate) struct Common {
     crl_next_update_hours: i64,
     #[serde(default = "default_language_value")]
     default_language: String,
+    #[serde(default = "default_true")]
+    client_email_san: bool,
 }
 
 fn default_crl_hours() -> i64 { 7 * 24 }
@@ -163,6 +165,9 @@ impl Common {
         if let Ok(vaultls_url) = env::var("VAULTLS_URL") {
             self.vaultls_url = vaultls_url;
         }
+        if let Ok(client_email_san) = env::var("VAULTLS_CLIENT_EMAIL_SAN") {
+            self.client_email_san = client_email_san == "true";
+        }
     }
 }
 
@@ -174,6 +179,7 @@ impl Default for Common {
             password_rule: Default::default(),
             crl_next_update_hours: 7 * 24,
             default_language: "en".to_string(),
+            client_email_san: true,
         }
     }
 }
@@ -353,6 +359,7 @@ impl InnerSettings {
     fn get_oidc(&self) -> &OIDC { &self.oidc }
     fn get_vaultls_url(&self) -> &str { &self.common.vaultls_url }
     fn get_crl_next_update_hours(&self) -> i64 { self.common.crl_next_update_hours }
+    fn get_client_email_san(&self) -> bool { self.common.client_email_san }
     fn get_db_encrypted(&self) -> bool { self.logic.db_encrypted }
     fn get_default_language(&self) -> &str { &self.common.default_language }
 
@@ -445,6 +452,10 @@ impl Settings {
     pub(crate) fn get_crl_next_update_hours(&self) -> i64 {
         let settings = self.0.read();
         settings.get_crl_next_update_hours()
+    }
+    pub(crate) fn get_client_email_san(&self) -> bool {
+        let settings = self.0.read();
+        settings.get_client_email_san()
     }
     pub(crate) fn get_db_encrypted(&self) -> bool {
         let settings = self.0.read();

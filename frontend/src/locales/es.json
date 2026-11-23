@@ -176,7 +176,9 @@
       "crlHours": "Hora(s)",
       "crlDays": "Día(s)",
       "crlWeeks": "Semana(s)",
-      "defaultLanguage": "Idioma predeterminado"
+      "defaultLanguage": "Idioma predeterminado",
+      "clientEmailSan": "Incluir el correo del usuario en los certificados de cliente",
+      "clientEmailSanHelp": "Añade la dirección de correo del propietario como entrada SAN. Se aplica a los certificados nuevos; las renovaciones mantienen la opción del certificado original."
     },
     "mail": {
       "heading": "Correo",

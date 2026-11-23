@@ -185,7 +185,9 @@
       "crlHours": "Hour(s)",
       "crlDays": "Day(s)",
       "crlWeeks": "Week(s)",
-      "defaultLanguage": "Default Language"
+      "defaultLanguage": "Default Language",
+      "clientEmailSan": "Include user email in client certificates",
+      "clientEmailSanHelp": "Adds the owner's email address as a SAN entry. Applies to new certificates; renewals keep the choice of the original certificate."
     },
     "mail": {
       "heading": "Mail",
