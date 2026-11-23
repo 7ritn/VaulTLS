@@ -32,6 +32,13 @@
             <td :id="'UserId-' + cert.id" v-if="authStore.isAdmin">{{ userStore.idToName(cert.user_id) }}</td>
             <td :id="'CertName-' + cert.id" >
               {{ cert.name.cn }}
+              <i
+                  v-if="cert.renewal_error"
+                  :id="'RenewalFailed-' + cert.id"
+                  class="bi bi-exclamation-triangle-fill text-warning ms-1"
+                  :title="$t('overview.renewalFailed', { error: cert.renewal_error ?? '' })"
+                  :aria-label="$t('overview.renewalFailed', { error: cert.renewal_error ?? '' })"
+              ></i>
             </td>
             <td :id="'CertGroup-' + cert.id" v-if="hasAnyOU">{{ cert.name.ou ?? '' }}</td>
             <td :id="'CertType-' + cert.id" class="d-none d-md-table-cell">{{ CertificateType[cert.certificate_type] }}</td>

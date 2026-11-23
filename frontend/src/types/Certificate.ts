@@ -25,4 +25,5 @@ export interface Certificate {
     renew_method: CertificateRenewMethod; // Method on what to do when the certificate is about to expire
     ca_id: number;                        // Cert ID used to create the certificate
     revoked_at?: number;                  // Date when the certificate was revoked (UNIX timestamp in s)
+    renewal_error?: string | null;        // Reason of the failed automatic renewal
 }

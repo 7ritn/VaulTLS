@@ -14,6 +14,7 @@ export interface CA {
     ca_type: CAType;                      // CA type
     parent_id?: number | null;            // Parent CA identifier, when this is an intermediate CA
     revoked_at?: number | null;           // Date when the CA was revoked (UNIX timestamp in s)
+    predecessor_id?: number | null;       // CA that this CA succeeds
 }
 
 export interface CARequirements {
@@ -22,6 +23,7 @@ export interface CARequirements {
     validity_duration?: number;         // Validity duration
     validity_unit?: ValidityUnit;       // Validity unit (hours, days, months, years)
     parent_id?: number;                 // Parent CA identifier, when creating an intermediate CA
+    predecessor_id?: number;            // CA that the new CA succeeds, renewals of its certificates move to the new CA
 }
 
 export enum DataFormat {
@@ -35,4 +37,5 @@ export interface ImportCARequest {
     crl?: string;
     format: DataFormat;
     parent_id?: number;                 // Parent CA identifier, when importing an intermediate CA
+    predecessor_id?: number;            // CA that the imported CA succeeds
 }
