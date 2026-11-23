@@ -6,7 +6,7 @@ use anyhow::anyhow;
 use anyhow::Result;
 use include_dir::{include_dir, Dir};
 use rusqlite::fallible_iterator::FallibleIterator;
-use rusqlite::{params, Connection, Transaction};
+use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use rusqlite_migration::{HookResult, MigrationsBuilder, M};
 use std::fs;
 use std::path::Path;
@@ -24,9 +24,10 @@ static MIGRATIONS_DIR: Dir = include_dir!("$CARGO_MANIFEST_DIR/migrations");
 const REVOCATIONS_MIGRATION: &str = "12-revocations";
 
 const CA_COLUMNS: &str = "id, name, created_on, valid_until, type, certificate, key, crl_number, parent_id, \
-    (SELECT r.revoked_at FROM revocations r WHERE r.revoked_ca_id = ca_certificates.id)";
+    (SELECT r.revoked_at FROM revocations r WHERE r.revoked_ca_id = ca_certificates.id), predecessor_id";
 const USER_CERT_COLUMNS: &str = "uc.id, uc.name, uc.created_on, uc.valid_until, uc.data, uc.password, uc.user_id, uc.type, uc.renew_method, uc.ca_id, \
-    (SELECT r.revoked_at FROM revocations r WHERE r.revoked_user_cert_id = uc.id)";
+    (SELECT r.revoked_at FROM revocations r WHERE r.revoked_user_cert_id = uc.id), \
+    uc.renewal_error";
 
 macro_rules! db_do {
     ($pool:expr, $operation:expr) => {
@@ -183,8 +184,8 @@ impl VaulTLSDB {
     ) -> Result<CA> {
         db_do!(self.pool, |conn: &Connection| {
             conn.execute(
-                "INSERT INTO ca_certificates (name, created_on, valid_until, type, certificate, key, crl_number, parent_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-                params![ca.name, ca.created_on, ca.valid_until, ca.ca_type as u8, ca.cert, ca.key, ca.crl_number, ca.parent_id],
+                "INSERT INTO ca_certificates (name, created_on, valid_until, type, certificate, key, crl_number, parent_id, predecessor_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                params![ca.name, ca.created_on, ca.valid_until, ca.ca_type as u8, ca.cert, ca.key, ca.crl_number, ca.parent_id, ca.predecessor_id],
             )?;
             ca.id = conn.last_insert_rowid();
             Ok(ca)
@@ -203,12 +204,21 @@ impl VaulTLSDB {
     }
 
     /// Delete a CA from the database
+    /// A successor of the CA is relinked to the predecessor of the CA, so the successor chain stays intact.
     pub(crate) async fn delete_ca(&self, id: i64) -> Result<()> {
         db_do!(self.pool, |conn: &Connection| {
-            Ok(conn.execute(
-                "DELETE FROM ca_certificates WHERE id=?1",
-                params![id]
-            ).map(|_| ())?)
+            let tx = conn.unchecked_transaction()?;
+            let predecessor_id: Option<i64> = tx.query_row(
+                "SELECT predecessor_id FROM ca_certificates WHERE id=?1",
+                params![id],
+                |row| row.get(0),
+            ).optional()?.flatten();
+            // Unlink first, as a predecessor may only have one successor
+            tx.execute("UPDATE ca_certificates SET predecessor_id = NULL WHERE id=?1", params![id])?;
+            tx.execute("UPDATE ca_certificates SET predecessor_id = ?1 WHERE predecessor_id=?2", params![predecessor_id, id])?;
+            tx.execute("DELETE FROM ca_certificates WHERE id=?1", params![id])?;
+            tx.commit()?;
+            Ok(())
         })
     }
 
@@ -248,6 +258,7 @@ impl VaulTLSDB {
                 crl_number: row.get(7)?,
                 parent_id: row.get(8)?,
                 revoked_at: row.get(9)?,
+                predecessor_id: row.get(10)?,
             })
         })
     }
@@ -269,6 +280,7 @@ impl VaulTLSDB {
                     crl_number: row.get(7)?,
                     parent_id: row.get(8)?,
                     revoked_at: row.get(9)?,
+                predecessor_id: row.get(10)?,
                 })
             })
             .collect()?)
@@ -386,6 +398,24 @@ impl VaulTLSDB {
             Ok(conn.execute(
                 "UPDATE user_certificates SET renew_method = ?1 WHERE id=?2",
                 params![renew_method as u8, id]
+            ).map(|_| ())?)
+        })
+    }
+
+    pub(crate) async fn clear_cert_renewal_failure(&self, id: i64) -> Result<()> {
+        db_do!(self.pool, |conn: &Connection| {
+            Ok(conn.execute(
+                "UPDATE user_certificates SET renewal_error = NULL WHERE id=?1",
+                params![id]
+            ).map(|_| ())?)
+        })
+    }
+
+    pub(crate) async fn set_cert_renewal_failure(&self, id: i64, error: String) -> Result<()> {
+        db_do!(self.pool, |conn: &Connection| {
+            Ok(conn.execute(
+                "UPDATE user_certificates SET renewal_error = ?1 WHERE id=?2",
+                params![error, id]
             ).map(|_| ())?)
         })
     }

@@ -639,6 +639,7 @@ pub(crate) async fn finalize_order(
         renew_method: CertificateRenewMethod::None,
         ca_id: ca.id,
         revoked_at: None,
+        renewal_error: None,
         data: CertData::Pem(chain_pem),
         password: String::new(),
     };

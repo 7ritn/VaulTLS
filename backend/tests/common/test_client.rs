@@ -318,23 +318,72 @@ impl VaulTLSClient {
         Ok(serde_json::from_str(&response.into_string().await.unwrap())?)
     }
 
-    pub(crate) async fn create_second_ca(&self) -> Result<()> {
+    pub(crate) async fn create_tls_ca(&self, name: &str, validity: u64, unit: TimespanUnit, parent_id: Option<i64>, predecessor_id: Option<i64>) -> Result<(Status, Option<i64>)> {
         let data = CreateCARequest {
-            ca_name: TEST_SECOND_CA_NAME.to_string().into(),
+            ca_name: name.to_string().into(),
             ca_type: CAType::TLS,
-            validity_duration: Some(15),
-            validity_unit: Some(TimespanUnit::Year),
-            parent_id: None,
+            validity_duration: Some(validity),
+            validity_unit: Some(unit),
+            parent_id,
+            predecessor_id,
         };
 
-        let request = self
+        let response = self
             .post("/certificates/ca")
             .header(ContentType::JSON)
-            .body(serde_json::to_string(&data)?);
-        let response = request.dispatch().await;
+            .body(serde_json::to_string(&data)?)
+            .dispatch()
+            .await;
+        let status = response.status();
+        let id = if status == Status::Ok {
+            Some(serde_json::from_str(&response.into_string().await.unwrap())?)
+        } else {
+            None
+        };
+        Ok((status, id))
+    }
+
+    /// Creates a TLS client certificate with automatic renewal that is valid for one day.
+    pub(crate) async fn create_expiring_client_cert(&self, ca_id: i64) -> Result<Certificate> {
+        let cert_req = CreateUserCertificateRequest {
+            cert_name: TEST_CLIENT_CERT_NAME.into(),
+            validity_duration: Some(1),
+            validity_unit: Some(TimespanUnit::Day),
+            user_id: 1,
+            notify_user: None,
+            system_generated_password: false,
+            cert_password: Some(TEST_PASSWORD.to_string()),
+            cert_type: Some(TLSClient),
+            usage_limit: None,
+            renew_method: Some(CertificateRenewMethod::Renew),
+            ca_id: Some(ca_id),
+        };
+
+        let response = self
+            .post("/certificates")
+            .header(ContentType::JSON)
+            .body(serde_json::to_string(&cert_req)?)
+            .dispatch()
+            .await;
         assert_eq!(response.status(), Status::Ok);
 
+        Ok(serde_json::from_str(&response.into_string().await.unwrap())?)
+    }
+
+    pub(crate) async fn run_expiry_check(&self) {
+        vaultls::run_expiry_check_once(self.rocket()).await;
+    }
+
+    pub(crate) async fn create_second_ca(&self) -> Result<()> {
+        let (status, _) = self.create_tls_ca(TEST_SECOND_CA_NAME, 15, TimespanUnit::Year, None, None).await?;
+        assert_eq!(status, Status::Ok);
         Ok(())
+    }
+
+    pub(crate) async fn create_intermediate_ca(&self, name: &str) -> Result<i64> {
+        let (status, id) = self.create_tls_ca(name, 1, TimespanUnit::Year, Some(1), None).await?;
+        assert_eq!(status, Status::Ok);
+        Ok(id.unwrap())
     }
 
     pub(crate) async fn create_ssh_ca(&self) -> Result<()> {
@@ -344,6 +393,7 @@ impl VaulTLSClient {
             validity_duration: None,
             validity_unit: None,
             parent_id: None,
+            predecessor_id: None,
         };
 
         let request = self

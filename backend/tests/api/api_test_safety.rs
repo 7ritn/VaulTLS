@@ -122,6 +122,7 @@ async fn test_create_ca_cannot_outlive_parent() -> Result<()> {
         validity_duration: Some(6),
         validity_unit: Some(TimespanUnit::Year),
         parent_id: Some(1),
+        predecessor_id: None,
     };
 
     let response = client
@@ -146,6 +147,7 @@ async fn test_create_tls_ca_rejects_ssh_parent() -> Result<()> {
         validity_duration: Some(1),
         validity_unit: Some(TimespanUnit::Year),
         parent_id: Some(2),
+        predecessor_id: None,
     };
 
     let response = client
@@ -156,6 +158,48 @@ async fn test_create_tls_ca_rejects_ssh_parent() -> Result<()> {
         .await;
 
     assert_eq!(response.status(), Status::BadRequest);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_create_ca_predecessor_validation() -> Result<()> {
+    let client = VaulTLSClient::new_authenticated().await;
+    client.create_ssh_ca().await?;
+    let ssh_ca_id = client.get_all_ca().await?.iter().find(|ca| ca.ca_type == CAType::SSH).unwrap().id;
+
+    // Wrong type
+    let (status, _) = client.create_tls_ca("Wrong type", 5, TimespanUnit::Year, None, Some(ssh_ca_id)).await?;
+    assert_eq!(status, Status::BadRequest);
+    // SSH CAs cannot have a predecessor
+    let ssh_request = CreateCARequest {
+        ca_name: "SSH successor".into(),
+        ca_type: CAType::SSH,
+        validity_duration: None,
+        validity_unit: None,
+        parent_id: None,
+        predecessor_id: Some(ssh_ca_id),
+    };
+    let response = client.post("/certificates/ca").header(ContentType::JSON).body(serde_json::to_string(&ssh_request)?).dispatch().await;
+    assert_eq!(response.status(), Status::BadRequest);
+    // Unknown predecessor
+    let (status, _) = client.create_tls_ca("Unknown", 5, TimespanUnit::Year, None, Some(999)).await?;
+    assert_eq!(status, Status::BadRequest);
+    // Does not expire after predecessor (setup CA is valid for 2 years)
+    let (status, _) = client.create_tls_ca("Too short", 1, TimespanUnit::Year, None, Some(1)).await?;
+    assert_eq!(status, Status::BadRequest);
+    // Revoked predecessor
+    let revoked_id = client.create_intermediate_ca("Revoked").await?;
+    let response = client.post(format!("/certificates/ca/{revoked_id}/revoke")).dispatch().await;
+    assert_eq!(response.status(), Status::Ok);
+    let (status, _) = client.create_tls_ca("Revoked successor", 5, TimespanUnit::Year, None, Some(revoked_id)).await?;
+    assert_eq!(status, Status::BadRequest);
+
+    let (status, _) = client.create_tls_ca("Successor", 5, TimespanUnit::Year, None, Some(1)).await?;
+    assert_eq!(status, Status::Ok);
+    // Predecessor already has a successor
+    let (status, _) = client.create_tls_ca("Duplicate", 6, TimespanUnit::Year, None, Some(1)).await?;
+    assert_eq!(status, Status::BadRequest);
 
     Ok(())
 }

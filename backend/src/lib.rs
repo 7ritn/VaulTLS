@@ -310,3 +310,9 @@ pub async fn create_test_rocket() -> Rocket<Build> {
             ],
         )
 }
+
+#[cfg(feature = "test-mode")]
+pub async fn run_expiry_check_once(rocket: &Rocket<rocket::Orbit>) {
+    let state = rocket.state::<AppState>().expect("AppState is managed");
+    crate::notification::notifier::check_expiring_certs(&state.db, state.mailer.clone()).await;
+}

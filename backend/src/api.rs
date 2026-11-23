@@ -20,10 +20,10 @@ use crate::data::api::{CallbackQuery, ChangePasswordRequest, CreateCARequest, Cr
 use crate::data::enums::{CAType, CertificateType, DataFormat, PasswordRule, TimespanUnit, UserRole};
 use crate::data::error::ApiError;
 use crate::data::objects::{AppState, Name, User};
+use crate::db::VaulTLSDB;
 use crate::notification::mail::{MailMessage, Mailer};
 use crate::notification::notifier::notify_issuer_revoked;
 use crate::settings::{FrontendSettings, InnerSettings, Settings};
-use crate::db::VaulTLSDB;
 
 #[openapi(tag = "Setup")]
 #[get("/server/version")]
@@ -349,6 +349,30 @@ fn validate_parent_ca(ca_valid_until: i64, parent: &CA) -> Result<(), ApiError> 
     Ok(())
 }
 
+/// Requiring the successor to expire later also rules out cycles in the successor chain.
+async fn validate_predecessor_ca(db: &VaulTLSDB, predecessor_id: i64, ca: &CA) -> Result<(), ApiError> {
+    if ca.ca_type != CAType::TLS {
+        return Err(ApiError::BadRequest("Only TLS CAs can have a predecessor, as SSH certificates are not renewed".to_string()));
+    }
+    let all_cas = db.get_all_ca().await?;
+    let predecessor = all_cas.iter()
+        .find(|other| other.id == predecessor_id)
+        .ok_or_else(|| ApiError::BadRequest(format!("The predecessor CA {} does not exist", predecessor_id)))?;
+    if predecessor.ca_type != CAType::TLS {
+        return Err(ApiError::BadRequest(format!("The predecessor CA {} is not a TLS CA", predecessor_id)));
+    }
+    if predecessor.revoked_at.is_some() {
+        return Err(ApiError::BadRequest(format!("The predecessor CA {} has been revoked", predecessor_id)));
+    }
+    if ca.valid_until <= predecessor.valid_until {
+        return Err(ApiError::BadRequest("The CA would not expire after its predecessor CA".to_string()));
+    }
+    if all_cas.iter().any(|other| other.predecessor_id == Some(predecessor_id)) {
+        return Err(ApiError::BadRequest(format!("The CA {} already has a successor", predecessor_id)));
+    }
+    Ok(())
+}
+
 #[openapi(tag = "CA")]
 #[post("/certificates/ca/import", format = "json", data = "<payload>")]
 /// Import an existing CA.
@@ -409,6 +433,10 @@ pub(crate) async fn import_ca(
         }
         ca.parent_id = Some(parent_id);
     }
+    if let Some(predecessor_id) = payload.predecessor_id {
+        validate_predecessor_ca(&state.db, predecessor_id, &ca).await?;
+        ca.predecessor_id = Some(predecessor_id);
+    }
     ca = state.db.insert_ca(ca).await?;
     save_ca(&ca)?;
 
@@ -445,6 +473,7 @@ pub(crate) async fn import_user_certificate(
         renew_method: payload.renew_method,
         ca_id: payload.ca_id,
         revoked_at: None,
+        renewal_error: None,
         data: crate::data::enums::CertData::Pkcs12(p12_bytes),
         password: payload.password.clone(),
     };
@@ -481,7 +510,7 @@ pub(crate) async fn get_all_ca(
 
 #[openapi(tag = "Certificates")]
 #[post("/certificates/ca", format = "json", data = "<payload>")]
-/// Create a new certificate. Requires admin role.
+/// Create a new CA. Requires admin role.
 pub(crate) async fn create_ca(
     state: &State<AppState>,
     payload: Json<CreateCARequest>,
@@ -510,6 +539,10 @@ pub(crate) async fn create_ca(
                 .build_ca()?
         }
     };
+    if let Some(predecessor_id) = payload.predecessor_id {
+        validate_predecessor_ca(&state.db, predecessor_id, &ca).await?;
+        ca.predecessor_id = Some(predecessor_id);
+    }
 
     ca = state.db.insert_ca(ca).await?;
     if ca.ca_type == CAType::TLS {

@@ -19,6 +19,7 @@ pub struct Certificate {
     pub renew_method: CertificateRenewMethod,
     pub ca_id: i64,
     pub revoked_at: Option<i64>,
+    pub renewal_error: Option<String>,
     #[serde(skip)]
     pub data: CertData,
     #[serde(skip)]
@@ -40,7 +41,8 @@ impl Certificate {
             certificate_type,
             renew_method: row.get(8)?,
             ca_id: row.get(9)?,
-            revoked_at: row.get(10)?
+            revoked_at: row.get(10)?,
+            renewal_error: row.get(11)?
         })
     }
 
@@ -82,6 +84,7 @@ pub struct CA {
     pub crl_number: i64,
     pub parent_id: Option<i64>,
     pub revoked_at: Option<i64>,
+    pub predecessor_id: Option<i64>,
 }
 
 /// Saves the CA certificate to a file for filesystem access.
