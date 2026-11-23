@@ -119,9 +119,6 @@ Certificates downloaded come in the PKCS#12 file format. They are a bundle consi
 
 Passwords are stored in the database and retrieved from the web interface only when the user clicks on view password.
 
-### Email Address in Client Certificates
-By default, TLS client certificates contain the owner's email address as a Subject Alternative Name (SAN). With TLS 1.2, client certificates are sent unencrypted, so anyone observing the connection can read that address (TLS 1.3 encrypts them). To leave it out, turn off "Include user email in client certificates" on the settings page or set `VAULTLS_CLIENT_EMAIL_SAN=false`. The certificate is then identified only by its common name. The setting applies to newly created certificates. Automatic renewals keep whatever the original certificate had, using the user's current email address.
-
 ### TLS Server Certificates
 VaulTLS also has support for server certificates.
 The user flow remains quite similar with the difference that SAN DNS entries can be specified.

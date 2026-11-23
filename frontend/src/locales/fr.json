@@ -36,5 +36,11 @@
       "confirm": "Voulez-vous vraiment supprimer l’AC {name} ?",
       "hasChildren": "Cette AC ne peut pas être supprimée tant qu’elle possède des AC enfants. Supprimez d’abord ses AC enfants."
     }
+  },
+  "settings": {
+    "common": {
+      "clientEmailSan": "Inclure l’e-mail de l’utilisateur dans les certificats client",
+      "clientEmailSanHelp": "Ajoute l’adresse e-mail du propriétaire comme entrée SAN. S’applique aux nouveaux certificats ; les renouvellements conservent le choix du certificat d’origine."
+    }
   }
 }
