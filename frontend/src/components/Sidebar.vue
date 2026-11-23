@@ -92,49 +92,46 @@
             </a>
           </div>
 
-          <!-- 2. Controls Row: Theme & Language Side-by-Side to save vertical space -->
-          <div class="d-flex align-items-center justify-content-between gap-2 pt-2">
-            <!-- Theme Toggle Group -->
-            <div class="d-flex justify-content-center gap-2 mt-2">
-              <button
-                  class="btn btn-sm"
-                  :class="themeStore.theme === 'light' ? 'btn-primary' : 'btn-outline-secondary'"
-                  @click="themeStore.setTheme('light')"
-                  :title="$t('sidebar.lightMode')"
-              >
-                <i class="bi bi-sun-fill"></i>
-              </button>
-              <button
-                  class="btn btn-sm"
-                  :class="themeStore.theme === 'dark' ? 'btn-primary' : 'btn-outline-secondary'"
-                  @click="themeStore.setTheme('dark')"
-                  :title="$t('sidebar.darkMode')"
-              >
-                <i class="bi bi-moon-fill"></i>
-              </button>
-              <button
-                  class="btn btn-sm"
-                  :class="themeStore.theme === 'auto' ? 'btn-primary' : 'btn-outline-secondary'"
-                  @click="themeStore.setTheme('auto')"
-                  :title="$t('sidebar.autoMode')"
-              >
-                <i class="bi bi-circle-half"></i>
-              </button>
-            </div>
+          <!-- 2. Controls: Theme -->
+          <div class="d-flex justify-content-center gap-2 mt-2 mb-3">
+            <button
+                class="btn btn-sm"
+                :class="themeStore.theme === 'light' ? 'btn-primary' : 'btn-outline-secondary'"
+                @click="themeStore.setTheme('light')"
+                :title="$t('sidebar.lightMode')"
+            >
+              <i class="bi bi-sun-fill"></i>
+            </button>
+            <button
+                class="btn btn-sm"
+                :class="themeStore.theme === 'dark' ? 'btn-primary' : 'btn-outline-secondary'"
+                @click="themeStore.setTheme('dark')"
+                :title="$t('sidebar.darkMode')"
+            >
+              <i class="bi bi-moon-fill"></i>
+            </button>
+            <button
+                class="btn btn-sm"
+                :class="themeStore.theme === 'auto' ? 'btn-primary' : 'btn-outline-secondary'"
+                @click="themeStore.setTheme('auto')"
+                :title="$t('sidebar.autoMode')"
+            >
+              <i class="bi bi-circle-half"></i>
+            </button>
+          </div>
 
-            <!-- Language Selector -->
-            <div :data-bs-theme="themeStore.theme">
-              <select
-                  class="form-select form-select-sm text-reset"
-                  style="max-width: 100px; background-color: rgba(170, 170, 170, 0.15); border: 1px solid rgba(170, 170, 170, 0.25);"
-                  :value="locale"
-                  @change="changeLocale(($event.target as HTMLSelectElement).value)"
-              >
-                <option v-for="(label, code) in SUPPORTED_LOCALES" :key="code" :value="code">
-                  {{ label }}
-                </option>
-              </select>
-            </div>
+          <!-- 3. Controls: Language Selector -->
+          <div :data-bs-theme="themeStore.theme" class="d-flex flex-column align-items-center gap-2">
+            <select
+                class="form-select form-select-sm text-reset w-100"
+                style="max-width: fit-content; background-color: rgba(170, 170, 170, 0.15); border: 1px solid rgba(170, 170, 170, 0.25);"
+                :value="locale"
+                @change="changeLocale(($event.target as HTMLSelectElement).value)"
+            >
+              <option v-for="(label, code) in SUPPORTED_LOCALES" :key="code" :value="code">
+                {{ label }}
+              </option>
+            </select>
           </div>
         </div>
 
