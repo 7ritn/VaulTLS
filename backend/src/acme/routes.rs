@@ -21,7 +21,9 @@ use crate::acme::types::{
     AcmeAuthorization, AcmeChallenge, AcmeCreatedResponse, AcmeError, AcmeIdentifier, AcmeOrder,
     AcmeOrderRow, AcmePemResponse, Directory, DirectoryMeta, JwsRequest,
 };
+use crate::api::revoke_and_publish;
 use crate::certs::common::Certificate;
+use crate::data::error::ApiError;
 use crate::acme::domain::is_valid_dns_name;
 use crate::certs::tls_cert::issue_cert_from_csr;
 use crate::data::enums::{CertData, CertificateRenewMethod, CertificateType};
@@ -947,9 +949,7 @@ pub(crate) async fn revoke_cert(
             return Err(AcmeError::unauthorized("Certificate does not belong to this account"));
         }
 
-        state.db.revoke_user_cert(cert_id).await
-            .map_err(|_| AcmeError::server_internal("Revocation failed"))?;
-        Ok(Status::Ok)
+        revoke_acme_cert(state, cert_id).await
 
     } else if let Some(jwk) = &header.jwk {
         verify_signature(&header.alg, jwk, &req.protected, &req.payload, &signature)?;
@@ -971,13 +971,29 @@ pub(crate) async fn revoke_cert(
             .map_err(|_| AcmeError::server_internal("DB error"))?
             .ok_or_else(AcmeError::not_found)?;
 
-        state.db.revoke_user_cert(cert_id).await
-            .map_err(|_| AcmeError::server_internal("Revocation failed"))?;
-        Ok(Status::Ok)
+        revoke_acme_cert(state, cert_id).await
 
     } else {
         Err(AcmeError::malformed("Revocation request must include either kid or jwk"))
     }
+}
+
+async fn revoke_acme_cert(state: &State<AppState>, cert_id: i64) -> Result<Status, AcmeError> {
+    let cert = state.db.get_user_cert_by_id(cert_id).await
+        .map_err(|_| AcmeError::not_found())?;
+    let newly_revoked = revoke_and_publish(&state.db, &state.settings, &cert).await
+        .map_err(|e| match e {
+            ApiError::BadRequest(detail) => AcmeError::unauthorized(detail),
+            e => {
+                error!("Failed to revoke certificate {cert_id}: {e:?}");
+                AcmeError::server_internal("Revocation failed")
+            }
+        })?;
+    if !newly_revoked {
+        return Err(AcmeError::already_revoked());
+    }
+    info!("Revoked certificate {cert_id} via ACME");
+    Ok(Status::Ok)
 }
 
 #[post("/orders/<id>", data = "<jws>")]

@@ -8,7 +8,10 @@ use serde_json::Value;
 use vaultls::create_test_rocket;
 use vaultls::data::api::{CreateCARequest, CreateUserCertificateRequest, CreateUserRequest, LoginRequest, SetupRequest};
 use vaultls::data::enums::{CAType, CertificateRenewMethod, CertificateType, TimespanUnit, UserRole};
+use openssl::bn::BigNum;
+use x509_parser::asn1_rs::FromDer;
 use x509_parser::pem::Pem;
+use x509_parser::revocation_list::CertificateRevocationList;
 use vaultls::certs::common::{Certificate, CA};
 use vaultls::data::enums::CertificateType::{SSHClient, TLSClient};
 use vaultls::data::objects::User;
@@ -293,6 +296,16 @@ impl VaulTLSClient {
         assert_eq!(response.content_type(), Some(ContentType::JSON));
 
         Ok(serde_json::from_str(&response.into_string().await.unwrap())?)
+    }
+
+    pub(crate) async fn get_crl_serials(&self, ca_id: i64) -> Result<Vec<BigNum>> {
+        let response = self.get(format!("/certificates/ca/{ca_id}/crl")).dispatch().await;
+        assert_eq!(response.status(), Status::Ok);
+        let crl_der = response.into_bytes().await.unwrap();
+        let (_, crl) = CertificateRevocationList::from_der(&crl_der)?;
+        Ok(crl.iter_revoked_certificates()
+            .map(|revoked| BigNum::from_slice(revoked.raw_serial()))
+            .collect::<Result<_, _>>()?)
     }
 
     pub(crate) async fn get_certificates(&self) -> Result<Vec<Certificate>> {

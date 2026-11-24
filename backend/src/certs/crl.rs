@@ -26,15 +26,7 @@ pub(crate) async fn create_new_crl(db: &VaulTLSDB, settings: &Settings, ca: &mut
 pub(crate) async fn create_crl_params(db: &VaulTLSDB, settings: &Settings, ca: &CA) -> Result<(Vec<(Vec<u8>, i64)>, i64), ApiError>{
     assert_eq!(ca.ca_type, CAType::TLS);
 
-    let revoked_certs = db.get_user_certs(None, Some(ca.id), Some(true)).await.map_err(|e| ApiError::Other(e.to_string()))?;
-
-    let mut revoked_params = Vec::new();
-    for cert in revoked_certs {
-        let serial = cert.get_serial()
-            .map_err(|_| ApiError::Other("Could not retrieve serial number from certificate to create CRL".to_string()))?;
-
-        revoked_params.push((serial, cert.revoked_at.unwrap_or(0)));
-    }
+    let revoked_params = db.get_revocations(ca.id).await?;
 
     let crl_next_update_hours = settings.get_crl_next_update_hours();
 
@@ -48,10 +40,17 @@ pub(crate) fn retrieve_crl(ca_id: i64) -> anyhow::Result<Vec<u8>> {
 }
 
 #[cfg(feature = "test-mode")]
-pub(crate) fn retrieve_crl(ca_id: i64) -> anyhow::Result<Vec<u8>> {
+fn test_crl_path(ca_id: i64) -> anyhow::Result<std::path::PathBuf> {
     let mut path = temp_dir();
+    path.push(format!("vaultls-test-{}-{:?}", std::process::id(), std::thread::current().id()));
+    fs::create_dir_all(&path)?;
     path.push(format!("crl-{}.crl", ca_id));
-    Ok(fs::read(path)?)
+    Ok(path)
+}
+
+#[cfg(feature = "test-mode")]
+pub(crate) fn retrieve_crl(ca_id: i64) -> anyhow::Result<Vec<u8>> {
+    Ok(fs::read(test_crl_path(ca_id)?)?)
 }
 
 pub(crate) fn create_and_save_crl(ca: &mut CA, revoked_certs: Vec<(Vec<u8>, i64)>, crl_next_update_hours: i64) -> anyhow::Result<()> {
@@ -114,9 +113,7 @@ pub(crate) fn save_crl(crl_der: Vec<u8>, ca_id: i64) -> anyhow::Result<()> {
 
 #[cfg(feature = "test-mode")]
 pub(crate) fn save_crl(crl_der: Vec<u8>, ca_id: i64) -> anyhow::Result<()> {
-    let mut path = temp_dir();
-    path.push(format!("crl-{}.crl", ca_id));
-    fs::write(path, crl_der).map_err(|e| ApiError::Other(e.to_string()))?;
+    fs::write(test_crl_path(ca_id)?, crl_der).map_err(|e| ApiError::Other(e.to_string()))?;
     Ok(())
 }
 
