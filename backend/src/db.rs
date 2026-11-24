@@ -1,13 +1,13 @@
 use crate::constants::{DB_FILE_PATH, TEMP_DB_FILE_PATH};
-use crate::data::enums::{CAType, CertificateRenewMethod, UserRole};
+use crate::data::enums::{CAType, CertificateRenewMethod, CertificateType, UserRole};
 use crate::data::objects::User;
 use crate::helper::get_secret;
 use anyhow::anyhow;
 use anyhow::Result;
 use include_dir::{include_dir, Dir};
 use rusqlite::fallible_iterator::FallibleIterator;
-use rusqlite::{params, Connection};
-use rusqlite_migration::Migrations;
+use rusqlite::{params, Connection, Transaction};
+use rusqlite_migration::{HookError, HookResult, MigrationsBuilder, M};
 use std::fs;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -17,9 +17,14 @@ use r2d2_sqlite::SqliteConnectionManager;
 use tracing::{debug, info, trace, warn};
 use crate::acme::types::{AcmeAccount, AcmeIdentifier, AdminAcmeOrder, AcmeOrderRow};
 use crate::auth::password_auth::Password;
-use crate::certs::common::{Certificate, CA};
+use crate::certs::common::{cert_data_from_raw, cert_data_serial, Certificate, CA};
 
 static MIGRATIONS_DIR: Dir = include_dir!("$CARGO_MANIFEST_DIR/migrations");
+/// Migration that creates the revocations table, backfilled by [`backfill_revocations`].
+const REVOCATIONS_MIGRATION: &str = "12-revocations";
+
+const USER_CERT_COLUMNS: &str = "uc.id, uc.name, uc.created_on, uc.valid_until, uc.data, uc.password, uc.user_id, uc.type, uc.renew_method, uc.ca_id, \
+    (SELECT r.revoked_at FROM revocations r WHERE r.user_cert_id = uc.id)";
 
 macro_rules! db_do {
     ($pool:expr, $operation:expr) => {
@@ -137,7 +142,15 @@ impl VaulTLSDB {
     }
 
     fn migrate_database(conn: &mut Connection) -> Result<()> {
-        let migrations = Migrations::from_directory(&MIGRATIONS_DIR).expect("Failed to load migrations");
+        let up_sql = MIGRATIONS_DIR
+            .get_file(format!("{REVOCATIONS_MIGRATION}/up.sql"))
+            .and_then(|file| file.contents_utf8())
+            .expect("Failed to load revocations migration");
+        let migration_id: usize = REVOCATIONS_MIGRATION.split('-').next().and_then(|id| id.parse().ok())
+            .expect("Invalid revocations migration name");
+        let migrations = MigrationsBuilder::from_directory(&MIGRATIONS_DIR).expect("Failed to load migrations")
+            .edit(migration_id, move |_| M::up_with_hook(up_sql, backfill_revocations))
+            .finalize();
         migrations.to_latest(conn).expect("Failed to migrate database");
         debug!("Database migrated to latest version");
 
@@ -274,23 +287,23 @@ impl VaulTLSDB {
     /// If filter_revoked is Some, only certificates that are (not) revoked are returned
     pub(crate) async fn get_user_certs(&self, user_id: Option<i64>, ca_id: Option<i64>, filter_revoked: Option<bool>) -> Result<Vec<Certificate>> {
         db_do!(self.pool, |conn: &Connection| {
-            let mut query = String::from("SELECT id, name, created_on, valid_until, data, password, user_id, type, renew_method, ca_id, revoked_at FROM user_certificates WHERE 1=1");
+            let mut query = String::from(formatcp!("SELECT {USER_CERT_COLUMNS} FROM user_certificates uc WHERE 1=1"));
             let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
 
             if let Some(id) = user_id {
-                query.push_str(" AND user_id = ?");
+                query.push_str(" AND uc.user_id = ?");
                 params.push(Box::new(id));
             }
 
             if let Some(id) = ca_id {
-                query.push_str(" AND ca_id = ?");
+                query.push_str(" AND uc.ca_id = ?");
                 params.push(Box::new(id));
             }
 
             if let Some(revoked) = filter_revoked {
                 let query_str = match revoked {
-                    true => " AND revoked_at IS NOT NULL",
-                    false => " AND revoked_at IS NULL"
+                    true => " AND EXISTS (SELECT 1 FROM revocations r WHERE r.user_cert_id = uc.id)",
+                    false => " AND NOT EXISTS (SELECT 1 FROM revocations r WHERE r.user_cert_id = uc.id)"
                 };
                 query.push_str(query_str);
             }
@@ -307,7 +320,7 @@ impl VaulTLSDB {
     /// Returns the id of the user the certificate belongs to and the cert data
     pub(crate) async fn get_user_cert_by_id(&self, id: i64) -> Result<Certificate> {
         db_do!(self.pool, |conn: &Connection| {
-            let mut stmt = conn.prepare("SELECT id, name, created_on, valid_until, data, password, user_id, type, renew_method, ca_id, revoked_at FROM user_certificates WHERE id = ?1")?;
+            let mut stmt = conn.prepare(formatcp!("SELECT {USER_CERT_COLUMNS} FROM user_certificates uc WHERE uc.id = ?1"))?;
 
             let cert = stmt.query_row(rusqlite::params_from_iter([id]), Certificate::from_row)?;
 
@@ -362,12 +375,23 @@ impl VaulTLSDB {
         })
     }
 
-    pub(crate) async fn revoke_user_cert(&self, id: i64) -> Result<()> {
+    /// Record the revocation of a user certificate on the CRL or KRL of its CA.
+    pub(crate) async fn revoke_user_cert(&self, id: i64, ca_id: i64, serial: Vec<u8>) -> Result<()> {
         db_do!(self.pool, |conn: &Connection| {
             Ok(conn.execute(
-                "UPDATE user_certificates SET revoked_at = ?1 WHERE id=?2",
-                params![chrono::Utc::now().timestamp(), id]
+                "INSERT INTO revocations (ca_id, serial, revoked_at, user_cert_id) VALUES (?1, ?2, ?3, ?4)",
+                params![ca_id, serial, chrono::Utc::now().timestamp(), id]
             ).map(|_| ())?)
+        })
+    }
+
+    /// Retrieve the serial numbers and revocation times listed on the CRL or KRL of a CA.
+    /// Entries outlive the deletion of the revoked certificate.
+    pub(crate) async fn get_revocations(&self, ca_id: i64) -> Result<Vec<(Vec<u8>, i64)>> {
+        db_do!(self.pool, |conn: &Connection| {
+            let mut stmt = conn.prepare("SELECT serial, MIN(revoked_at) FROM revocations WHERE ca_id = ?1 GROUP BY serial ORDER BY MIN(revoked_at), serial")?;
+            let rows = stmt.query(params![ca_id])?;
+            Ok(rows.map(|row| Ok((row.get(0)?, row.get(1)?))).collect()?)
         })
     }
 
@@ -898,7 +922,7 @@ impl VaulTLSDB {
     pub(crate) async fn get_cert_id_by_serial_hex(&self, serial_hex: String) -> Result<Option<i64>> {
         db_do!(self.pool, |conn: &Connection| {
             let result = conn.query_row(
-                "SELECT id FROM user_certificates WHERE serial_hex = ?1 AND revoked_at IS NULL",
+                "SELECT id FROM user_certificates uc WHERE serial_hex = ?1 AND NOT EXISTS (SELECT 1 FROM revocations r WHERE r.user_cert_id = uc.id)",
                 params![serial_hex],
                 |row| row.get::<_, i64>(0),
             );
@@ -967,4 +991,31 @@ fn order_row_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<AcmeOrderRow>
         client_ip: row.get(8)?,
         error: row.get(9)?,
     })
+}
+
+/// Copy the revocations recorded in the old revoked_at column into the revocations table.
+/// The database does not store serial numbers, so they are read from the certificates.
+fn backfill_revocations(tx: &Transaction) -> HookResult {
+    let certs = tx.prepare("SELECT id, name, type, data, password, ca_id, revoked_at FROM user_certificates WHERE revoked_at IS NOT NULL")?
+        .query_map([], |row| Ok((
+            row.get::<_, i64>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, CertificateType>(2)?,
+            row.get::<_, Vec<u8>>(3)?,
+            row.get::<_, Option<String>>(4)?,
+            row.get::<_, i64>(5)?,
+            row.get::<_, i64>(6)?,
+        )))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    for (id, name, certificate_type, raw, password, ca_id, revoked_at) in certs {
+        let serial = cert_data_serial(&cert_data_from_raw(certificate_type, raw), &password.unwrap_or_default(), &name)
+            .map_err(|e| HookError::Hook(format!("Could not read the serial number of revoked certificate {id}: {e}")))?;
+        tx.execute(
+            "INSERT INTO revocations (ca_id, serial, revoked_at, user_cert_id) VALUES (?1, ?2, ?3, ?4)",
+            params![ca_id, serial, revoked_at, id],
+        )?;
+    }
+
+    info!("Migrated revoked certificates to the revocations table");
+    Ok(())
 }

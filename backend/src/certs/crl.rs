@@ -26,15 +26,7 @@ pub(crate) async fn create_new_crl(db: &VaulTLSDB, settings: &Settings, ca: &mut
 pub(crate) async fn create_crl_params(db: &VaulTLSDB, settings: &Settings, ca: &CA) -> Result<(Vec<(Vec<u8>, i64)>, i64), ApiError>{
     assert_eq!(ca.ca_type, CAType::TLS);
 
-    let revoked_certs = db.get_user_certs(None, Some(ca.id), Some(true)).await.map_err(|e| ApiError::Other(e.to_string()))?;
-
-    let mut revoked_params = Vec::new();
-    for cert in revoked_certs {
-        let serial = cert.get_serial()
-            .map_err(|_| ApiError::Other("Could not retrieve serial number from certificate to create CRL".to_string()))?;
-
-        revoked_params.push((serial, cert.revoked_at.unwrap_or(0)));
-    }
+    let revoked_params = db.get_revocations(ca.id).await?;
 
     let crl_next_update_hours = settings.get_crl_next_update_hours();
 

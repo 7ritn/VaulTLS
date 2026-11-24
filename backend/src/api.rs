@@ -21,7 +21,8 @@ use crate::data::enums::{CAType, CertificateType, DataFormat, PasswordRule, Time
 use crate::data::error::ApiError;
 use crate::data::objects::{AppState, Name, User};
 use crate::notification::mail::{MailMessage, Mailer};
-use crate::settings::{FrontendSettings, InnerSettings};
+use crate::settings::{FrontendSettings, InnerSettings, Settings};
+use crate::db::VaulTLSDB;
 
 #[openapi(tag = "Setup")]
 #[get("/server/version")]
@@ -815,18 +816,34 @@ pub(crate) async fn delete_user_cert(
     Ok(())
 }
 
-async fn create_krl_params(state: &State<AppState>, ca: &CA) -> Result<Vec<Vec<u8>>, ApiError> {
+async fn create_krl_params(db: &VaulTLSDB, ca: &CA) -> Result<Vec<Vec<u8>>, ApiError> {
     assert_eq!(ca.ca_type, CAType::SSH);
 
-    let revoked_certs = state.db.get_user_certs(None, Some(ca.id), Some(true)).await.map_err(|e| ApiError::Other(e.to_string()))?;
+    let revocations = db.get_revocations(ca.id).await?;
+    Ok(revocations.into_iter().map(|(serial, _)| serial).collect())
+}
 
-    let mut revoked_serials = Vec::new();
-    for cert in revoked_certs {
-        let serial = cert.get_serial()?;
-        revoked_serials.push(serial);
+/// Revoke a user certificate and publish the updated CRL or KRL of its CA.
+pub(crate) async fn revoke_and_publish(db: &VaulTLSDB, settings: &Settings, cert: &Certificate) -> Result<(), ApiError> {
+    if cert.revoked_at.is_some() {
+        return Err(ApiError::BadRequest(format!("The certificate {} has already been revoked", cert.id)));
     }
+    let mut ca = db.get_ca_by_id(cert.ca_id).await.map_err(|_| ApiError::NotFound(None))?;
+    db.revoke_user_cert(cert.id, ca.id, cert.get_serial()?).await?;
 
-    Ok(revoked_serials)
+    match ca.ca_type {
+        CAType::TLS => {
+            let (revoked_params, crl_next_update_hours) = create_crl_params(db, settings, &ca).await?;
+            create_and_save_crl(&mut ca, revoked_params, crl_next_update_hours)?;
+        }
+        CAType::SSH => {
+            let revoked_serials = create_krl_params(db, &ca).await?;
+            create_and_save_krl(&mut ca, &revoked_serials)?;
+        }
+    }
+    db.increase_ca_crl_number(ca.id, ca.crl_number).await?;
+
+    Ok(())
 }
 
 #[openapi(tag = "Certificates")]
@@ -839,23 +856,7 @@ pub(crate) async fn revoke_certificate(
 ) -> Result<(), ApiError> {
     let cert = state.db.get_user_cert_by_id(id).await?;
     if cert.user_id != authentication._claims.id && authentication._claims.role != UserRole::Admin { return Err(ApiError::Forbidden(None)) }
-    state.db.revoke_user_cert(id).await.map_err(|e| ApiError::Other(e.to_string()))?;
-
-    let mut ca = state.db.get_ca_by_id(cert.ca_id).await.map_err(|_| ApiError::NotFound(None))?;
-    match ca.ca_type {
-        CAType::TLS => {
-            let (revoked_params, crl_next_update_hours) = create_crl_params(&state.db, &state.settings, &ca).await?;
-            create_and_save_crl(&mut ca, revoked_params, crl_next_update_hours)?;
-            state.db.increase_ca_crl_number(ca.id, ca.crl_number).await?;
-        }
-        CAType::SSH => {
-            let revoked_serials = create_krl_params(state, &ca).await?;
-            create_and_save_krl(&mut ca, &revoked_serials)?;
-            state.db.increase_ca_crl_number(ca.id, ca.crl_number).await?;
-        }
-    }
-
-    Ok(())
+    revoke_and_publish(&state.db, &state.settings, &cert).await
 }
 
 #[openapi(tag = "Certificates")]
@@ -894,7 +895,7 @@ pub(crate) async fn download_crl(
                 Ok(krl_bytes) => krl_bytes,
                 Err(_) => {
                     // Probably no certs revoked yet, need to create empty KRL
-                    let revoked_serials = create_krl_params(state, &ca).await?;
+                    let revoked_serials = create_krl_params(&state.db, &ca).await?;
                     let krl_bytes = create_krl(&mut ca, &revoked_serials)?;
                     state.db.increase_ca_crl_number(ca.id, ca.crl_number).await?;
                     let _ = crate::certs::ssh_cert::save_krl(krl_bytes.clone(), id);
