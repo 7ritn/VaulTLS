@@ -24,6 +24,7 @@
     },
     "createModal": {
       "title": "Créer une autorité de certification",
+      "advanced": "Options avancées",
       "caName": "Nom de l’AC (CN)",
       "caType": "Type d’AC",
       "parent": "AC parente",

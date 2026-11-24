@@ -136,6 +136,7 @@
     },
     "createModal": {
       "title": "Crear nueva autoridad de certificación",
+      "advanced": "Avanzado",
       "caName": "Nombre de CA (CN)",
       "caType": "Tipo de CA",
       "parent": "CA principal",

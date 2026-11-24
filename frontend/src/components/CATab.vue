@@ -172,38 +172,6 @@
                   placeholder="Enter organizational unit (optional)"
               />
             </div>
-            <div class="mb-3">
-              <label for="caType" class="form-label">{{ $t('ca.createModal.caType') }}</label>
-              <select
-                  class="form-select"
-                  id="caType"
-                  v-model="caReq.ca_type"
-                  @change="caReq.predecessor_id = undefined"
-                  required
-              >
-                <option :value="CAType.TLS">TLS</option>
-                <option :value="CAType.SSH">SSH</option>
-              </select>
-            </div>
-            <div class="mb-3" v-if="caReq.ca_type === CAType.TLS">
-              <label for="caPredecessor" class="form-label">{{ $t('ca.createModal.predecessor') }}</label>
-              <select id="caPredecessor" v-model="caReq.predecessor_id" class="form-select">
-                <option :value="undefined">{{ $t('ca.createModal.noPredecessor') }}</option>
-                <option v-for="predecessor in predecessorCandidates" :key="predecessor.id" :value="predecessor.id">
-                  {{ predecessor.name.cn }} ({{ predecessor.id }})
-                </option>
-              </select>
-              <div class="form-text">{{ $t('ca.createModal.predecessorHelp') }}</div>
-            </div>
-            <div class="mb-3">
-              <label for="caParent" class="form-label">{{ $t('ca.createModal.parent') }}</label>
-              <select id="caParent" v-model="caReq.parent_id" class="form-select">
-                <option :value="undefined">{{ $t('ca.createModal.noParent') }}</option>
-                <option v-for="parent in parentCandidates" :key="parent.id" :value="parent.id">
-                  {{ parent.name.cn }} ({{ parent.id }})
-                </option>
-              </select>
-            </div>
             <div class="mb-3" v-if="caReq.ca_type === CAType.TLS">
               <label for="validity" class="form-label">{{ $t('common.validity') }}</label>
               <div class="input-group">
@@ -225,6 +193,51 @@
                   <option :value="ValidityUnit.Day">{{ $t('common.days') }}</option>
                   <option :value="ValidityUnit.Month">{{ $t('common.months') }}</option>
                   <option :value="ValidityUnit.Year">{{ $t('common.years') }}</option>
+                </select>
+              </div>
+            </div>
+            <button
+                id="caAdvancedToggle"
+                type="button"
+                class="btn btn-link p-0 mb-3 text-decoration-none"
+                :aria-expanded="showAdvanced"
+                aria-controls="caAdvanced"
+                @click="showAdvanced = !showAdvanced"
+            >
+              <i class="bi" :class="showAdvanced ? 'bi-chevron-down' : 'bi-chevron-right'"></i>
+              {{ $t('ca.createModal.advanced') }}
+            </button>
+            <div v-show="showAdvanced" id="caAdvanced">
+              <div class="mb-3">
+                <label for="caType" class="form-label">{{ $t('ca.createModal.caType') }}</label>
+                <select
+                    class="form-select"
+                    id="caType"
+                    v-model="caReq.ca_type"
+                    @change="caReq.predecessor_id = undefined"
+                    required
+                >
+                  <option :value="CAType.TLS">TLS</option>
+                  <option :value="CAType.SSH">SSH</option>
+                </select>
+              </div>
+              <div class="mb-3" v-if="caReq.ca_type === CAType.TLS">
+                <label for="caPredecessor" class="form-label">{{ $t('ca.createModal.predecessor') }}</label>
+                <select id="caPredecessor" v-model="caReq.predecessor_id" class="form-select">
+                  <option :value="undefined">{{ $t('ca.createModal.noPredecessor') }}</option>
+                  <option v-for="predecessor in predecessorCandidates" :key="predecessor.id" :value="predecessor.id">
+                    {{ predecessor.name.cn }} ({{ predecessor.id }})
+                  </option>
+                </select>
+                <div class="form-text">{{ $t('ca.createModal.predecessorHelp') }}</div>
+              </div>
+              <div class="mb-3">
+                <label for="caParent" class="form-label">{{ $t('ca.createModal.parent') }}</label>
+                <select id="caParent" v-model="caReq.parent_id" class="form-select">
+                  <option :value="undefined">{{ $t('ca.createModal.noParent') }}</option>
+                  <option v-for="parent in parentCandidates" :key="parent.id" :value="parent.id">
+                    {{ parent.name.cn }} ({{ parent.id }})
+                  </option>
                 </select>
               </div>
             </div>
@@ -481,6 +494,7 @@ const isRevokeModalVisible = ref(false);
 const caToRevoke = ref<CA | null>(null);
 
 const showOUField = ref(false);
+const showAdvanced = ref(false);
 
 onMounted(async () => {
   await caStore.fetchCAs();
@@ -498,6 +512,7 @@ const closeCreateModal = () => {
   caReq.parent_id = undefined;
   caReq.predecessor_id = undefined;
   showOUField.value = false;
+  showAdvanced.value = false;
 };
 
 const showImportModal = () => {

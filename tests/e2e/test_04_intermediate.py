@@ -13,6 +13,7 @@ def create_ca(page, name, years, parent_id=None):
     page.click("#CreateCAButton")
     page.fill("#caName", name)
     if parent_id is not None:
+        page.click("#caAdvancedToggle")
         page.select_option("#caParent", value=str(parent_id))
     page.fill("#validity", str(years))
     page.select_option("#validity_unit", "0")  # Years (Year = 0)

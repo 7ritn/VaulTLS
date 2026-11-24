@@ -145,6 +145,7 @@
     },
     "createModal": {
       "title": "Create New Certificate Authority",
+      "advanced": "Advanced",
       "caName": "CA Name (CN)",
       "caType": "CA Type",
       "parent": "Parent CA",
