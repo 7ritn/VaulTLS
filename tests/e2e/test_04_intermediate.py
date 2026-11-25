@@ -2,12 +2,9 @@ from playwright.sync_api import expect
 
 
 def ca_id_by_name(page, name):
-    rows = page.locator("table tbody tr td[id^='CAName-']")
-    for i in range(rows.count()):
-        cell = rows.nth(i)
-        if cell.inner_text().strip() == name:
-            return cell.get_attribute("id").split("-", 1)[1]
-    raise AssertionError(f"CA '{name}' not found in table")
+    cell = page.locator("td[id^='CAName-']", has_text=name)
+    expect(cell).to_have_count(1)
+    return cell.get_attribute("id").split("-", 1)[1]
 
 
 def create_ca(page, name, years, parent_id=None):
@@ -50,3 +47,24 @@ def test_create_intermediate_ca_and_certificate(page):
 
     cert_row = page.locator(".active-certs tbody tr", has_text="e2e_intermediate_cert")
     expect(cert_row.locator("td[id^='CaId-']")).to_have_text(str(intermediate_id))
+
+
+def test_revoke_intermediate_ca(page):
+    page.goto("http://127.0.0.1/ca")
+    page.wait_for_url("**/ca")
+    intermediate_id = ca_id_by_name(page, "E2E Intermediate CA")
+    root_id = ca_id_by_name(page, "E2E Root CA")
+
+    expect(page.locator(f"#RevokeCAButton-{root_id}")).to_have_count(0)
+    page.click(f"#RevokeCAButton-{intermediate_id}")
+    page.click("#ConfirmRevokeCAButton")
+
+    expect(page.locator(f"#CARevoked-{intermediate_id}")).to_be_visible()
+    expect(page.locator(f"#RevokeCAButton-{intermediate_id}")).to_have_count(0)
+
+    page.goto("http://127.0.0.1/overview")
+    page.wait_for_url("**/overview")
+    expect(page.locator(".active-certs tbody tr", has_text="e2e_intermediate_cert")).to_have_count(0)
+    page.get_by_text("Revoked Certificates").click()
+    cert_row = page.locator(".revoked-certificates-table tbody tr", has_text="e2e_intermediate_cert")
+    expect(cert_row.locator("[id^='IssuerRevoked-']")).to_be_visible()

@@ -108,6 +108,10 @@ You can create an intermediate TLS CA from the CA tab by selecting its parent CA
 
 When importing an intermediate CA, select the CA that signed it as the parent. A CA with child CAs cannot be deleted; delete its children first.
 
+An intermediate TLS CA can be revoked from the CA tab or via `POST /api/certificates/ca/<id>/revoke`. Revoking it adds the intermediate to its parent's CRL, so every certificate chain through it fails validation. The intermediate's own CRL is frozen: it is no longer re-signed, and the revoked CA can no longer issue certificates (manually, by renewal or via ACME). Certificates it issued are listed with the revoked certificates, marked "Issuer revoked", and are skipped by the expiry watcher; owners whose renew method includes notifying receive a one-time mail. Revocation cannot be undone, and root CAs cannot be revoked (delete them instead).
+
+If `VAULTLS_CRL_DP_URL` is set, intermediate CAs carry a CRL Distribution Point pointing to their parent's CRL. This only applies to intermediates created with this version or later; existing intermediates would have to be re-created to get it. Validators that are configured with local CRL files (e.g. nginx `ssl_crl`) need the CRLs of all CAs in the chain.
+
 ### TLS Certificate Passwords
 Certificates downloaded come in the PKCS#12 file format. They are a bundle consisting of the public certificate and private key. By default, PKCS#12 passwords are optional and certificates will be generated with no password. On the settings page, the PKCS#12 password requirements can be set with the following options:
 
@@ -134,7 +138,7 @@ openssl pkcs12 -in INFILE.p12 -out OUTFILE.key -nodes -nocerts
 TLS certificates cannot be simply deleted since their validity period is cryptographically encoded in the
 certificate. VaulTLS provides the CRL mechanism to revoke certificates. This file is used by the validation
 side (such as the server for client certificates) to check if the certificate has been revoked.
-A revoked certificate stays on the CRL (or KRL for SSH) even after it is deleted from VaulTLS.
+A revoked certificate or intermediate CA stays on the CRL (or KRL for SSH) even after it is deleted from VaulTLS.
 CRLs are stored as files under `/app/data/crl/`. They can be downloaded in the CA tab of the frontend and
 can be retrieved from the API under `/api/certificates/ca/<id>/crl`. They do not require authentication to
 be accessed. Furthermore, VaulTLS hosts the CRL file directory under port 2277. This port can be exposed publicly.

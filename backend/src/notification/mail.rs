@@ -176,6 +176,24 @@ impl Mailer {
         Ok(())
     }
 
+    pub async fn notify_issuer_revoked(&self, message: MailMessage) -> Result<(), anyhow::Error> {
+        let body = "greetings from VaulTLS. The certificate authority that issued one of your certificates has been revoked, so the certificate is no longer trusted. Please contact your administrator for a replacement.";
+        let html_content = email_template!(message, body);
+        let plain_content = format!("Hello {}, {}", message.username, body);
+
+        let email = build_email_message!(
+            self.from.clone(),
+            message.to,
+            "VaulTLS: The issuing CA of your certificate was revoked",
+            plain_content,
+            html_content
+        );
+
+        self.mailer.send(email).await?;
+
+        Ok(())
+    }
+
     pub async fn notify_acme_certificate_issued(&self, message: MailMessage) -> Result<(), anyhow::Error> {
         let body = format!("greetings from VaulTLS. A new certificate has been issued via ACME for: {}. You can review it here: {}", message.certificate.name.cn, self.vaultls_url);
         let html_content = email_template!(message, body);

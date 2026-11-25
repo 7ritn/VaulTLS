@@ -35,6 +35,14 @@
       "title": "Supprimer l’autorité de certification",
       "confirm": "Voulez-vous vraiment supprimer l’AC {name} ?",
       "hasChildren": "Cette AC ne peut pas être supprimée tant qu’elle possède des AC enfants. Supprimez d’abord ses AC enfants."
+    },
+    "revoke": "Révoquer",
+    "revoked": "Révoquée",
+    "revokeModal": {
+      "title": "Révoquer l’autorité de certification",
+      "confirm": "Voulez-vous vraiment révoquer l’AC {name} ?",
+      "warning": "Les certificats émis par cette AC ne seront plus considérés comme fiables. Cette action est irréversible.",
+      "revoke": "Révoquer"
     }
   },
   "settings": {
@@ -42,5 +50,8 @@
       "clientEmailSan": "Inclure l’e-mail de l’utilisateur dans les certificats client",
       "clientEmailSanHelp": "Ajoute l’adresse e-mail du propriétaire comme entrée SAN. S’applique aux nouveaux certificats ; les renouvellements conservent le choix du certificat d’origine."
     }
+  },
+  "overview": {
+    "issuerRevoked": "Émetteur révoqué"
   }
 }

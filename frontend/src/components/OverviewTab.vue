@@ -30,7 +30,9 @@
         <tbody>
           <tr v-for="cert in filteredActiveCertificates" :key="cert.id">
             <td :id="'UserId-' + cert.id" v-if="authStore.isAdmin">{{ userStore.idToName(cert.user_id) }}</td>
-            <td :id="'CertName-' + cert.id" >{{ cert.name.cn }}</td>
+            <td :id="'CertName-' + cert.id" >
+              {{ cert.name.cn }}
+            </td>
             <td :id="'CertGroup-' + cert.id" v-if="hasAnyOU">{{ cert.name.ou ?? '' }}</td>
             <td :id="'CertType-' + cert.id" class="d-none d-md-table-cell">{{ CertificateType[cert.certificate_type] }}</td>
             <td :id="'CreatedOn-' + cert.id" class="d-none d-md-table-cell">{{ new Date(cert.created_on).toLocaleDateString() }}</td>
@@ -164,12 +166,15 @@
             <tbody class="text-muted" style="font-size: 0.85rem;">
             <tr v-for="cert in revokedCertificates" :key="cert.id" class="opacity-75">
               <td v-if="authStore.isAdmin">{{ userStore.idToName(cert.user_id) }}</td>
-              <td class="fw-medium">{{ cert.name.cn }}</td>
+              <td class="fw-medium">
+                {{ cert.name.cn }}
+                <span v-if="isIssuerRevoked(cert)" :id="'IssuerRevoked-' + cert.id" class="badge bg-danger ms-1">{{ $t('overview.issuerRevoked') }}</span>
+              </td>
               <td v-if="hasAnyOU">{{ cert.name.ou ?? '' }}</td>
               <td class="d-none d-md-table-cell">{{ CertificateType[cert.certificate_type] }}</td>
               <td class="d-none d-md-table-cell">{{ new Date(cert.created_on).toLocaleDateString() }}</td>
               <td class="d-none d-md-table-cell">{{ new Date(cert.valid_until).toLocaleDateString() }}</td>
-              <td>{{ cert.revoked_at ? new Date(cert.revoked_at * 1000).toLocaleDateString() : 'Unknown' }}</td>
+              <td>{{ revokedDate(cert) }}</td>
               <td class="d-none d-md-table-cell text-end">{{ cert.ca_id }}</td>
               <td class="text-end">
                 <button
@@ -581,16 +586,24 @@ const hideAcmeCerts = ref(localStorage.getItem('hideAcmeCerts') === 'true');
 watch(hideAcmeCerts, (val) => localStorage.setItem('hideAcmeCerts', String(val)));
 
 const certificates = computed(() => certificateStore.certificates);
+const isIssuerRevoked = (cert: Certificate) => !!caStore.cas.get(cert.ca_id)?.revoked_at;
+const revokedAt = (cert: Certificate) => cert.revoked_at ?? caStore.cas.get(cert.ca_id)?.revoked_at;
+const isRevoked = (cert: Certificate) => !!revokedAt(cert);
+const revokedDate = (cert: Certificate) => {
+  const at = revokedAt(cert);
+  return at ? new Date(at * 1000).toLocaleDateString() : 'Unknown';
+};
+
 const filteredActiveCertificates = computed(() => {
-    const all = Array.from(certificates.value.values()).filter(cert => !cert.revoked_at);
+    const all = Array.from(certificates.value.values()).filter(cert => !isRevoked(cert));
     if (!hideAcmeCerts.value) return all;
     return all.filter(cert => cert.name.ou != 'ACME');
 });
 const activeCertificates = computed(() => {
-  return Array.from(certificates.value.values()).filter(cert => !cert.revoked_at);
+  return Array.from(certificates.value.values()).filter(cert => !isRevoked(cert));
 });
 const revokedCertificates = computed(() => {
-  return Array.from(certificates.value.values()).filter(cert => !!cert.revoked_at);
+  return Array.from(certificates.value.values()).filter(isRevoked);
 });
 const settings = computed(() => settingStore.settings);
 const loading = computed(() => certificateStore.loading);
@@ -641,7 +654,7 @@ const isMailValid = computed(() => {
 });
 
 const availableCAs = computed(() => {
-  const cas = Array.from(caStore.cas.values());
+  const cas = Array.from(caStore.cas.values()).filter(ca => !ca.revoked_at);
 
   // Map certificate types to allowed CA types
   const allowedCATypes = {
@@ -658,7 +671,7 @@ const availableCAs = computed(() => {
 });
 
 const availableCAsForImport = computed(() => {
-  return Array.from(caStore.cas.values()).filter(ca => ca.ca_type === CAType.TLS).sort((a, b) => b.id - a.id);
+  return Array.from(caStore.cas.values()).filter(ca => ca.ca_type === CAType.TLS && !ca.revoked_at).sort((a, b) => b.id - a.id);
 });
 
 
@@ -668,6 +681,7 @@ watch(passwordRule, (newVal) => {
 
 onMounted(async () => {
   await certificateStore.fetchCertificates();
+  await caStore.fetchCAs();
   if (authStore.isAdmin) {
     await userStore.fetchUsers();
   }

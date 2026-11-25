@@ -19,7 +19,10 @@
         <tbody>
         <tr v-for="ca in cas.values()" :key="ca.id">
           <td :id="'CaId-' + ca.id">{{ ca.id }}</td>
-          <td :id="'CAName-' + ca.id">{{ ca.name.cn }}</td>
+          <td :id="'CAName-' + ca.id">
+            {{ ca.name.cn }}
+            <span v-if="ca.revoked_at" :id="'CARevoked-' + ca.id" class="badge bg-danger ms-1">{{ $t('ca.revoked') }}</span>
+          </td>
           <td :id="'CAGroup-' + ca.id" v-if="hasAnyOU">{{ ca.name.ou ?? '' }}</td>
           <td :id="'CAParent-' + ca.id" v-if="hasAnyParent">
             {{ ca.parent_id == null ? '' : (cas.get(ca.parent_id)?.name.cn ?? ca.parent_id) }}
@@ -71,6 +74,14 @@
                   @click="downloadCRL(ca.id)"
               >
                 {{ $t('ca.krl') }}
+              </button>
+              <button
+                  :id="'RevokeCAButton-' + ca.id"
+                  v-if="authStore.isAdmin && ca.ca_type === CAType.TLS && ca.parent_id != null && !ca.revoked_at"
+                  class="btn btn-warning btn-sm flex-grow-1"
+                  @click="confirmRevocation(ca)"
+              >
+                {{ $t('ca.revoke') }}
               </button>
               <button
                   :id="'DeleteButton-' + ca.id"
@@ -222,6 +233,39 @@
             >
               <span v-if="loading">{{ $t('common.creating') }}</span>
               <span v-else>{{ $t('ca.createModal.create') }}</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Revoke Confirmation Modal -->
+    <div
+        v-if="isRevokeModalVisible"
+        class="modal show d-block"
+        tabindex="-1"
+        style="background: rgba(0, 0, 0, 0.5)"
+    >
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">{{ $t('ca.revokeModal.title') }}</h5>
+            <button type="button" class="btn-close" @click="closeRevokeModal"></button>
+          </div>
+          <div class="modal-body">
+            <p>
+              {{ $t('ca.revokeModal.confirm', { name: caToRevoke?.name.cn }) }}
+            </p>
+            <div class="alert alert-warning">
+              {{ $t('ca.revokeModal.warning') }}
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" @click="closeRevokeModal">
+              {{ $t('common.cancel') }}
+            </button>
+            <button id="ConfirmRevokeCAButton" type="button" class="btn btn-warning" @click="revokeCA">
+              {{ $t('ca.revokeModal.revoke') }}
             </button>
           </div>
         </div>
@@ -409,6 +453,9 @@ const caToDelete = ref<CA | null>(null);
 const caToDeleteHasChildren = computed(() => caToDelete.value !== null &&
     Array.from(cas.value.values()).some(ca => ca.parent_id === caToDelete.value?.id));
 
+const isRevokeModalVisible = ref(false);
+const caToRevoke = ref<CA | null>(null);
+
 const showOUField = ref(false);
 
 onMounted(async () => {
@@ -465,6 +512,23 @@ const deleteCA = async () => {
   if (caToDelete.value && !caToDeleteHasChildren.value) {
     await caStore.deleteCA(caToDelete.value.id);
     closeDeleteModal();
+  }
+};
+
+const confirmRevocation = (ca: CA) => {
+  caToRevoke.value = ca;
+  isRevokeModalVisible.value = true;
+};
+
+const closeRevokeModal = () => {
+  caToRevoke.value = null;
+  isRevokeModalVisible.value = false;
+};
+
+const revokeCA = async () => {
+  if (caToRevoke.value) {
+    await caStore.revokeCA(caToRevoke.value.id);
+    closeRevokeModal();
   }
 };
 

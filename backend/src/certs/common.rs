@@ -81,6 +81,7 @@ pub struct CA {
     pub key: Vec<u8>,
     pub crl_number: i64,
     pub parent_id: Option<i64>,
+    pub revoked_at: Option<i64>,
 }
 
 /// Saves the CA certificate to a file for filesystem access.

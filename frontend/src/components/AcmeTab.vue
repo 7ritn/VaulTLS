@@ -502,7 +502,7 @@ const loading = computed(() => acmeStore.loading);
 const error = computed(() => acmeStore.error);
 const cas = computed(() => caStore.cas);
 const availableCAs = computed(() =>
-  Array.from(caStore.cas.values()).filter(ca => ca.ca_type === CAType.TLS).sort((a, b) => b.id - a.id)
+  Array.from(caStore.cas.values()).filter(ca => ca.ca_type === CAType.TLS && !ca.revoked_at).sort((a, b) => b.id - a.id)
 );
 
 const hideDeactivated = ref(true);

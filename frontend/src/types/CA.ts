@@ -13,6 +13,7 @@ export interface CA {
     valid_until: number;                  // Expiration date of the CA (UNIX timestamp in ms)
     ca_type: CAType;                      // CA type
     parent_id?: number | null;            // Parent CA identifier, when this is an intermediate CA
+    revoked_at?: number | null;           // Date when the CA was revoked (UNIX timestamp in s)
 }
 
 export interface CARequirements {

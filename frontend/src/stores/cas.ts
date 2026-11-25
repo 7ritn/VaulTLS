@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import type {CA, CARequirements, ImportCARequest} from '@/types/CA';
-import {createCA, deleteCA, downloadCAByID, downloadAllTLSCAs, downloadCRL, fetchCAs, importCA} from "@/api/cas.ts";
+import {createCA, deleteCA, downloadCAByID, downloadAllTLSCAs, downloadCRL, fetchCAs, importCA, revokeCA} from "@/api/cas.ts";
 import axios from 'axios';
 
 export const useCAStore = defineStore('ca', {
@@ -119,6 +119,25 @@ export const useCAStore = defineStore('ca', {
                     this.error = 'Failed to delete the CA: ' + err.response?.data?.error;
                 } else {
                     this.error = 'Failed to delete the CA';
+                }
+                console.error(err);
+            } finally {
+                this.loading = false;
+            }
+        },
+
+        // Revoke an intermediate CA by ID and fetch the updated list
+        async revokeCA(id: number): Promise<void> {
+            this.loading = true;
+            this.error = null;
+            try {
+                await revokeCA(id);
+                await this.fetchCAs();
+            } catch (err) {
+                if (axios.isAxiosError(err)) {
+                    this.error = 'Failed to revoke the CA: ' + err.response?.data?.error;
+                } else {
+                    this.error = 'Failed to revoke the CA';
                 }
                 console.error(err);
             } finally {

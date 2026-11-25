@@ -470,6 +470,103 @@ async fn test_intermediate_ca_issues_and_downloads_certificate() -> Result<()> {
     assert!(downloaded_intermediate.verify(&root_public_key)?);
     assert!(leaf_certificate.verify(&intermediate_public_key)?);
 
+    let intermediate_der = downloaded_intermediate.to_der()?;
+    let (_, intermediate_x509) = X509Certificate::from_der(&intermediate_der)?;
+    match intermediate_x509.get_extension_unique(&OID_X509_EXT_CRL_DISTRIBUTION_POINTS)?.unwrap().parsed_extension() {
+        ParsedExtension::CRLDistributionPoints(ext) => {
+            match ext.points[0].distribution_point.clone().unwrap() {
+                DistributionPointName::FullName(a) => {
+                    assert_eq!(a[0].to_string(), "URI(http://dummy-crl/crl/crl-1.crl)")
+                }
+                DistributionPointName::NameRelativeToCRLIssuer(_) => {}
+            }
+        },
+        _ => return Err(anyhow!("No CRL DP extension"))
+    }
+
+    Ok(())
+}
+
+async fn create_intermediate_ca(client: &VaulTLSClient, name: &str) -> Result<i64> {
+    let ca_request = CreateCARequest {
+        ca_name: name.into(),
+        ca_type: CAType::TLS,
+        validity_duration: Some(1),
+        validity_unit: Some(TimespanUnit::Year),
+        parent_id: Some(1),
+    };
+    let response = client
+        .post("/certificates/ca")
+        .header(ContentType::JSON)
+        .body(serde_json::to_string(&ca_request)?)
+        .dispatch()
+        .await;
+    assert_eq!(response.status(), Status::Ok);
+    Ok(serde_json::from_str(&response.into_string().await.unwrap())?)
+}
+
+#[tokio::test]
+async fn test_revoke_intermediate_ca_updates_parent_crl() -> Result<()> {
+    let client = VaulTLSClient::new_authenticated().await;
+    let intermediate_ca_id = create_intermediate_ca(&client, "Intermediate CA to revoke").await?;
+
+    let response = client.post("/certificates/ca/1/revoke").dispatch().await;
+    assert_eq!(response.status(), Status::BadRequest);
+
+    let intermediate_pem = client.download_tls_ca_by_id(intermediate_ca_id).await?;
+    let (_, intermediate_cert) = X509Certificate::from_der(&intermediate_pem.contents)?;
+    let serial = intermediate_cert.tbs_certificate.serial.to_bytes_be();
+
+    let response = client
+        .post(format!("/certificates/ca/{intermediate_ca_id}/revoke"))
+        .dispatch()
+        .await;
+    assert_eq!(response.status(), Status::Ok);
+
+    let cas = client.get_all_ca().await?;
+    let revoked_ca = cas.iter().find(|ca| ca.id == intermediate_ca_id).unwrap();
+    assert!(revoked_ca.revoked_at.is_some());
+    let root_crl_number = cas.iter().find(|ca| ca.id == 1).unwrap().crl_number;
+
+    let response = client.post(format!("/certificates/ca/{intermediate_ca_id}/revoke")).dispatch().await;
+    assert_eq!(response.status(), Status::BadRequest);
+    let cas = client.get_all_ca().await?;
+    assert_eq!(cas.iter().find(|ca| ca.id == 1).unwrap().crl_number, root_crl_number);
+
+    let cert_request = CreateUserCertificateRequest {
+        cert_name: TEST_CLIENT_CERT_NAME.into(),
+        validity_duration: Some(1),
+        validity_unit: Some(TimespanUnit::Year),
+        user_id: 1,
+        notify_user: None,
+        system_generated_password: false,
+        cert_password: None,
+        cert_type: Some(CertificateType::TLSClient),
+        usage_limit: None,
+        renew_method: Some(CertificateRenewMethod::None),
+        ca_id: Some(intermediate_ca_id),
+    };
+    let response = client
+        .post("/certificates")
+        .header(ContentType::JSON)
+        .body(serde_json::to_string(&cert_request)?)
+        .dispatch()
+        .await;
+    assert_eq!(response.status(), Status::BadRequest);
+
+    let response = client.get("/certificates/ca/1/crl").dispatch().await;
+    assert_eq!(response.status(), Status::Ok);
+    let crl_der = response.into_bytes().await.unwrap();
+    let (_, crl) = CertificateRevocationList::from_der(&crl_der)?;
+    let expected_serial = openssl::bn::BigNum::from_slice(&serial)?;
+    assert!(crl.iter_revoked_certificates().any(|revoked| {
+        openssl::bn::BigNum::from_slice(revoked.raw_serial())
+            .is_ok_and(|revoked_serial| revoked_serial == expected_serial)
+    }));
+
+    let certificate = client.create_client_cert(None, None, None).await?;
+    assert_eq!(certificate.ca_id, 1);
+
     Ok(())
 }
 
@@ -835,10 +932,7 @@ async fn test_ssh_revocation_and_krl() -> Result<()> {
     Ok(())
 }
 
-#[tokio::test]
-async fn test_import_intermediate_ca_with_parent_id() -> Result<()> {
-    let client = VaulTLSClient::new_authenticated().await;
-
+async fn import_root_and_intermediate(client: &VaulTLSClient) -> Result<(i64, i64, X509, X509)> {
     let root_key = openssl::pkey::PKey::from_rsa(openssl::rsa::Rsa::generate(2048)?)?;
     let mut root_name_builder = openssl::x509::X509NameBuilder::new()?;
     root_name_builder.append_entry_by_text("CN", "Imported Test Root")?;
@@ -897,6 +991,13 @@ async fn test_import_intermediate_ca_with_parent_id() -> Result<()> {
         .dispatch().await;
     assert_eq!(intermediate_response.status(), Status::Ok);
     let intermediate_ca_id: i64 = serde_json::from_str(&intermediate_response.into_string().await.unwrap())?;
+    Ok((root_ca_id, intermediate_ca_id, root_cert, intermediate_cert))
+}
+
+#[tokio::test]
+async fn test_import_intermediate_ca_with_parent_id() -> Result<()> {
+    let client = VaulTLSClient::new_authenticated().await;
+    let (root_ca_id, intermediate_ca_id, root_cert, intermediate_cert) = import_root_and_intermediate(&client).await?;
 
     let cas = client.get_all_ca().await?;
     let intermediate_ca = cas.iter().find(|ca| ca.id == intermediate_ca_id).expect("Imported intermediate CA not found");
@@ -1068,6 +1169,67 @@ async fn test_deleted_revoked_certificate_stays_on_crl() -> Result<()> {
     let serials = client.get_crl_serials(1).await?;
     assert_eq!(serials.len(), 2);
     assert!(serials.contains(&deleted_serials[0]));
+
+    Ok(())
+}
+
+
+#[tokio::test]
+async fn test_revoke_ca_does_not_persist_when_parent_crl_fails() -> Result<()> {
+    let client = VaulTLSClient::new_authenticated().await;
+    // The imported root has no SKI extension, so signing its CRL fails
+    let (_, intermediate_ca_id, _, _) = import_root_and_intermediate(&client).await?;
+
+    let response = client.post(format!("/certificates/ca/{intermediate_ca_id}/revoke")).dispatch().await;
+    assert_ne!(response.status(), Status::Ok);
+
+    let cas = client.get_all_ca().await?;
+    let intermediate_ca = cas.iter().find(|ca| ca.id == intermediate_ca_id).unwrap();
+    assert!(intermediate_ca.revoked_at.is_none(), "CA must not be marked revoked when its parent CRL could not be updated");
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_deleted_revoked_intermediate_ca_stays_on_parent_crl() -> Result<()> {
+    let client = VaulTLSClient::new_authenticated().await;
+    let intermediate_ca_id = create_intermediate_ca(&client, "Intermediate CA to delete").await?;
+    let intermediate_pem = client.download_tls_ca_by_id(intermediate_ca_id).await?;
+    let (_, intermediate_cert) = X509Certificate::from_der(&intermediate_pem.contents)?;
+    let intermediate_serial = openssl::bn::BigNum::from_slice(&intermediate_cert.tbs_certificate.serial.to_bytes_be())?;
+
+    let response = client.post(format!("/certificates/ca/{intermediate_ca_id}/revoke")).dispatch().await;
+    assert_eq!(response.status(), Status::Ok);
+    let response = client.delete(format!("/certificates/ca/{intermediate_ca_id}")).dispatch().await;
+    assert_eq!(response.status(), Status::Ok);
+
+    // Revoking a certificate of the root re-signs its CRL, which must still list the deleted intermediate
+    let leaf = client.create_client_cert(None, None, Some(1)).await?;
+    let response = client.post(format!("/certificates/{}/revoke", leaf.id)).dispatch().await;
+    assert_eq!(response.status(), Status::Ok);
+    let serials = client.get_crl_serials(1).await?;
+    assert_eq!(serials.len(), 2);
+    assert!(serials.contains(&intermediate_serial));
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_revoke_certificate_of_revoked_ca_fails() -> Result<()> {
+    let client = VaulTLSClient::new_authenticated().await;
+    let intermediate_ca_id = create_intermediate_ca(&client, "Intermediate CA with frozen CRL").await?;
+    let leaf = client.create_client_cert(None, None, Some(intermediate_ca_id)).await?;
+
+    let response = client.post(format!("/certificates/ca/{intermediate_ca_id}/revoke")).dispatch().await;
+    assert_eq!(response.status(), Status::Ok);
+    let crl_number_before = client.get_all_ca().await?.iter().find(|ca| ca.id == intermediate_ca_id).unwrap().crl_number;
+
+    let response = client.post(format!("/certificates/{}/revoke", leaf.id)).dispatch().await;
+    assert_eq!(response.status(), Status::BadRequest);
+
+    let certs = client.get_certificates().await?;
+    assert!(certs.iter().find(|c| c.id == leaf.id).unwrap().revoked_at.is_none());
+    assert_eq!(client.get_all_ca().await?.iter().find(|ca| ca.id == intermediate_ca_id).unwrap().crl_number, crl_number_before);
 
     Ok(())
 }

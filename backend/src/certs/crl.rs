@@ -33,6 +33,12 @@ pub(crate) async fn create_crl_params(db: &VaulTLSDB, settings: &Settings, ca: &
     Ok((revoked_params, crl_next_update_hours))
 }
 
+pub(crate) fn ca_serial(ca: &CA) -> Result<Vec<u8>, ApiError> {
+    let (_, cert) = X509Certificate::from_der(&ca.cert)
+        .map_err(|e| ApiError::Other(format!("Could not parse CA certificate {}: {e}", ca.id)))?;
+    Ok(cert.tbs_certificate.serial.to_bytes_be())
+}
+
 #[cfg(not(feature = "test-mode"))]
 pub(crate) fn retrieve_crl(ca_id: i64) -> anyhow::Result<Vec<u8>> {
     let ca_id_file_path = crate::constants::CRL_FILE_PATTERN.replace("{}", &ca_id.to_string());
@@ -69,6 +75,9 @@ fn extract_ski(cert: &X509Certificate) -> anyhow::Result<Vec<u8>> {
 }
 
 pub fn create_crl(ca: &mut CA, revoked_certs: Vec<(Vec<u8>, i64)>, crl_next_update_hours: i64) -> anyhow::Result<Vec<u8>> {
+    if ca.revoked_at.is_some() {
+        return Err(anyhow!("CA {} is revoked; its CRL is frozen", ca.id));
+    }
     let ca_key_pair = KeyPair::try_from(ca.key.clone())?;
     let issuer = Issuer::from_ca_cert_der(&ca.cert.clone().into(), ca_key_pair)?;
 

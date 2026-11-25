@@ -12,7 +12,7 @@ use crate::auth::oidc_auth::OidcAuth;
 use crate::auth::password_auth::Password;
 use crate::auth::session_auth::{generate_token, invalidate_token, Authenticated, AuthenticatedPrivileged};
 use crate::certs::common::{get_password, save_ca, Certificate, CA};
-use crate::certs::crl::{create_new_crl, create_crl_params, save_crl, create_and_save_crl, retrieve_crl, extract_crl_number};
+use crate::certs::crl::{ca_serial, create_new_crl, create_crl_params, save_crl, create_and_save_crl, retrieve_crl, extract_crl_number};
 use crate::certs::ssh_cert::{create_and_save_krl, create_krl, get_ssh_pem, retrieve_krl, SSHCertificateBuilder};
 use crate::certs::tls_cert::{get_timestamp, get_tls_pem, parse_ca, parse_p12_metadata, TLSCertificateBuilder};
 use crate::constants::VAULTLS_VERSION;
@@ -21,6 +21,7 @@ use crate::data::enums::{CAType, CertificateType, DataFormat, PasswordRule, Time
 use crate::data::error::ApiError;
 use crate::data::objects::{AppState, Name, User};
 use crate::notification::mail::{MailMessage, Mailer};
+use crate::notification::notifier::notify_issuer_revoked;
 use crate::settings::{FrontendSettings, InnerSettings, Settings};
 use crate::db::VaulTLSDB;
 
@@ -328,6 +329,13 @@ pub(crate) async fn get_current_user(
     Ok(Json(user))
 }
 
+fn ensure_ca_not_revoked(ca: &CA) -> Result<(), ApiError> {
+    if ca.revoked_at.is_some() {
+        return Err(ApiError::BadRequest(format!("The CA {} has been revoked", ca.id)));
+    }
+    Ok(())
+}
+
 fn validate_parent_ca(ca_valid_until: i64, parent: &CA) -> Result<(), ApiError> {
     if parent.ca_type != CAType::TLS {
         return Err(ApiError::BadRequest(format!("The Parent CA {} is not a TLS CA", parent.id)));
@@ -581,6 +589,8 @@ async fn get_appropriate_ca(state: &State<AppState>, payload: &CreateUserCertifi
 }
 
 async fn ensure_ca_validity(ca: &mut CA, payload: &CreateUserCertificateRequest) -> Result<CA, ApiError> {
+    ensure_ca_not_revoked(ca)?;
+
     let cert_validity = payload.validity_duration.unwrap_or(1);
     let cert_validity_unit = payload.validity_unit.unwrap_or(TimespanUnit::Year);
     let cert_validity_time = get_timestamp(cert_validity, cert_validity_unit);
@@ -805,6 +815,41 @@ pub(crate) async fn delete_ca(
 }
 
 #[openapi(tag = "Certificates")]
+#[post("/certificates/ca/<id>/revoke")]
+/// Revoke an intermediate TLS CA. Requires admin role.
+pub(crate) async fn revoke_ca(
+    state: &State<AppState>,
+    id: i64,
+    _authentication: AuthenticatedPrivileged
+) -> Result<(), ApiError> {
+    let ca = state.db.get_ca_by_id(id).await.map_err(|_| ApiError::NotFound(None))?;
+    let (CAType::TLS, Some(parent_id)) = (ca.ca_type, ca.parent_id) else {
+        return Err(ApiError::BadRequest("Only intermediate TLS CAs can be revoked".to_string()));
+    };
+    ensure_ca_not_revoked(&ca)?;
+
+    let mut parent = state.db.get_ca_by_id(parent_id).await.map_err(|_| ApiError::NotFound(None))?;
+
+    // Publish the parent CRL first, so a failure leaves the CA unrevoked and the request can be retried
+    let revoked_at = chrono::Utc::now().timestamp();
+    let serial = ca_serial(&ca)?;
+    let (mut revoked_params, crl_next_update_hours) = create_crl_params(&state.db, &state.settings, &parent).await?;
+    revoked_params.push((serial.clone(), revoked_at));
+    create_and_save_crl(&mut parent, revoked_params, crl_next_update_hours)?;
+    state.db.revoke_ca(id, parent_id, serial, revoked_at).await?;
+    state.db.increase_ca_crl_number(parent.id, parent.crl_number).await?;
+
+    info!(ca_id = id, parent_ca_id = parent_id, "Intermediate CA revoked");
+
+    let db = state.db.clone();
+    let mailer = state.mailer.clone();
+    tokio::spawn(async move {
+        notify_issuer_revoked(&db, mailer, id).await;
+    });
+    Ok(())
+}
+
+#[openapi(tag = "Certificates")]
 #[delete("/certificates/<id>")]
 /// Delete a user-owned certificate. Requires admin role.
 pub(crate) async fn delete_user_cert(
@@ -827,6 +872,7 @@ async fn create_krl_params(db: &VaulTLSDB, ca: &CA) -> Result<Vec<Vec<u8>>, ApiE
 /// so a failed publish can be retried. Returns false in that case.
 pub(crate) async fn revoke_and_publish(db: &VaulTLSDB, settings: &Settings, cert: &Certificate) -> Result<bool, ApiError> {
     let mut ca = db.get_ca_by_id(cert.ca_id).await.map_err(|_| ApiError::NotFound(None))?;
+    ensure_ca_not_revoked(&ca)?;
     let newly_revoked = db.revoke_user_cert(cert.id, ca.id, cert.get_serial()?).await?;
 
     match ca.ca_type {
@@ -871,6 +917,7 @@ pub(crate) async fn download_crl(
         CAType::TLS => {
             let crl_der = match retrieve_crl(id) {
                 Ok(crl_der) => crl_der,
+                Err(_) if ca.revoked_at.is_some() => return Err(ApiError::NotFound(None)),
                 Err(_) => {
                     create_new_crl(&state.db, &state.settings, &mut ca).await?
                 }
