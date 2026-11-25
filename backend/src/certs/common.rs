@@ -27,16 +27,8 @@ pub struct Certificate {
 
 impl Certificate {
     pub(crate) fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
-        let raw: Vec<u8> = row.get(4)?;
         let certificate_type: CertificateType = row.get(7)?;
-        let data = match certificate_type {
-            CertificateType::SSHClient | CertificateType::SSHServer => CertData::SshBundle(raw),
-            _ => if raw.starts_with(b"-----BEGIN CERTIFICATE-----") {
-                CertData::Pem(raw)
-            } else {
-                CertData::Pkcs12(raw)
-            },
-        };
+        let data = cert_data_from_raw(certificate_type, row.get(4)?);
         Ok(Certificate {
             id: row.get(0)?,
             name: row.get(1)?,
@@ -53,11 +45,26 @@ impl Certificate {
     }
 
     pub(crate) fn get_serial(&self) -> Result<Vec<u8>> {
-        match self.data {
-            CertData::Pkcs12(ref pkcs12) => { extract_pkcs12_serial_number(pkcs12, &self.password) }
-            CertData::Pem(ref pem) => { extract_pem_serial_number(pem) }
-            CertData::SshBundle(ref ssh) => { extract_ssh_serial_number(ssh, &self.name.to_string()) }
-        }
+        cert_data_serial(&self.data, &self.password, &self.name.to_string())
+    }
+}
+
+pub(crate) fn cert_data_from_raw(certificate_type: CertificateType, raw: Vec<u8>) -> CertData {
+    match certificate_type {
+        CertificateType::SSHClient | CertificateType::SSHServer => CertData::SshBundle(raw),
+        _ => if raw.starts_with(b"-----BEGIN CERTIFICATE-----") {
+            CertData::Pem(raw)
+        } else {
+            CertData::Pkcs12(raw)
+        },
+    }
+}
+
+pub(crate) fn cert_data_serial(data: &CertData, password: &str, name: &str) -> Result<Vec<u8>> {
+    match data {
+        CertData::Pkcs12(pkcs12) => extract_pkcs12_serial_number(pkcs12, password),
+        CertData::Pem(pem) => extract_pem_serial_number(pem),
+        CertData::SshBundle(ssh) => extract_ssh_serial_number(ssh, name),
     }
 }
 

@@ -67,6 +67,14 @@ impl AcmeError {
         }
     }
 
+    pub fn already_revoked() -> Self {
+        Self {
+            error_type: "urn:ietf:params:acme:error:alreadyRevoked".into(),
+            detail: "Certificate has already been revoked".into(),
+            status: 400,
+        }
+    }
+
     pub fn rejected_identifier(detail: impl Into<String>) -> Self {
         Self {
             error_type: "urn:ietf:params:acme:error:rejectedIdentifier".into(),

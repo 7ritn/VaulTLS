@@ -1039,3 +1039,35 @@ async fn test_user_cert_import() -> Result<()> {
 
     Ok(())
 }
+
+#[tokio::test]
+async fn test_deleted_revoked_certificate_stays_on_crl() -> Result<()> {
+    let client = VaulTLSClient::new_authenticated().await;
+    let deleted_cert = client.create_client_cert(None, None, None).await?;
+    let other_cert = client.create_client_cert(None, None, None).await?;
+
+    let response = client.post(format!("/certificates/{}/revoke", deleted_cert.id)).dispatch().await;
+    assert_eq!(response.status(), Status::Ok);
+    let revoked_at = client.get_certificates().await?.iter().find(|c| c.id == deleted_cert.id).unwrap().revoked_at;
+    assert!(revoked_at.is_some());
+
+    // Revoking again publishes the CRL again and keeps the revocation time
+    sleep(Duration::from_secs(1)).await;
+    let response = client.post(format!("/certificates/{}/revoke", deleted_cert.id)).dispatch().await;
+    assert_eq!(response.status(), Status::Ok);
+    assert_eq!(client.get_certificates().await?.iter().find(|c| c.id == deleted_cert.id).unwrap().revoked_at, revoked_at);
+    let deleted_serials = client.get_crl_serials(1).await?;
+    assert_eq!(deleted_serials.len(), 1);
+
+    let response = client.delete(format!("/certificates/{}", deleted_cert.id)).dispatch().await;
+    assert_eq!(response.status(), Status::Ok);
+
+    // Revoking another certificate re-signs the CRL, which must still list the deleted one
+    let response = client.post(format!("/certificates/{}/revoke", other_cert.id)).dispatch().await;
+    assert_eq!(response.status(), Status::Ok);
+    let serials = client.get_crl_serials(1).await?;
+    assert_eq!(serials.len(), 2);
+    assert!(serials.contains(&deleted_serials[0]));
+
+    Ok(())
+}

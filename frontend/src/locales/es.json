@@ -106,7 +106,7 @@
     "deleteModal": {
       "title": "Eliminar certificado",
       "confirm": "¿Está seguro de que desea eliminar el certificado {name}?",
-      "disclaimer": "Aviso: Eliminar el certificado lo eliminará de la generación de CRL/KRL ya que no se conserva información sobre los certificados eliminados."
+      "disclaimer": "Aviso: Eliminar el certificado no lo revoca, por lo que sigue siendo válido hasta su vencimiento. Revóquelo primero si ya no debe ser de confianza. Un certificado revocado permanece en la CRL/KRL después de eliminarlo."
     }
   },
   "ca": {
@@ -159,7 +159,7 @@
     "deleteModal": {
       "title": "Eliminar usuario",
       "confirm": "¿Está seguro de que desea eliminar al usuario {name}?",
-      "disclaimer": "Aviso: Eliminar el usuario también eliminará sus certificados. Los certificados seguirán siendo válidos hasta su vencimiento."
+      "disclaimer": "Aviso: Eliminar el usuario también eliminará sus certificados. Los certificados no revocados seguirán siendo válidos hasta su vencimiento y los revocados permanecen en la CRL/KRL."
     }
   },
   "settings": {

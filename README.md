@@ -134,6 +134,7 @@ openssl pkcs12 -in INFILE.p12 -out OUTFILE.key -nodes -nocerts
 TLS certificates cannot be simply deleted since their validity period is cryptographically encoded in the
 certificate. VaulTLS provides the CRL mechanism to revoke certificates. This file is used by the validation
 side (such as the server for client certificates) to check if the certificate has been revoked.
+A revoked certificate stays on the CRL (or KRL for SSH) even after it is deleted from VaulTLS.
 CRLs are stored as files under `/app/data/crl/`. They can be downloaded in the CA tab of the frontend and
 can be retrieved from the API under `/api/certificates/ca/<id>/crl`. They do not require authentication to
 be accessed. Furthermore, VaulTLS hosts the CRL file directory under port 2277. This port can be exposed publicly.

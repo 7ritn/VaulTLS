@@ -115,7 +115,7 @@
     "deleteModal": {
       "title": "Delete Certificate",
       "confirm": "Are you sure you want to delete the certificate {name}?",
-      "disclaimer": "Disclaimer: Deleting the certificate will remove it from CRL/KRL creation since no information on deleted certificates is kept."
+      "disclaimer": "Disclaimer: Deleting the certificate does not revoke it, so it stays valid until expiry. Revoke it first if it should no longer be trusted. A revoked certificate stays on the CRL/KRL after deletion."
     }
   },
   "ca": {
@@ -168,7 +168,7 @@
     "deleteModal": {
       "title": "Delete User",
       "confirm": "Are you sure you want to delete the user {name}?",
-      "disclaimer": "Disclaimer: Deleting the user will also delete their certificates. The certificates are still valid until expiry."
+      "disclaimer": "Disclaimer: Deleting the user will also delete their certificates. Certificates that are not revoked stay valid until expiry, revoked ones stay on the CRL/KRL."
     }
   },
   "settings": {
