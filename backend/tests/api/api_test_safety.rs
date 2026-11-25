@@ -77,6 +77,8 @@ async fn test_privilege_escalation() -> Result<()> {
         .body(serde_json::to_string(&user)?);
     let response = request.dispatch().await;
     assert_eq!(response.status(), Status::Forbidden);
+
+    assert_eq!(client.set_ca_predecessor(1, 1).await, Status::Forbidden);
     Ok(())
 }
 

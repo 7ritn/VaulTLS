@@ -49,6 +49,11 @@ pub struct CallbackQuery {
 }
 
 #[derive(Serialize, Deserialize, JsonSchema)]
+pub struct SetCAPredecessorRequest {
+    pub predecessor_id: i64,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
 pub struct CreateCARequest {
     pub ca_name: Name,
     pub ca_type: CAType,

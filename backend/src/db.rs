@@ -203,6 +203,16 @@ impl VaulTLSDB {
         })
     }
 
+    pub(crate) async fn set_ca_predecessor(&self, id: i64, predecessor_id: i64) -> Result<()> {
+        db_do!(self.pool, |conn: &Connection| {
+            conn.execute(
+                "UPDATE ca_certificates SET predecessor_id = ?1 WHERE id = ?2",
+                params![predecessor_id, id],
+            )?;
+            Ok(())
+        })
+    }
+
     /// Delete a CA from the database
     /// A successor of the CA is relinked to the predecessor of the CA, so the successor chain stays intact.
     pub(crate) async fn delete_ca(&self, id: i64) -> Result<()> {

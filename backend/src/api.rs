@@ -16,7 +16,7 @@ use crate::certs::crl::{ca_serial, create_new_crl, create_crl_params, save_crl, 
 use crate::certs::ssh_cert::{create_and_save_krl, create_krl, get_ssh_pem, retrieve_krl, SSHCertificateBuilder};
 use crate::certs::tls_cert::{get_timestamp, get_tls_pem, parse_ca, parse_p12_metadata, TLSCertificateBuilder};
 use crate::constants::VAULTLS_VERSION;
-use crate::data::api::{CallbackQuery, ChangePasswordRequest, CreateCARequest, CreateUserCertificateRequest, CreateUserRequest, DownloadResponse, ImportCARequest, ImportUserCertificateRequest, IsSetupResponse, LoginRequest, SetupRequest};
+use crate::data::api::{CallbackQuery, ChangePasswordRequest, CreateCARequest, CreateUserCertificateRequest, CreateUserRequest, DownloadResponse, ImportCARequest, ImportUserCertificateRequest, IsSetupResponse, LoginRequest, SetCAPredecessorRequest, SetupRequest};
 use crate::data::enums::{CAType, CertificateType, DataFormat, PasswordRule, TimespanUnit, UserRole};
 use crate::data::error::ApiError;
 use crate::data::objects::{AppState, Name, User};
@@ -829,6 +829,25 @@ pub(crate) async fn fetch_certificate_password(
     let (user_id, password) = state.db.get_user_cert_password(id).await?;
     if user_id != authentication.claims.id && authentication.claims.role != UserRole::Admin { return Err(ApiError::Forbidden(None)) }
     Ok(Json(password))
+}
+
+#[openapi(tag = "Certificates")]
+#[put("/certificates/ca/<id>/predecessor", format = "json", data = "<payload>")]
+/// Set the predecessor of a CA that has none yet. Requires admin role.
+pub(crate) async fn set_ca_predecessor(
+    state: &State<AppState>,
+    id: i64,
+    payload: Json<SetCAPredecessorRequest>,
+    _authentication: AuthenticatedPrivileged
+) -> Result<(), ApiError> {
+    let ca = state.db.get_ca_by_id(id).await.map_err(|_| ApiError::NotFound(None))?;
+    ensure_ca_not_revoked(&ca)?;
+    if ca.predecessor_id.is_some() {
+        return Err(ApiError::BadRequest(format!("The CA {} already has a predecessor", id)));
+    }
+    validate_predecessor_ca(&state.db, payload.predecessor_id, &ca).await?;
+    state.db.set_ca_predecessor(id, payload.predecessor_id).await?;
+    Ok(())
 }
 
 #[openapi(tag = "Certificates")]

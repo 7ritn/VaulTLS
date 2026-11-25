@@ -370,6 +370,15 @@ impl VaulTLSClient {
         Ok(serde_json::from_str(&response.into_string().await.unwrap())?)
     }
 
+    pub(crate) async fn set_ca_predecessor(&self, ca_id: i64, predecessor_id: i64) -> Status {
+        self.put(format!("/certificates/ca/{ca_id}/predecessor"))
+            .header(ContentType::JSON)
+            .body(serde_json::json!({ "predecessor_id": predecessor_id }).to_string())
+            .dispatch()
+            .await
+            .status()
+    }
+
     pub(crate) async fn run_expiry_check(&self) {
         vaultls::run_expiry_check_once(self.rocket()).await;
     }

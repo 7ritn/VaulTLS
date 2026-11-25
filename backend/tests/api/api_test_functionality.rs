@@ -1340,3 +1340,24 @@ async fn test_delete_ca_relinks_successor() -> Result<()> {
 
     Ok(())
 }
+
+#[tokio::test]
+async fn test_set_predecessor_of_existing_ca() -> Result<()> {
+    let client = VaulTLSClient::new_authenticated().await;
+    let replacement_id = client.create_tls_ca("Replacement CA", 5, TimespanUnit::Year, None, None).await?.1.expect("CA should be created");
+
+    assert_eq!(client.set_ca_predecessor(replacement_id, 1).await, Status::Ok);
+    assert_eq!(client.get_all_ca().await?.iter().find(|ca| ca.id == replacement_id).unwrap().predecessor_id, Some(1));
+    // A predecessor can only be set once
+    assert_eq!(client.set_ca_predecessor(replacement_id, 1).await, Status::BadRequest);
+    // The setup CA expires first, so it cannot succeed the replacement, which also rules out a cycle
+    assert_eq!(client.set_ca_predecessor(1, replacement_id).await, Status::BadRequest);
+
+    let old_cert = client.create_expiring_client_cert(1).await?;
+    client.run_expiry_check().await;
+    let certs = client.get_certificates().await?;
+    let new_cert = certs.iter().find(|c| c.id != old_cert.id).expect("certificate must be renewed");
+    assert_eq!(new_cert.ca_id, replacement_id);
+
+    Ok(())
+}
