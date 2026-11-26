@@ -335,6 +335,14 @@
                 </select>
               </div>
             </div>
+            <div class="mb-3" v-if="certReq.cert_type === CertificateType.TLSClient || certReq.cert_type === CertificateType.TLSServer">
+              <label for="certKeyAlgorithm" class="form-label">{{ $t('common.keyAlgorithm') }}</label>
+              <select id="certKeyAlgorithm" v-model="certReq.key_algorithm" class="form-select">
+                <option :value="undefined">{{ $t('common.keyAlgorithmInherit') }}</option>
+                <option :value="KeyAlgorithm.EcdsaP256">ECDSA P-256</option>
+                <option :value="KeyAlgorithm.EcdsaP384">ECDSA P-384</option>
+              </select>
+            </div>
             <div class="mb-3 form-check form-switch">
               <input
                   type="checkbox"
@@ -572,6 +580,7 @@ import {PasswordRule} from "@/types/Settings.ts";
 import {useCAStore} from "@/stores/cas.ts";
 import {CAType, DataFormat} from "@/types/CA.ts";
 import {ValidityUnit} from "@/types/ValidityUnit.ts";
+import {KeyAlgorithm} from "@/types/KeyAlgorithm.ts";
 // stores
 const certificateStore = useCertificateStore();
 const authStore = useAuthStore();
@@ -703,6 +712,7 @@ const closeGenerateModal = () => {
   certReq.cert_password = '';
   certReq.notify_user = false;
   certReq.ca_id = undefined;
+  certReq.key_algorithm = undefined;
   showOUField.value = false;
 };
 

@@ -217,6 +217,14 @@
                 </select>
               </div>
             </div>
+            <div class="mb-3" v-if="caReq.ca_type === CAType.TLS">
+              <label for="caKeyAlgorithm" class="form-label">{{ $t('common.keyAlgorithm') }}</label>
+              <select id="caKeyAlgorithm" v-model="caReq.key_algorithm" class="form-select">
+                <option :value="undefined" v-if="caReq.parent_id != null">{{ $t('common.keyAlgorithmInherit') }}</option>
+                <option :value="KeyAlgorithm.EcdsaP256">ECDSA P-256</option>
+                <option :value="KeyAlgorithm.EcdsaP384">ECDSA P-384</option>
+              </select>
+            </div>
             <div v-if="caWouldOutliveParent" class="alert alert-warning">
               {{ $t('ca.createModal.parentValidityWarning', { date: selectedParentValidUntil }) }}
             </div>
@@ -392,11 +400,12 @@
 </template>
 
 <script setup lang="ts">
-import {computed, onMounted, reactive, ref} from 'vue';
+import {computed, onMounted, reactive, ref, watch} from 'vue';
 import {useCAStore} from '@/stores/cas';
 import {type CA, type CARequirements, CAType, DataFormat, type ImportCARequest} from '@/types/CA';
 import {useAuthStore} from '@/stores/auth';
 import {ValidityUnit} from "@/types/ValidityUnit.ts";
+import {KeyAlgorithm} from "@/types/KeyAlgorithm.ts";
 
 // stores
 const caStore = useCAStore();
@@ -411,7 +420,13 @@ const caReq = reactive<CARequirements>({
   ca_name: { cn: '', ou: undefined },
   ca_type: CAType.TLS,
   validity_duration: undefined,
-  validity_unit: ValidityUnit.Year
+  validity_unit: ValidityUnit.Year,
+  key_algorithm: KeyAlgorithm.EcdsaP256
+});
+
+// Intermediate CAs inherit the parent's key algorithm by default; root CAs default to P-256.
+watch(() => caReq.parent_id, (parentId) => {
+  caReq.key_algorithm = parentId == null ? KeyAlgorithm.EcdsaP256 : undefined;
 });
 
 const importReq = reactive<ImportCARequest>({
@@ -472,6 +487,7 @@ const closeCreateModal = () => {
   caReq.validity_duration = 10;
   caReq.validity_unit = ValidityUnit.Year;
   caReq.parent_id = undefined;
+  caReq.key_algorithm = KeyAlgorithm.EcdsaP256;
   showOUField.value = false;
 };
 

@@ -1,5 +1,6 @@
 import {ValidityUnit} from "@/types/ValidityUnit.ts";
 import type {Name} from "@/types/Name.ts";
+import type {KeyAlgorithm} from "@/types/KeyAlgorithm.ts";
 
 export enum CAType {
     TLS = 0,
@@ -22,6 +23,7 @@ export interface CARequirements {
     validity_duration?: number;         // Validity duration
     validity_unit?: ValidityUnit;       // Validity unit (hours, days, months, years)
     parent_id?: number;                 // Parent CA identifier, when creating an intermediate CA
+    key_algorithm?: KeyAlgorithm;       // Key algorithm; defaults to the parent CA's, or P-256 for root CAs
 }
 
 export enum DataFormat {

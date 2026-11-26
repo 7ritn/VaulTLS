@@ -122,6 +122,7 @@ async fn test_create_ca_cannot_outlive_parent() -> Result<()> {
         validity_duration: Some(6),
         validity_unit: Some(TimespanUnit::Year),
         parent_id: Some(1),
+        key_algorithm: None,
     };
 
     let response = client
@@ -146,6 +147,7 @@ async fn test_create_tls_ca_rejects_ssh_parent() -> Result<()> {
         validity_duration: Some(1),
         validity_unit: Some(TimespanUnit::Year),
         parent_id: Some(2),
+        key_algorithm: None,
     };
 
     let response = client

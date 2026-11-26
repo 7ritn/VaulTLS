@@ -119,6 +119,7 @@ async fn test_setup_hash() -> Result<()> {
         validity_unit: Some(TimespanUnit::Year),
         password: Some(password_hash.to_string()),
         default_language: None,
+        key_algorithm: None,
     };
 
     let request = client
@@ -435,6 +436,7 @@ async fn test_intermediate_ca_issues_and_downloads_certificate() -> Result<()> {
         validity_duration: Some(1),
         validity_unit: Some(TimespanUnit::Year),
         parent_id: Some(1),
+        key_algorithm: None,
     };
     let response = client
         .post("/certificates/ca")
@@ -494,6 +496,7 @@ async fn create_intermediate_ca(client: &VaulTLSClient, name: &str) -> Result<i6
         validity_duration: Some(1),
         validity_unit: Some(TimespanUnit::Year),
         parent_id: Some(1),
+        key_algorithm: None,
     };
     let response = client
         .post("/certificates/ca")
@@ -545,6 +548,7 @@ async fn test_revoke_intermediate_ca_updates_parent_crl() -> Result<()> {
         usage_limit: None,
         renew_method: Some(CertificateRenewMethod::None),
         ca_id: Some(intermediate_ca_id),
+        key_algorithm: None,
     };
     let response = client
         .post("/certificates")
@@ -599,6 +603,7 @@ async fn test_create_certificate_with_short_lived_ca() -> Result<()> {
         usage_limit: None,
         renew_method: Some(CertificateRenewMethod::Renew),
         ca_id: None,
+        key_algorithm: None,
     };
 
     let request = client
@@ -805,7 +810,7 @@ async fn test_crl_pem() -> Result<()> {
     Ok(())
 }
 
-async fn establish_tls_connection(
+pub(crate) async fn establish_tls_connection(
     ca_cert_pem: &[u8],
     client_cert_p12: &[u8],
     server_cert_p12: &[u8],

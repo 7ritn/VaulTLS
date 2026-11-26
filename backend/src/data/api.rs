@@ -8,7 +8,7 @@ use rocket_okapi::okapi::schemars;
 use rocket_okapi::{okapi, JsonSchema, OpenApiError};
 use rocket_okapi::okapi::openapi3::{Responses, Response as OAResponse, MediaType, RefOr};
 use rocket_okapi::response::OpenApiResponderInner;
-use crate::data::enums::{CAType, CertificateRenewMethod, CertificateType, DataFormat, TimespanUnit, UserRole};
+use crate::data::enums::{CAType, CertificateRenewMethod, CertificateType, DataFormat, KeyAlgorithm, TimespanUnit, UserRole};
 use crate::data::objects::Name;
 
 #[derive(Serialize, Deserialize, JsonSchema)]
@@ -28,6 +28,8 @@ pub struct SetupRequest {
     pub validity_unit: Option<TimespanUnit>,
     pub password: Option<String>,
     pub default_language: Option<String>,
+    /// Key algorithm for the root CA. Defaults to ECDSA P-256.
+    pub key_algorithm: Option<KeyAlgorithm>,
 }
 
 #[derive(Serialize, Deserialize, JsonSchema)]
@@ -55,6 +57,8 @@ pub struct CreateCARequest {
     pub validity_duration: Option<u64>,
     pub validity_unit: Option<TimespanUnit>,
     pub parent_id: Option<i64>,
+    /// Key algorithm for the CA. Defaults to the parent CA's algorithm, or ECDSA P-256 for root CAs.
+    pub key_algorithm: Option<KeyAlgorithm>,
 }
 
 #[derive(Serialize, Deserialize, JsonSchema, Debug)]
@@ -69,7 +73,9 @@ pub struct CreateUserCertificateRequest {
     pub cert_type: Option<CertificateType>,
     pub usage_limit: Option<Vec<String>>,
     pub renew_method: Option<CertificateRenewMethod>,
-    pub ca_id: Option<i64>
+    pub ca_id: Option<i64>,
+    /// Key algorithm for TLS certificates. Defaults to the issuing CA's algorithm.
+    pub key_algorithm: Option<KeyAlgorithm>,
 }
 
 #[derive(Deserialize, Serialize, Debug)]

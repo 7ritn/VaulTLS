@@ -1,5 +1,7 @@
 {
   "common": {
+    "keyAlgorithm": "Algoritmo de clave",
+    "keyAlgorithmInherit": "Igual que la CA emisora",
     "cancel": "Cancelar",
     "delete": "Eliminar",
     "save": "Guardar",

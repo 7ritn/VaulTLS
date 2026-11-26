@@ -2,6 +2,7 @@ import {CertificateRenewMethod, type CertificateType} from "@/types/Certificate.
 import {ValidityUnit} from "@/types/ValidityUnit.ts";
 import type {Name} from "@/types/Name.ts";
 import type {DataFormat} from "@/types/CA.ts";
+import type {KeyAlgorithm} from "@/types/KeyAlgorithm.ts";
 
 export interface CertificateRequirements {
     cert_name: Name;
@@ -15,6 +16,7 @@ export interface CertificateRequirements {
     usage_limit: string[];
     renew_method: CertificateRenewMethod;
     ca_id?: number;
+    key_algorithm?: KeyAlgorithm;       // TLS only; defaults to the issuing CA's algorithm
 }
 
 export interface ImportUserCertificateRequest {

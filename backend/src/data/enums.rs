@@ -168,3 +168,45 @@ impl From<String> for DataFormat {
         }
     }
 }
+/// Key algorithm used for newly generated TLS keys (CA, intermediate CA and leaf certificates).
+#[derive(Serialize_repr, Deserialize_repr, JsonSchema, TryFromPrimitive, Clone, Debug, Copy, PartialEq, Eq, Default)]
+#[repr(u8)]
+pub enum KeyAlgorithm {
+    #[default]
+    EcdsaP256 = 0,
+    EcdsaP384 = 1,
+}
+
+impl KeyAlgorithm {
+    /// Returns the rcgen algorithm used to generate a key pair of this type.
+    pub(crate) fn rcgen_algorithm(self) -> &'static rcgen::SignatureAlgorithm {
+        match self {
+            KeyAlgorithm::EcdsaP256 => &rcgen::PKCS_ECDSA_P256_SHA256,
+            KeyAlgorithm::EcdsaP384 => &rcgen::PKCS_ECDSA_P384_SHA384,
+        }
+    }
+
+    /// Returns the digest to sign with when the signing key is of this type.
+    pub(crate) fn digest(self) -> openssl::hash::MessageDigest {
+        match self {
+            KeyAlgorithm::EcdsaP256 => openssl::hash::MessageDigest::sha256(),
+            KeyAlgorithm::EcdsaP384 => openssl::hash::MessageDigest::sha384(),
+        }
+    }
+
+    fn from_pkey(pkey: &openssl::pkey::PKeyRef<openssl::pkey::Public>) -> anyhow::Result<Self> {
+        let curve = pkey.ec_key().ok().and_then(|ec| ec.group().curve_name());
+        match curve {
+            Some(openssl::nid::Nid::X9_62_PRIME256V1) => Ok(KeyAlgorithm::EcdsaP256),
+            Some(openssl::nid::Nid::SECP384R1) => Ok(KeyAlgorithm::EcdsaP384),
+            _ => Err(anyhow::anyhow!("Unsupported key algorithm")),
+        }
+    }
+
+    /// Detects the algorithm of the public key in a DER certificate. Fails for keys that are not P-256 or P-384.
+    pub fn from_cert_der(der: &[u8]) -> anyhow::Result<Self> {
+        let cert = openssl::x509::X509::from_der(der)?;
+        let key = cert.public_key()?;
+        Self::from_pkey(&key)
+    }
+}
