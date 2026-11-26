@@ -14,12 +14,23 @@ jobs:
   build:
     strategy:
       matrix:
-        arch: [ amd64, arm64 ]
         include:
           - arch: amd64
             runner: ubuntu-latest
+            target: privileged
+            suffix: ''
           - arch: arm64
             runner: ubuntu-24.04-arm
+            target: privileged
+            suffix: ''
+          - arch: amd64
+            runner: ubuntu-latest
+            target: unprivileged
+            suffix: '-unprivileged'
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            target: unprivileged
+            suffix: '-unprivileged'
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
@@ -55,8 +66,9 @@ jobs:
           context: .
           platforms: linux/${{ matrix.arch }}
           file: ./Containerfile
+          target: ${{ matrix.target }}
           push: true
-          tags: ghcr.io/${{ env.REPO_LOWER }}:${{ env.RELEASE_TAG }}-${{ matrix.arch }}
+          tags: ghcr.io/${{ env.REPO_LOWER }}:${{ env.RELEASE_TAG }}${{ matrix.suffix }}-${{ matrix.arch }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -94,10 +106,15 @@ jobs:
              TAG_NAME="${GITHUB_REF##*/}"
           fi
 
-          echo "Pushing manifest for $TAG_NAME and $SECONDARY_TAG..."
+          create_manifest() {
+            SUFFIX="$1"
+            echo "Pushing manifest for ${TAG_NAME}${SUFFIX} and ${SECONDARY_TAG}${SUFFIX}..."
+            docker buildx imagetools create \
+              --tag "${REPO}:${TAG_NAME}${SUFFIX}" \
+              --tag "${REPO}:${SECONDARY_TAG}${SUFFIX}" \
+              "${REPO}:${TAG_NAME}${SUFFIX}-amd64" \
+              "${REPO}:${TAG_NAME}${SUFFIX}-arm64"
+          }
 
-          docker buildx imagetools create \
-            --tag ${REPO}:${TAG_NAME} \
-            --tag ${REPO}:${SECONDARY_TAG} \
-            ${REPO}:${TAG_NAME}-amd64 \
-            ${REPO}:${TAG_NAME}-arm64
+          create_manifest ''
+          create_manifest '-unprivileged'
