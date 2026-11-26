@@ -1,4 +1,5 @@
 import {ValidityUnit} from "@/types/ValidityUnit.ts";
+import type {KeyAlgorithm} from "@/types/KeyAlgorithm.ts";
 
 export interface SetupReq {
     name: string,
@@ -8,6 +9,7 @@ export interface SetupReq {
     validity_unit: ValidityUnit,
     password: string | null;
     default_language: string;
+    key_algorithm: KeyAlgorithm;
 }
 
 export interface IsSetupResponse {

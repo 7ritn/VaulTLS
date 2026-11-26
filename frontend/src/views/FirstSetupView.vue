@@ -81,6 +81,14 @@
           </div>
         </div>
 
+        <div class="mb-3">
+          <label for="ca_key_algorithm" class="form-label">{{ $t('common.keyAlgorithm') }}</label>
+          <select id="ca_key_algorithm" v-model="ca_key_algorithm" class="form-select" required>
+            <option :value="KeyAlgorithm.EcdsaP256">ECDSA P-256</option>
+            <option :value="KeyAlgorithm.EcdsaP384">ECDSA P-384</option>
+          </select>
+        </div>
+
         <!-- Password field is always available, but not required if OIDC is enabled -->
         <div class="mb-3">
           <label for="password" class="form-label">{{ $t('common.password') }}</label>
@@ -118,6 +126,7 @@ import { setup } from "@/api/auth.ts";
 import {useSetupStore} from "@/stores/setup.ts";
 import {hashPassword} from "@/utils/hash.ts";
 import {ValidityUnit} from "@/types/ValidityUnit.ts";
+import {KeyAlgorithm} from "@/types/KeyAlgorithm.ts";
 
 const { t, locale } = useI18n();
 
@@ -132,6 +141,7 @@ const email = ref('');
 const ca_name = ref('');
 const ca_validity_duration = ref(10);
 const ca_validity_unit = ref(ValidityUnit.Year);
+const ca_key_algorithm = ref(KeyAlgorithm.EcdsaP256);
 const password = ref('');
 const errorMessage = ref('');
 
@@ -147,6 +157,7 @@ const setupPassword = async () => {
       validity_unit: ca_validity_unit.value,
       password: password.value || null,
       default_language: locale.value,
+      key_algorithm: ca_key_algorithm.value,
     });
     await setupStore.reload();
     await router.replace({ name: 'Login' });

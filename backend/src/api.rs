@@ -17,7 +17,7 @@ use crate::certs::ssh_cert::{create_and_save_krl, create_krl, get_ssh_pem, retri
 use crate::certs::tls_cert::{get_timestamp, get_tls_pem, parse_ca, parse_p12_metadata, TLSCertificateBuilder};
 use crate::constants::VAULTLS_VERSION;
 use crate::data::api::{CallbackQuery, ChangePasswordRequest, CreateCARequest, CreateUserCertificateRequest, CreateUserRequest, DownloadResponse, ImportCARequest, ImportUserCertificateRequest, IsSetupResponse, LoginRequest, SetupRequest};
-use crate::data::enums::{CAType, CertificateType, DataFormat, PasswordRule, TimespanUnit, UserRole};
+use crate::data::enums::{CAType, CertificateType, DataFormat, KeyAlgorithm, PasswordRule, TimespanUnit, UserRole};
 use crate::data::error::ApiError;
 use crate::data::objects::{AppState, Name, User};
 use crate::notification::mail::{MailMessage, Mailer};
@@ -97,6 +97,7 @@ pub(crate) async fn setup(
         ou: None
     };
     let mut ca = TLSCertificateBuilder::new()?
+        .set_key_algorithm(setup_req.key_algorithm.unwrap_or_default())?
         .set_name(name)?
         .set_valid_until(cert_validity, cert_validity_unit)?
         .build_ca()?;
@@ -349,6 +350,13 @@ fn validate_parent_ca(ca_valid_until: i64, parent: &CA) -> Result<(), ApiError> 
     Ok(())
 }
 
+/// Key algorithm for a new key: the requested one, else the issuer's, else the default (P-256).
+fn resolve_key_algorithm(requested: Option<KeyAlgorithm>, issuer: Option<&CA>) -> KeyAlgorithm {
+    requested
+        .or_else(|| issuer.and_then(|ca| KeyAlgorithm::from_cert_der(&ca.cert).ok()))
+        .unwrap_or_default()
+}
+
 #[openapi(tag = "CA")]
 #[post("/certificates/ca/import", format = "json", data = "<payload>")]
 /// Import an existing CA.
@@ -491,14 +499,22 @@ pub(crate) async fn create_ca(
         CAType::TLS => {
             let cert_validity = payload.validity_duration.unwrap_or(5);
             let cert_validity_unit = payload.validity_unit.unwrap_or(TimespanUnit::Year);
+            let parent = match payload.parent_id {
+                Some(parent_id) => {
+                    let ca_valid_until = get_timestamp(cert_validity, cert_validity_unit).unix_timestamp() * 1000;
+                    let parent = state.db.get_ca_by_id(parent_id).await?;
+                    validate_parent_ca(ca_valid_until, &parent)?;
+                    Some(parent)
+                }
+                None => None,
+            };
+
             let mut builder = TLSCertificateBuilder::new()?
+                .set_key_algorithm(resolve_key_algorithm(payload.key_algorithm, parent.as_ref()))?
                 .set_name(payload.ca_name.clone())?
                 .set_valid_until(cert_validity, cert_validity_unit)?;
 
-            if let Some(parent_id) = payload.parent_id {
-                let ca_valid_until = get_timestamp(cert_validity, cert_validity_unit).unix_timestamp() * 1000;
-                let parent = state.db.get_ca_by_id(parent_id).await?;
-                validate_parent_ca(ca_valid_until, &parent)?;
+            if let Some(parent) = parent {
                 builder = builder.set_ca(parent)?;
             }
 
@@ -662,6 +678,7 @@ async fn build_tls_cert(
     is_client: bool,
 ) -> Result<Certificate, ApiError> {
     let mut cert_builder = TLSCertificateBuilder::new()?
+        .set_key_algorithm(resolve_key_algorithm(payload.key_algorithm, Some(&ca)))?
         .set_name(payload.cert_name.clone())?
         .set_valid_until(validity_duration, validity_unit)?
         .set_renew_method(payload.renew_method.unwrap_or_default())?

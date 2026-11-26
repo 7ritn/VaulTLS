@@ -53,6 +53,7 @@ impl VaulTLSClient {
             validity_unit: Some(TimespanUnit::Year),
             password: Some(TEST_PASSWORD.to_string()),
             default_language: None,
+            key_algorithm: None,
         };
 
         let request = client
@@ -98,6 +99,7 @@ impl VaulTLSClient {
             usage_limit: None,
             renew_method: Some(CertificateRenewMethod::Renew),
             ca_id,
+            key_algorithm: None,
         };
 
         let request = self
@@ -124,6 +126,7 @@ impl VaulTLSClient {
             usage_limit: Some(vec!["test.example.com".to_string()]),
             renew_method: Some(CertificateRenewMethod::Notify),
             ca_id: None,
+            key_algorithm: None,
         };
 
         let request = self
@@ -150,6 +153,7 @@ impl VaulTLSClient {
             usage_limit: Some(vec![TEST_SERVER_CERT_DNS_NAME.to_string()]),
             renew_method: None,
             ca_id: None,
+            key_algorithm: None,
         };
 
         let request = self
@@ -325,6 +329,7 @@ impl VaulTLSClient {
             validity_duration: Some(15),
             validity_unit: Some(TimespanUnit::Year),
             parent_id: None,
+            key_algorithm: None,
         };
 
         let request = self
@@ -344,6 +349,7 @@ impl VaulTLSClient {
             validity_duration: None,
             validity_unit: None,
             parent_id: None,
+            key_algorithm: None,
         };
 
         let request = self

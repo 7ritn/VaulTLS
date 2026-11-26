@@ -1,5 +1,7 @@
 {
   "common": {
+    "keyAlgorithm": "Key algorithm",
+    "keyAlgorithmInherit": "Same as issuing CA",
     "cancel": "Cancel",
     "delete": "Delete",
     "save": "Save",
