@@ -2,7 +2,7 @@
   <div>
     <h1>{{ $t('overview.title') }}</h1>
     <hr />
-    <div class="form-check mb-2">
+    <div v-if="hasAcmeCerts" class="form-check mb-2">
       <input
           id="hideAcmeCerts"
           v-model="hideAcmeCerts"
@@ -601,13 +601,14 @@ const revokedDate = (cert: Certificate) => {
   return at ? new Date(at * 1000).toLocaleDateString() : 'Unknown';
 };
 
-const filteredActiveCertificates = computed(() => {
-    const all = Array.from(certificates.value.values()).filter(cert => !isRevoked(cert));
-    if (!hideAcmeCerts.value) return all;
-    return all.filter(cert => cert.name.ou != 'ACME');
-});
+const isAcmeCert = (cert: Certificate) => cert.name.ou == 'ACME';
 const activeCertificates = computed(() => {
   return Array.from(certificates.value.values()).filter(cert => !isRevoked(cert));
+});
+const hasAcmeCerts = computed(() => activeCertificates.value.some(isAcmeCert));
+const filteredActiveCertificates = computed(() => {
+    if (!hideAcmeCerts.value) return activeCertificates.value;
+    return activeCertificates.value.filter(cert => !isAcmeCert(cert));
 });
 const revokedCertificates = computed(() => {
   return Array.from(certificates.value.values()).filter(isRevoked);
