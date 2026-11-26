@@ -112,6 +112,13 @@ An intermediate TLS CA can be revoked from the CA tab or via `POST /api/certific
 
 If `VAULTLS_CRL_DP_URL` is set, intermediate CAs carry a CRL Distribution Point pointing to their parent's CRL. This only applies to intermediates created with this version or later; existing intermediates would have to be re-created to get it. Validators that are configured with local CRL files (e.g. nginx `ssl_crl`) need the CRLs of all CAs in the chain.
 
+### CA Successors and Automatic Renewal
+When creating a TLS CA (or importing one through the API) you can optionally select the CA it replaces as its predecessor. SSH CAs have no predecessor, as SSH certificates are not renewed automatically. The predecessor must be a TLS CA, must not be revoked, must not already have a successor, and the new CA must expire after it. A CA without a predecessor, for example one created before this feature, can be linked once afterwards with `PUT /api/certificates/ca/<id>/predecessor` and the body `{"predecessor_id": <id>}` (admin only). Deleting a CA links its successor to its predecessor, so the chain stays intact.
+
+Automatic renewal no longer uses the latest CA. A certificate is renewed by the newest usable (not revoked, currently valid) successor in the chain of its issuing CA. Without one, its own CA is used if it is valid for the whole validity of the renewed certificate. Otherwise the renewal is rejected; there is no fallback to another CA. Certificates issued by a revoked CA are not renewed. **If you rotate CAs, link the new CA to its predecessor, otherwise certificates of the old CA are not moved to the new one.**
+
+On the first rejected renewal the certificate is marked with a warning in the certificate list (the reason is shown as tooltip) and the owner and all admins receive a mail. The expiry watcher keeps retrying, so creating or linking a successor CA fixes the renewal automatically and clears the warning.
+
 ### TLS Certificate Passwords
 Certificates downloaded come in the PKCS#12 file format. They are a bundle consisting of the public certificate and private key. By default, PKCS#12 passwords are optional and certificates will be generated with no password. On the settings page, the PKCS#12 password requirements can be set with the following options:
 

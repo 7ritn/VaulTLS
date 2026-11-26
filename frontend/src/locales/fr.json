@@ -24,10 +24,14 @@
     },
     "createModal": {
       "title": "Créer une autorité de certification",
+      "advanced": "Options avancées",
       "caName": "Nom de l’AC (CN)",
       "caType": "Type d’AC",
       "parent": "AC parente",
       "noParent": "Aucune AC parente (AC racine)",
+      "predecessor": "AC prédécesseure (facultatif)",
+      "noPredecessor": "Aucune",
+      "predecessorHelp": "Les renouvellements automatiques des certificats émis par l’AC prédécesseure utilisent cette AC.",
       "parentValidityWarning": "La durée de validité de l’AC ne peut pas dépasser celle de son AC parente, valable jusqu’au {date}.",
       "create": "Créer l’AC"
     },
@@ -52,6 +56,7 @@
     }
   },
   "overview": {
-    "issuerRevoked": "Émetteur révoqué"
+    "issuerRevoked": "Émetteur révoqué",
+    "renewalFailed": "Échec du renouvellement automatique : {error}"
   }
 }

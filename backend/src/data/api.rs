@@ -49,12 +49,18 @@ pub struct CallbackQuery {
 }
 
 #[derive(Serialize, Deserialize, JsonSchema)]
+pub struct SetCAPredecessorRequest {
+    pub predecessor_id: i64,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
 pub struct CreateCARequest {
     pub ca_name: Name,
     pub ca_type: CAType,
     pub validity_duration: Option<u64>,
     pub validity_unit: Option<TimespanUnit>,
     pub parent_id: Option<i64>,
+    pub predecessor_id: Option<i64>,
 }
 
 #[derive(Serialize, Deserialize, JsonSchema, Debug)]
@@ -143,6 +149,7 @@ pub struct ImportCARequest {
     pub crl: Option<String>, // PEM or base64 DER
     pub format: DataFormat,
     pub parent_id: Option<i64>,
+    pub predecessor_id: Option<i64>,
 }
 
 #[derive(Serialize, Deserialize, JsonSchema)]

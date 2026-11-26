@@ -194,6 +194,24 @@ impl Mailer {
         Ok(())
     }
 
+    pub async fn notify_renewal_failed(&self, message: MailMessage, reason: &str) -> Result<(), anyhow::Error> {
+        let body = format!("greetings from VaulTLS. The certificate {} is about to expire and could not be renewed automatically: {}. VaulTLS keeps retrying, but an administrator has to fix this, for example by creating a successor CA, before the certificate expires.", message.certificate.name.cn, reason);
+        let html_content = email_template!(message, body);
+        let plain_content = format!("Hello {}, {}", message.username, body);
+
+        let email = build_email_message!(
+            self.from.clone(),
+            message.to,
+            "VaulTLS: Automatic certificate renewal failed",
+            plain_content,
+            html_content
+        );
+
+        self.mailer.send(email).await?;
+
+        Ok(())
+    }
+
     pub async fn notify_acme_certificate_issued(&self, message: MailMessage) -> Result<(), anyhow::Error> {
         let body = format!("greetings from VaulTLS. A new certificate has been issued via ACME for: {}. You can review it here: {}", message.certificate.name.cn, self.vaultls_url);
         let html_content = email_template!(message, body);

@@ -114,6 +114,7 @@ impl SSHCertificateBuilder {
             crl_number: 0,
             parent_id: None,
             revoked_at: None,
+            predecessor_id: None,
         })
     }
 
@@ -171,7 +172,8 @@ impl SSHCertificateBuilder {
             ca_id: ca.id,
             data,
             password: self.password.unwrap_or_default(),
-            revoked_at: None
+            revoked_at: None,
+            renewal_error: None,
         })
     }
 
@@ -216,7 +218,8 @@ impl SSHCertificateBuilder {
             ca_id: ca.id,
             data,
             password: self.password.unwrap_or_default(),
-            revoked_at: None
+            revoked_at: None,
+            renewal_error: None,
         })
     }
 

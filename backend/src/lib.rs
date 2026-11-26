@@ -196,6 +196,7 @@ pub async fn create_rocket() -> Rocket<Build> {
                 download_crl,
                 delete_ca,
                 revoke_ca,
+                set_ca_predecessor,
                 fetch_certificate_password,
                 fetch_settings,
                 update_settings,
@@ -292,6 +293,7 @@ pub async fn create_test_rocket() -> Rocket<Build> {
                 download_crl,
                 delete_ca,
                 revoke_ca,
+                set_ca_predecessor,
                 fetch_certificate_password,
                 fetch_settings,
                 update_settings,
@@ -309,4 +311,10 @@ pub async fn create_test_rocket() -> Rocket<Build> {
                 update_user
             ],
         )
+}
+
+#[cfg(feature = "test-mode")]
+pub async fn run_expiry_check_once(rocket: &Rocket<rocket::Orbit>) {
+    let state = rocket.state::<AppState>().expect("AppState is managed");
+    crate::notification::notifier::check_expiring_certs(&state.db, state.mailer.clone()).await;
 }

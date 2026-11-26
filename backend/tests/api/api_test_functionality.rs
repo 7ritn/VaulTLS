@@ -435,6 +435,7 @@ async fn test_intermediate_ca_issues_and_downloads_certificate() -> Result<()> {
         validity_duration: Some(1),
         validity_unit: Some(TimespanUnit::Year),
         parent_id: Some(1),
+        predecessor_id: None,
     };
     let response = client
         .post("/certificates/ca")
@@ -487,28 +488,10 @@ async fn test_intermediate_ca_issues_and_downloads_certificate() -> Result<()> {
     Ok(())
 }
 
-async fn create_intermediate_ca(client: &VaulTLSClient, name: &str) -> Result<i64> {
-    let ca_request = CreateCARequest {
-        ca_name: name.into(),
-        ca_type: CAType::TLS,
-        validity_duration: Some(1),
-        validity_unit: Some(TimespanUnit::Year),
-        parent_id: Some(1),
-    };
-    let response = client
-        .post("/certificates/ca")
-        .header(ContentType::JSON)
-        .body(serde_json::to_string(&ca_request)?)
-        .dispatch()
-        .await;
-    assert_eq!(response.status(), Status::Ok);
-    Ok(serde_json::from_str(&response.into_string().await.unwrap())?)
-}
-
 #[tokio::test]
 async fn test_revoke_intermediate_ca_updates_parent_crl() -> Result<()> {
     let client = VaulTLSClient::new_authenticated().await;
-    let intermediate_ca_id = create_intermediate_ca(&client, "Intermediate CA to revoke").await?;
+    let intermediate_ca_id = client.create_intermediate_ca("Intermediate CA to revoke").await?;
 
     let response = client.post("/certificates/ca/1/revoke").dispatch().await;
     assert_eq!(response.status(), Status::BadRequest);
@@ -1193,7 +1176,7 @@ async fn test_revoke_ca_does_not_persist_when_parent_crl_fails() -> Result<()> {
 #[tokio::test]
 async fn test_deleted_revoked_intermediate_ca_stays_on_parent_crl() -> Result<()> {
     let client = VaulTLSClient::new_authenticated().await;
-    let intermediate_ca_id = create_intermediate_ca(&client, "Intermediate CA to delete").await?;
+    let intermediate_ca_id = client.create_intermediate_ca("Intermediate CA to delete").await?;
     let intermediate_pem = client.download_tls_ca_by_id(intermediate_ca_id).await?;
     let (_, intermediate_cert) = X509Certificate::from_der(&intermediate_pem.contents)?;
     let intermediate_serial = openssl::bn::BigNum::from_slice(&intermediate_cert.tbs_certificate.serial.to_bytes_be())?;
@@ -1217,7 +1200,7 @@ async fn test_deleted_revoked_intermediate_ca_stays_on_parent_crl() -> Result<()
 #[tokio::test]
 async fn test_revoke_certificate_of_revoked_ca_fails() -> Result<()> {
     let client = VaulTLSClient::new_authenticated().await;
-    let intermediate_ca_id = create_intermediate_ca(&client, "Intermediate CA with frozen CRL").await?;
+    let intermediate_ca_id = client.create_intermediate_ca("Intermediate CA with frozen CRL").await?;
     let leaf = client.create_client_cert(None, None, Some(intermediate_ca_id)).await?;
 
     let response = client.post(format!("/certificates/ca/{intermediate_ca_id}/revoke")).dispatch().await;
@@ -1230,6 +1213,151 @@ async fn test_revoke_certificate_of_revoked_ca_fails() -> Result<()> {
     let certs = client.get_certificates().await?;
     assert!(certs.iter().find(|c| c.id == leaf.id).unwrap().revoked_at.is_none());
     assert_eq!(client.get_all_ca().await?.iter().find(|ca| ca.id == intermediate_ca_id).unwrap().crl_number, crl_number_before);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_renewal_prefers_successor_ca() -> Result<()> {
+    let client = VaulTLSClient::new_authenticated().await;
+    let (status, successor_id) = client.create_tls_ca("Successor CA", 5, TimespanUnit::Year, None, Some(1)).await?;
+    assert_eq!(status, Status::Ok);
+    let successor_id = successor_id.unwrap();
+    assert_eq!(client.get_all_ca().await?.iter().find(|ca| ca.id == successor_id).unwrap().predecessor_id, Some(1));
+
+    let old_cert = client.create_expiring_client_cert(1).await?;
+    client.run_expiry_check().await;
+
+    let certs = client.get_certificates().await?;
+    assert_eq!(certs.len(), 2);
+    let new_cert = certs.iter().find(|c| c.id != old_cert.id).unwrap();
+    assert_eq!(new_cert.ca_id, successor_id);
+    assert!(new_cert.renewal_error.is_none());
+    let old_cert = certs.iter().find(|c| c.id == old_cert.id).unwrap();
+    assert_eq!(old_cert.renew_method, CertificateRenewMethod::None);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_renewal_uses_own_ca_without_successor() -> Result<()> {
+    let client = VaulTLSClient::new_authenticated().await;
+    // A newer CA that is not linked as successor must never be used
+    client.create_second_ca().await?;
+
+    let old_cert = client.create_expiring_client_cert(1).await?;
+    client.run_expiry_check().await;
+
+    let certs = client.get_certificates().await?;
+    assert_eq!(certs.len(), 2);
+    let new_cert = certs.iter().find(|c| c.id != old_cert.id).unwrap();
+    assert_eq!(new_cert.ca_id, 1);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_renewal_rejected_when_own_ca_too_short_and_no_successor() -> Result<()> {
+    let client = VaulTLSClient::new_authenticated().await;
+    // Renewed certificates are valid for at least 14 days
+    let (status, short_ca_id) = client.create_tls_ca("Short CA", 10, TimespanUnit::Day, None, None).await?;
+    assert_eq!(status, Status::Ok);
+    let short_ca_id = short_ca_id.unwrap();
+    // The latest CA must not be used as fallback
+    client.create_second_ca().await?;
+
+    let old_cert = client.create_expiring_client_cert(short_ca_id).await?;
+    client.run_expiry_check().await;
+
+    let certs = client.get_certificates().await?;
+    assert_eq!(certs.len(), 1);
+    let cert = &certs[0];
+    assert_eq!(cert.id, old_cert.id);
+    assert_eq!(cert.renew_method, CertificateRenewMethod::Renew);
+    let renewal_error = cert.renewal_error.clone().expect("renewal failure must be recorded");
+    assert!(renewal_error.contains("successor"));
+
+    // A repeated failure keeps the recorded failure
+    client.run_expiry_check().await;
+    let certs = client.get_certificates().await?;
+    assert_eq!(certs.len(), 1);
+    assert_eq!(certs[0].renewal_error.as_deref(), Some(renewal_error.as_str()));
+
+    // Linking a successor fixes the renewal
+    let (status, successor_id) = client.create_tls_ca("Successor CA", 5, TimespanUnit::Year, None, Some(short_ca_id)).await?;
+    assert_eq!(status, Status::Ok);
+    client.run_expiry_check().await;
+    let certs = client.get_certificates().await?;
+    assert_eq!(certs.len(), 2);
+    let new_cert = certs.iter().find(|c| c.id != old_cert.id).unwrap();
+    assert_eq!(new_cert.ca_id, successor_id.unwrap());
+    assert!(new_cert.renewal_error.is_none());
+    // The warning on the old certificate is cleared
+    let old_cert = certs.iter().find(|c| c.id == old_cert.id).unwrap();
+    assert!(old_cert.renewal_error.is_none());
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_renewal_skips_revoked_successor() -> Result<()> {
+    let client = VaulTLSClient::new_authenticated().await;
+    // Setup CA (1) -> intermediate B (revoked) -> C
+    let root_id = client.create_tls_ca("Root CA", 10, TimespanUnit::Year, None, None).await?.1.expect("CA should be created");
+    let revoked_id = client.create_tls_ca("Revoked successor", 5, TimespanUnit::Year, Some(root_id), Some(1)).await?.1.expect("CA should be created");
+    let successor_id = client.create_tls_ca("Successor of revoked", 6, TimespanUnit::Year, None, Some(revoked_id)).await?.1.expect("CA should be created");
+    let response = client.post(format!("/certificates/ca/{revoked_id}/revoke")).dispatch().await;
+    assert_eq!(response.status(), Status::Ok);
+
+    let old_cert = client.create_expiring_client_cert(1).await?;
+    client.run_expiry_check().await;
+
+    let certs = client.get_certificates().await?;
+    let new_cert = certs.iter().find(|c| c.id != old_cert.id).expect("certificate must be renewed");
+    assert_eq!(new_cert.ca_id, successor_id);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_delete_ca_relinks_successor() -> Result<()> {
+    let client = VaulTLSClient::new_authenticated().await;
+    // Setup CA (1) -> B -> C, then B is deleted
+    let middle_id = client.create_tls_ca("Middle CA", 5, TimespanUnit::Year, None, Some(1)).await?.1.expect("CA should be created");
+    let successor_id = client.create_tls_ca("Last CA", 6, TimespanUnit::Year, None, Some(middle_id)).await?.1.expect("CA should be created");
+
+    let response = client.delete(format!("/certificates/ca/{middle_id}")).dispatch().await;
+    assert_eq!(response.status(), Status::Ok);
+    let cas = client.get_all_ca().await?;
+    assert!(cas.iter().all(|ca| ca.id != middle_id));
+    assert_eq!(cas.iter().find(|ca| ca.id == successor_id).unwrap().predecessor_id, Some(1));
+
+    let old_cert = client.create_expiring_client_cert(1).await?;
+    client.run_expiry_check().await;
+    let certs = client.get_certificates().await?;
+    let new_cert = certs.iter().find(|c| c.id != old_cert.id).expect("certificate must be renewed");
+    assert_eq!(new_cert.ca_id, successor_id);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_set_predecessor_of_existing_ca() -> Result<()> {
+    let client = VaulTLSClient::new_authenticated().await;
+    let replacement_id = client.create_tls_ca("Replacement CA", 5, TimespanUnit::Year, None, None).await?.1.expect("CA should be created");
+
+    assert_eq!(client.set_ca_predecessor(replacement_id, 1).await, Status::Ok);
+    assert_eq!(client.get_all_ca().await?.iter().find(|ca| ca.id == replacement_id).unwrap().predecessor_id, Some(1));
+    // A predecessor can only be set once
+    assert_eq!(client.set_ca_predecessor(replacement_id, 1).await, Status::BadRequest);
+    // The setup CA expires first, so it cannot succeed the replacement, which also rules out a cycle
+    assert_eq!(client.set_ca_predecessor(1, replacement_id).await, Status::BadRequest);
+
+    let old_cert = client.create_expiring_client_cert(1).await?;
+    client.run_expiry_check().await;
+    let certs = client.get_certificates().await?;
+    let new_cert = certs.iter().find(|c| c.id != old_cert.id).expect("certificate must be renewed");
+    assert_eq!(new_cert.ca_id, replacement_id);
 
     Ok(())
 }

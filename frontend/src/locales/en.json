@@ -117,7 +117,8 @@
       "confirm": "Are you sure you want to delete the certificate {name}?",
       "disclaimer": "Disclaimer: Deleting the certificate does not revoke it, so it stays valid until expiry. Revoke it first if it should no longer be trusted. A revoked certificate stays on the CRL/KRL after deletion."
     },
-    "issuerRevoked": "Issuer revoked"
+    "issuerRevoked": "Issuer revoked",
+    "renewalFailed": "Automatic renewal failed: {error}"
   },
   "ca": {
     "title": "Certificate Authorities",
@@ -144,10 +145,14 @@
     },
     "createModal": {
       "title": "Create New Certificate Authority",
+      "advanced": "Advanced",
       "caName": "CA Name (CN)",
       "caType": "CA Type",
       "parent": "Parent CA",
       "noParent": "No parent (root CA)",
+      "predecessor": "Predecessor CA (optional)",
+      "noPredecessor": "None",
+      "predecessorHelp": "Automatic renewals of certificates issued by the predecessor use this CA.",
       "parentValidityWarning": "The CA cannot outlive its selected parent, which is valid until {date}.",
       "create": "Create CA"
     },

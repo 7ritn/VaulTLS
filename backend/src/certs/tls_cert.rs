@@ -62,7 +62,7 @@ impl TLSCertificateBuilder {
     ///     - Renew Method\
     ///     - User ID\
     pub fn try_from(old_cert: &Certificate) -> Result<Self> {
-        let validity_d = ((old_cert.valid_until - old_cert.created_on) / 1000 / 60 / 60 / 24).max(14);
+        let validity_d = renewal_validity_days(old_cert);
 
         Self::new()?
             .set_name(old_cert.name.clone())?
@@ -160,6 +160,7 @@ impl TLSCertificateBuilder {
             crl_number: 0,
             parent_id: parent_ca_id,
             revoked_at: None,
+            predecessor_id: None,
         })
     }
 
@@ -220,7 +221,8 @@ impl TLSCertificateBuilder {
             ca_id: ca.id,
             user_id,
             renew_method: self.renew_method,
-            revoked_at: None
+            revoked_at: None,
+            renewal_error: None,
         })
     }
 }
@@ -322,6 +324,10 @@ fn get_asn1_timestamp(duration: u64, unit: TimespanUnit) -> Result<(i64, Asn1Tim
     let time_openssl = Asn1Time::from_unix(time_unix_ms / 1000)?;
 
     Ok((time_unix_ms, time_openssl))
+}
+
+pub(crate) fn renewal_validity_days(old_cert: &Certificate) -> i64 {
+    ((old_cert.valid_until - old_cert.created_on) / 1000 / 60 / 60 / 24).max(14)
 }
 
 pub(crate) fn get_timestamp(duration: u64, unit: TimespanUnit) -> OffsetDateTime {
@@ -439,6 +445,7 @@ pub fn parse_ca(cert_bytes: &[u8], key_bytes: &[u8], data_format: DataFormat, cr
         crl_number,
         parent_id: None,
         revoked_at: None,
+        predecessor_id: None,
     })
 }
 

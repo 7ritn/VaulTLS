@@ -108,7 +108,8 @@
       "confirm": "¿Está seguro de que desea eliminar el certificado {name}?",
       "disclaimer": "Aviso: Eliminar el certificado no lo revoca, por lo que sigue siendo válido hasta su vencimiento. Revóquelo primero si ya no debe ser de confianza. Un certificado revocado permanece en la CRL/KRL después de eliminarlo."
     },
-    "issuerRevoked": "Emisor revocado"
+    "issuerRevoked": "Emisor revocado",
+    "renewalFailed": "La renovación automática ha fallado: {error}"
   },
   "ca": {
     "title": "Autoridades de Certificación",
@@ -135,10 +136,14 @@
     },
     "createModal": {
       "title": "Crear nueva autoridad de certificación",
+      "advanced": "Avanzado",
       "caName": "Nombre de CA (CN)",
       "caType": "Tipo de CA",
       "parent": "CA principal",
       "noParent": "Sin CA principal (CA raíz)",
+      "predecessor": "CA predecesora (opcional)",
+      "noPredecessor": "Ninguna",
+      "predecessorHelp": "Las renovaciones automáticas de los certificados emitidos por la CA predecesora usan esta CA.",
       "parentValidityWarning": "La CA no puede tener una validez superior a la de su CA principal, que es válida hasta {date}.",
       "create": "Crear CA"
     },
