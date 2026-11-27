@@ -274,3 +274,23 @@ async fn password_disabled_login() -> Result<()> {
 
     Ok(())
 }
+#[tokio::test]
+async fn test_create_ca_rejects_unknown_key_algorithm() -> Result<()> {
+    let client = VaulTLSClient::new_authenticated().await;
+    let request_data = serde_json::json!({
+        "ca_name": {"cn": "Unknown key CA"},
+        "ca_type": 0,
+        "key_algorithm": 42
+    });
+
+    let response = client
+        .post("/certificates/ca")
+        .header(ContentType::JSON)
+        .body(request_data.to_string())
+        .dispatch()
+        .await;
+
+    assert!(response.status().class().is_client_error());
+
+    Ok(())
+}

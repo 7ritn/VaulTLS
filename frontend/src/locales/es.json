@@ -1,7 +1,7 @@
 {
   "common": {
     "keyAlgorithm": "Algoritmo de clave",
-    "keyAlgorithmInherit": "Igual que la CA emisora",
+    "keyAlgorithmDefault": "Predeterminado (igual que la CA emisora, P-256 para CA raíz)",
     "cancel": "Cancelar",
     "delete": "Eliminar",
     "save": "Guardar",

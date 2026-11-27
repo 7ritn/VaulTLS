@@ -186,27 +186,13 @@ impl KeyAlgorithm {
         }
     }
 
-    /// Returns the digest to sign with when the signing key is of this type.
-    pub(crate) fn digest(self) -> openssl::hash::MessageDigest {
-        match self {
-            KeyAlgorithm::EcdsaP256 => openssl::hash::MessageDigest::sha256(),
-            KeyAlgorithm::EcdsaP384 => openssl::hash::MessageDigest::sha384(),
-        }
-    }
-
-    fn from_pkey(pkey: &openssl::pkey::PKeyRef<openssl::pkey::Public>) -> anyhow::Result<Self> {
-        let curve = pkey.ec_key().ok().and_then(|ec| ec.group().curve_name());
-        match curve {
+    /// Detects the algorithm of the public key in a DER certificate. Fails for keys that are not P-256 or P-384.
+    pub(crate) fn from_cert_der(der: &[u8]) -> anyhow::Result<Self> {
+        let key = openssl::x509::X509::from_der(der)?.public_key()?;
+        match key.ec_key().ok().and_then(|ec| ec.group().curve_name()) {
             Some(openssl::nid::Nid::X9_62_PRIME256V1) => Ok(KeyAlgorithm::EcdsaP256),
             Some(openssl::nid::Nid::SECP384R1) => Ok(KeyAlgorithm::EcdsaP384),
             _ => Err(anyhow::anyhow!("Unsupported key algorithm")),
         }
-    }
-
-    /// Detects the algorithm of the public key in a DER certificate. Fails for keys that are not P-256 or P-384.
-    pub fn from_cert_der(der: &[u8]) -> anyhow::Result<Self> {
-        let cert = openssl::x509::X509::from_der(der)?;
-        let key = cert.public_key()?;
-        Self::from_pkey(&key)
     }
 }

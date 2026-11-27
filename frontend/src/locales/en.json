@@ -1,7 +1,7 @@
 {
   "common": {
     "keyAlgorithm": "Key algorithm",
-    "keyAlgorithmInherit": "Same as issuing CA",
+    "keyAlgorithmDefault": "Default (same as issuing CA, P-256 for root CAs)",
     "cancel": "Cancel",
     "delete": "Delete",
     "save": "Save",

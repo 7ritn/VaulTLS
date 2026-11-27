@@ -810,7 +810,7 @@ async fn test_crl_pem() -> Result<()> {
     Ok(())
 }
 
-pub(crate) async fn establish_tls_connection(
+async fn establish_tls_connection(
     ca_cert_pem: &[u8],
     client_cert_p12: &[u8],
     server_cert_p12: &[u8],
@@ -1235,6 +1235,90 @@ async fn test_revoke_certificate_of_revoked_ca_fails() -> Result<()> {
     let certs = client.get_certificates().await?;
     assert!(certs.iter().find(|c| c.id == leaf.id).unwrap().revoked_at.is_none());
     assert_eq!(client.get_all_ca().await?.iter().find(|ca| ca.id == intermediate_ca_id).unwrap().crl_number, crl_number_before);
+
+    Ok(())
+}
+
+fn curve_of(cert: &X509) -> openssl::nid::Nid {
+    cert.public_key().unwrap().ec_key().unwrap().group().curve_name().unwrap()
+}
+
+#[tokio::test]
+async fn test_p384_root_ca_issues_p384_certificates() -> Result<()> {
+    let client = VaulTLSClient::new().await;
+    let setup_data = serde_json::json!({
+        "name": TEST_USER_NAME,
+        "email": TEST_USER_EMAIL,
+        "ca_name": TEST_CA_NAME,
+        "password": TEST_PASSWORD,
+        "key_algorithm": 1
+    });
+    let response = client
+        .post("/server/setup")
+        .header(ContentType::JSON)
+        .body(setup_data.to_string())
+        .dispatch()
+        .await;
+    assert_eq!(response.status(), Status::Ok);
+    drop(response);
+    client.login(TEST_USER_EMAIL, TEST_PASSWORD).await?;
+
+    // Certificates without an explicit key algorithm inherit P-384 from the CA.
+    client.create_client_cert(None, Some(TEST_PASSWORD.to_string()), None).await?;
+    client.create_server_cert().await?;
+
+    let ca_pem = client.download_cert("ca").await?;
+    let ca = X509::from_pem(&ca_pem)?;
+    assert_eq!(curve_of(&ca), openssl::nid::Nid::SECP384R1);
+    assert_eq!(ca.signature_algorithm().object().nid(), openssl::nid::Nid::ECDSA_WITH_SHA384);
+
+    let client_p12 = client.download_cert("1").await?;
+    let server_p12 = client.download_cert("2").await?;
+    let leaf = Pkcs12::from_der(&client_p12)?.parse2(TEST_PASSWORD)?.cert.unwrap();
+    assert_eq!(curve_of(&leaf), openssl::nid::Nid::SECP384R1);
+    assert_eq!(leaf.signature_algorithm().object().nid(), openssl::nid::Nid::ECDSA_WITH_SHA384);
+
+    establish_tls_connection(&ca_pem, &client_p12, &server_p12, None).await
+}
+
+#[tokio::test]
+async fn test_intermediate_ca_key_algorithm() -> Result<()> {
+    let client = VaulTLSClient::new_authenticated().await;
+
+    // Explicit P-384 intermediate under the default P-256 root.
+    let ca_request = serde_json::json!({
+        "ca_name": {"cn": "P-384 Intermediate"},
+        "ca_type": 0,
+        "validity_duration": 1,
+        "validity_unit": 0,
+        "parent_id": 1,
+        "key_algorithm": 1
+    });
+    let response = client
+        .post("/certificates/ca")
+        .header(ContentType::JSON)
+        .body(ca_request.to_string())
+        .dispatch()
+        .await;
+    assert_eq!(response.status(), Status::Ok);
+    let p384_ca_id: i64 = serde_json::from_str(&response.into_string().await.unwrap())?;
+    // Without a key algorithm, an intermediate inherits P-256 from the root.
+    let p256_ca_id = create_intermediate_ca(&client, "P-256 Intermediate").await?;
+
+    let root = X509::from_pem(&client.download_cert("ca/1").await?)?;
+    let p384_ca = X509::from_pem(&client.download_cert(&format!("ca/{p384_ca_id}")).await?)?;
+    let p256_ca = X509::from_pem(&client.download_cert(&format!("ca/{p256_ca_id}")).await?)?;
+    assert_eq!(curve_of(&root), openssl::nid::Nid::X9_62_PRIME256V1);
+    assert_eq!(curve_of(&p384_ca), openssl::nid::Nid::SECP384R1);
+    assert_eq!(curve_of(&p256_ca), openssl::nid::Nid::X9_62_PRIME256V1);
+    assert!(p384_ca.verify(&root.public_key()?.as_ref())?);
+
+    // A leaf under the P-384 intermediate inherits P-384 and is signed with SHA-384.
+    let cert = client.create_client_cert(None, Some(TEST_PASSWORD.to_string()), Some(p384_ca_id)).await?;
+    let leaf = Pkcs12::from_der(&client.download_cert(&cert.id.to_string()).await?)?.parse2(TEST_PASSWORD)?.cert.unwrap();
+    assert_eq!(curve_of(&leaf), openssl::nid::Nid::SECP384R1);
+    assert_eq!(leaf.signature_algorithm().object().nid(), openssl::nid::Nid::ECDSA_WITH_SHA384);
+    assert!(leaf.verify(&p384_ca.public_key()?.as_ref())?);
 
     Ok(())
 }

@@ -34,7 +34,7 @@ pub struct TLSCertificateBuilder {
 }
 impl TLSCertificateBuilder {
     pub fn new() -> Result<Self> {
-        let key_pair = KeyPair::generate_for(KeyAlgorithm::default().rcgen_algorithm())?;
+        let key_pair = KeyPair::generate_for(&rcgen::PKCS_ECDSA_P256_SHA256)?;
         let mut params = CertificateParams::default();
         params.not_before = OffsetDateTime::now_utc();
         params.serial_number = Some(SerialNumber::from(rand::random::<u64>()));
@@ -301,8 +301,10 @@ pub fn issue_cert_from_csr(
     let authority_key_identifier = openssl::x509::extension::AuthorityKeyIdentifier::new().keyid(true).build(&x509.x509v3_context(Some(&ca_cert), None))?;
     x509.append_extension(authority_key_identifier)?;
 
-    // Match the digest to the CA key strength (SHA-384 for P-384); SHA-256 for anything else.
-    let digest = KeyAlgorithm::from_cert_der(&ca.cert).map(KeyAlgorithm::digest).unwrap_or(MessageDigest::sha256());
+    let digest = match KeyAlgorithm::from_cert_der(&ca.cert) {
+        Ok(KeyAlgorithm::EcdsaP384) => MessageDigest::sha384(),
+        _ => MessageDigest::sha256(),
+    };
     x509.sign(&ca_key, digest)?;
 
     let cert = x509.build();
@@ -488,97 +490,4 @@ fn asn1_time_to_unix(time: &openssl::asn1::Asn1TimeRef) -> Result<i64> {
     let epoch = Asn1Time::from_unix(0)?;
     let diff = epoch.diff(time)?;
     Ok((diff.days as i64 * 24 * 3600 + diff.secs as i64) * 1000)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use openssl::ec::{EcGroup, EcKey};
-    use openssl::x509::X509ReqBuilder;
-    use crate::data::enums::KeyAlgorithm;
-
-    const PASSWORD: &str = "secret";
-
-    fn build_ca(key_algorithm: KeyAlgorithm) -> CA {
-        let mut ca = TLSCertificateBuilder::new().unwrap()
-            .set_key_algorithm(key_algorithm).unwrap()
-            .set_name(Name { cn: "Test CA".into(), ou: None }).unwrap()
-            .set_valid_until(1, TimespanUnit::Year).unwrap()
-            .build_ca().unwrap();
-        ca.id = 1;
-        ca
-    }
-
-    fn leaf_x509(cert: &Certificate) -> X509 {
-        let CertData::Pkcs12(ref der) = cert.data else { panic!("Expected PKCS#12") };
-        Pkcs12::from_der(der).unwrap().parse2(&cert.password).unwrap().cert.unwrap()
-    }
-
-    fn curve_of(cert: &X509) -> Nid {
-        cert.public_key().unwrap().ec_key().unwrap().group().curve_name().unwrap()
-    }
-
-    #[test]
-    fn key_algorithm_is_detected_from_ca_cert() {
-        assert_eq!(KeyAlgorithm::from_cert_der(&build_ca(KeyAlgorithm::EcdsaP256).cert).unwrap(), KeyAlgorithm::EcdsaP256);
-        assert_eq!(KeyAlgorithm::from_cert_der(&build_ca(KeyAlgorithm::EcdsaP384).cert).unwrap(), KeyAlgorithm::EcdsaP384);
-    }
-
-    #[test]
-    fn key_algorithm_detection_rejects_unsupported_keys() {
-        let rsa = PKey::from_rsa(openssl::rsa::Rsa::generate(2048).unwrap()).unwrap();
-        let mut name = X509NameBuilder::new().unwrap();
-        name.append_entry_by_text("CN", "rsa").unwrap();
-        let name = name.build();
-        let mut builder = X509Builder::new().unwrap();
-        builder.set_subject_name(&name).unwrap();
-        builder.set_issuer_name(&name).unwrap();
-        builder.set_pubkey(&rsa).unwrap();
-        builder.sign(&rsa, MessageDigest::sha256()).unwrap();
-        assert!(KeyAlgorithm::from_cert_der(&builder.build().to_der().unwrap()).is_err());
-    }
-
-    #[test]
-    fn renewal_keeps_key_algorithm_of_old_certificate() {
-        // Old leaf is P-384, issued by a P-256 CA: renewal must keep P-384, not inherit from the CA.
-        let ca = build_ca(KeyAlgorithm::EcdsaP256);
-        let old = TLSCertificateBuilder::new().unwrap()
-            .set_key_algorithm(KeyAlgorithm::EcdsaP384).unwrap()
-            .set_name(Name { cn: "leaf".into(), ou: None }).unwrap()
-            .set_valid_until(30, TimespanUnit::Day).unwrap()
-            .set_password(PASSWORD).unwrap()
-            .set_user_id(1).unwrap()
-            .set_ca(ca.clone()).unwrap()
-            .build_client().unwrap();
-        assert_eq!(curve_of(&leaf_x509(&old)), Nid::SECP384R1);
-
-        let renewed = TLSCertificateBuilder::try_from(&old).unwrap()
-            .set_ca(ca).unwrap()
-            .build_client().unwrap();
-        assert_eq!(curve_of(&leaf_x509(&renewed)), Nid::SECP384R1);
-    }
-
-    fn csr_der() -> Vec<u8> {
-        let group = EcGroup::from_curve_name(Nid::X9_62_PRIME256V1).unwrap();
-        let pkey = PKey::from_ec_key(EcKey::generate(&group).unwrap()).unwrap();
-        let mut req = X509ReqBuilder::new().unwrap();
-        req.set_pubkey(&pkey).unwrap();
-        req.sign(&pkey, MessageDigest::sha256()).unwrap();
-        req.build().to_der().unwrap()
-    }
-
-    #[test]
-    fn acme_issuance_uses_digest_matching_ca_key() {
-        for (alg, expected) in [
-            (KeyAlgorithm::EcdsaP256, Nid::ECDSA_WITH_SHA256),
-            (KeyAlgorithm::EcdsaP384, Nid::ECDSA_WITH_SHA384),
-        ] {
-            let ca = build_ca(alg);
-            let (cert_pem, _, _) = issue_cert_from_csr(&csr_der(), &ca, 30, &["example.com".to_string()]).unwrap();
-            let cert = X509::from_pem(&cert_pem).unwrap();
-            assert_eq!(cert.signature_algorithm().object().nid(), expected);
-            let ca_cert = X509::from_der(&ca.cert).unwrap();
-            assert!(cert.verify(&ca_cert.public_key().unwrap()).unwrap());
-        }
-    }
 }

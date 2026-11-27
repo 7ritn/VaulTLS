@@ -338,7 +338,7 @@
             <div class="mb-3" v-if="certReq.cert_type === CertificateType.TLSClient || certReq.cert_type === CertificateType.TLSServer">
               <label for="certKeyAlgorithm" class="form-label">{{ $t('common.keyAlgorithm') }}</label>
               <select id="certKeyAlgorithm" v-model="certReq.key_algorithm" class="form-select">
-                <option :value="undefined">{{ $t('common.keyAlgorithmInherit') }}</option>
+                <option :value="undefined">{{ $t('common.keyAlgorithmDefault') }}</option>
                 <option :value="KeyAlgorithm.EcdsaP256">ECDSA P-256</option>
                 <option :value="KeyAlgorithm.EcdsaP384">ECDSA P-384</option>
               </select>
